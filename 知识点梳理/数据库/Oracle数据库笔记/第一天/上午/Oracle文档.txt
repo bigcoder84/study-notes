@@ -1,0 +1,9 @@
+
+文档：
+http://www.oracle.com/technetwork/database/database10g/documentation/index.html
+
+在线：
+http://www.oracle.com/pls/db102/homepage
+
+
+Linux上安装Oracle 10g:  http://69520.blog.51cto.com/59520/91156

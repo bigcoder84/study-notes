@@ -1,0 +1,114 @@
+第5讲PLSQL程序设计
+
+实习要点及要求：
+
+实习要点：通过本次练习，熟悉PLSQL语法要点及基本语句的用法，掌握光标循环的概念及其用法。
+要求：
+用PLSQL语言编写一个程序。按系(系名）分段统计（成绩小于60分，60-85分, 85分以上）“大学物理”课程各分数段的学生人数，及各系学生的平均成绩。
+
+
+答案：
+
+--建立存放数据的结构表：
+create table msg
+(cname char(20),
+ dname char(30),
+ seg_1 number,
+ seg_2 number,
+ seg_3 number,
+ avggrade number(4,2)
+ );
+
+--利用光标循环处理数据，并把处理结果写到结果表中：
+========================================= 答案一 ====================================================================
+declare 
+  cursor c1 is select distinct dno,dname from dep order by dno;
+  cursor c2(c_name char) is select student.dno,grade,course.cname from student,dep,sc,course 
+                            where student.dno=dep.dno and student.sno=sc.sno and course.cno=sc.cno and cname=c_name  order by dno;
+  tempcname char(20);
+  stu_num1 number;
+  stu_num2 number;
+  stu_num3 number;
+  stu_dno dep.dno%type;
+  stu_grade sc.grade%type;
+  avggrade number;
+  people number;
+begin
+  open c2('大学物理');
+  fetch c2 into stu_dno,stu_grade,tempcname;
+  for r1 in c1
+  loop
+     people:=0;
+     stu_num1:=0;
+     stu_num2:=0;
+     stu_num3:=0;
+     avggrade:=0;
+     while r1.dno=stu_dno
+     loop
+        people:=people+1;
+        avggrade:=(avggrade*(people-1)+stu_grade)/people;
+        if stu_grade<60 then stu_num1:=stu_num1+1;
+        elsif stu_grade<85 and stu_grade>=60 then stu_num2:=stu_num2+1;
+        else stu_num3:=stu_num3+1;
+        end if;
+  
+        fetch c2 into stu_dno,stu_grade,tempcname;
+        exit when c2%notfound;
+     end loop;
+     
+     insert into msg values(tempcname,r1.dname,stu_num1,stu_num2,stu_num3,avggrade); 
+  end loop;
+commit;
+end; 
+/
+
+========================================= 答案二 ====================================================================
+declare
+   cursor cdep is select distinct dno,dname from dep order by dno;
+   cursor cstudent(c_name char,d_no char) is select grade from sc 
+                                             where sno in (select distinct sno from student where dno=d_no) 
+                                             and cno in (select distinct cno from course where cname=c_name);
+   pcName char(8);
+   pdno dep.dno%type;
+   pdname dep.dname%type;
+
+   stu_num1 number;
+   stu_num2 number;
+   stu_num3 number;
+   stu_grade sc.grade%type;
+   sumGrade number;
+   people   number;
+begin
+   pcName := '大学物理';
+   open cdep;
+   loop
+     fetch cdep into pdno,pdname;
+     exit when cdep%notfound;
+     people:=0;
+     stu_num1:=0;
+     stu_num2:=0;
+     stu_num3:=0;
+     sumGrade:=0;
+     open cstudent(pcName,pdno);
+     loop 
+         fetch cstudent into stu_grade;
+         exit when cstudent%notfound;
+         if stu_grade<60 then stu_num1:=stu_num1+1;
+           elsif stu_grade<85 and stu_grade>=60 then stu_num2:=stu_num2+1;
+           else stu_num3:=stu_num3+1;
+         end if;     
+         sumGrade := sumGrade+stu_grade;
+         people := people + 1;
+     end loop;
+     close cstudent;
+   
+     if people>0 then
+        insert into msg values(pcName,pdname,stu_num1,stu_num2,stu_num3,sumGrade/people);    
+     end if;
+   
+ end loop;
+ close cdep;
+commit;
+end;
+/
+     
