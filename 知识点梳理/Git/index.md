@@ -4,3 +4,5 @@
 
 [Git基础概念](./subfile/_2Git基础概念.md)
 
+[Git初始配置（config命令）](./subfile/_3Git初始配置.md)
+
