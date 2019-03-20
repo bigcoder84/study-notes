@@ -12,6 +12,9 @@
 
 ### Git基础
 
-[创建/克隆Git仓库](./subfile/_5创建Git仓库.md)
+[创建/克隆Git仓库（init、clone）](./subfile/_5创建Git仓库.md)
 
-[Git的工作区和暂存区（add、commit、status命令）](./subfile/_6Git的工作区和暂存区.md)
+[Git的工作区和暂存区（add、rm、commit、status）](./subfile/_6Git的工作区和暂存区.md)
+
+[Git文件移动和重命名（mv）](./subfile/_7文件的重命名.md)
+
