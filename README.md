@@ -1,6 +1,6 @@
 # StudyNotes
 
-[Git笔记](./知识点梳理/Git/index.md)
+[Git笔记](./基础笔记/Git/index.md)
 
-[Python笔记](./知识点梳理/Python基础/index.md)
+[Python笔记](./基础笔记/Python/index.md)
 
