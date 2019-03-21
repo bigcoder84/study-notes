@@ -23,5 +23,5 @@
 
 ​	例如：`@RequestMapping(“validatecode.action”)`修饰指定处理器即可，此时如果试图采用`validatecode.html`来访问，前端控制器虽然可以拦截请求，但是处理器映射器，是找不到`validatecode.html`的处理器的，只有`valiedatecode.action`的处理器。
 
-​       **<font color="red">如果我们想两个后缀名的请求都拦截，那又该如何解决呢？只需要在写映射路径时，不带上后缀名即可。</font>**例如：`@RequestMapping(“validatecode”)`，这样两种后缀名的请求都会处理。
+​      <font color="red">**如果我们想两个后缀名的请求都拦截，那又该如何解决呢？只需要在写映射路径时，不带上后缀名即可**</font>。例如：`@RequestMapping(“validatecode”)`，这样两种后缀名的请求都会处理。
 
