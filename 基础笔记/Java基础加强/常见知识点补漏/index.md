@@ -1,5 +1,3 @@
-## SpringMVC的核心组件
-
 [SpringMVC核心组件](./subfile/_1SpringMVC核心组件.md)
 
 [SpringMVC多后缀名拦截](./subfile/_2SpringMVC多后缀名拦截.md)
