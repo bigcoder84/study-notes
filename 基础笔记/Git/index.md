@@ -18,3 +18,12 @@
 
 [Git文件移动和重命名（mv）](./subfile/_7文件的重命名.md)
 
+[查看Git版本演变历史（log）](./subfile/_8查看版本演变历史.md)
+
+[Git图形化工具（gitk）](./subfile/_9Git图形化界面.md)
+
+### Git内部原理
+
+[Git对象](./subfile/_11Git对象.md)
+
+[.git目录探秘](./subfile/_10探究Git目录结构.md)

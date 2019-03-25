@@ -20,6 +20,7 @@ $ man git-<verb>
 
 ```shell
 $ git help config
+$ git config --help   #两种方式都可以
 ```
 
 执行命令后，不会在命令行中显示文档，而是会通过系统默认浏览器弹出`config`命令的帮助文档：
