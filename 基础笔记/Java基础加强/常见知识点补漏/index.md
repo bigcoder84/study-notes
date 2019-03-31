@@ -6,6 +6,8 @@
 
 [String类为什么用final修饰](./subfile/_6String细节二.md)
 
+[String类的split方法采用多分隔符分割](./subfile/_8String的split方法的拓展用法.md)
+
 ### SpringMVC
 
 [SpringMVC核心组件](./subfile/_1SpringMVC核心组件.md)
@@ -13,6 +15,8 @@
 [SpringMVC多后缀名拦截](./subfile/_2SpringMVC多后缀名拦截.md)
 
 [SpringMVC   POST请求乱码问题](./subfile/_7SpringMVC请求乱码问题.md)
+
+[SpringMVC跳转到自定义404页面的三种方法](./subfile/_9SpringMVC404代码的页面跳转.md)
 
 ### Spring
 
