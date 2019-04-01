@@ -24,6 +24,10 @@
 
 [Spring加载Properties配置文件搭配@Value标签使用](./subfile/_4Spring加载Properties配置文件搭配@Value标签使用.md)
 
-#### MyBatis
+### MyBatis
 
 [MyBatis一对多或多对多limit分页查询结果条数不够问题解决](./subfile/_10MyBatis一对多或多对多分页查询的问题.md)
+
+### 工具使用
+
+[Maven中循环依赖问题](./subfile/_11Maven循环依赖问题.md)
