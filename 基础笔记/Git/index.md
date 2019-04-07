@@ -24,6 +24,11 @@
 
 ### Git内部原理
 
-[Git对象](./subfile/_11Git对象.md)
+[Git文件对象（blob）](./subfile/_11文件对象（blob）.md)
+
+[Git树对象（tree）](./subfile/_12树对象（tree）.md)
+
+[Git提交对象（commit）](./subfile/_13提交对象（commit）.md)
 
 [.git目录探秘](./subfile/_10探究Git目录结构.md)
+
