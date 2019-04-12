@@ -12,6 +12,8 @@
 
 [前端页面访问外链图片报403错误解决方法](./subfile/_13前端页面访问外链图片报403错误解决方法.md)
 
+[使用Ajax提交时validate插件如何手动校验](./subfile/_12使用Ajax提交时如何使用validate插件.md)
+
 ### SpringMVC
 
 [SpringMVC核心组件](./subfile/_1SpringMVC核心组件.md)
