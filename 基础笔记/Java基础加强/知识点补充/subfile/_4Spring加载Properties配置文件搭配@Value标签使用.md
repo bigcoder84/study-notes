@@ -12,7 +12,23 @@
 
 ​	<font color="red">**注：如果在一个项目中，需要加载多个配置文件，那么多个配置文件路径之间用逗号隔开，不能写多个property-placeholder,哪怕是模块化配置spring（多个spring配置文件）这些配置文件中，也只能包含一个这个标签**</font>
 
+```xml
+<context:property-placeholder location="classpath:config/db.properties,classpath:config/resource.properties,classpath:config/website.properties,classpath:config/client.conf" />
+```
+
 #### 第三步：使用@Value注解加载值
 
 ![](../images/6.png)
+
+或者在配置文件注入依赖时使用：
+
+```xml
+<bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource"
+		destroy-method="close">
+		<property name="url" value="${jdbc.url}" />
+		<property name="username" value="${jdbc.username}" />
+		<property name="password" value="${jdbc.password}" />
+		<property name="driverClassName" value="${jdbc.driver}" />
+</bean>
+```
 

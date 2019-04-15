@@ -30,7 +30,7 @@
 	<script>
 		$(function() {
 			$("#form").validate({
-				submitHandler : function(form) { //验证通过后的执行方法
+				submitHandler : function(form) { //验证通过后执行的方法
 					var formData = $("#form").serialize();
 					$.post(
 						"${pageContext.request.contextPath}/user/message/add.action",
@@ -77,7 +77,7 @@
 ​	可以使用`valid()`方法进行手动校验：
 
 ```javascript
-var tag = $("#form").valid();//返回true
+var tag = $("#form").valid();//返回true表示验证通过
 if(tag){
     $.post(
    
