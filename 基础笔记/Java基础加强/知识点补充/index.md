@@ -16,6 +16,8 @@
 
 [使用Ajax提交时validate插件如何手动校验](./subfile/_12使用Ajax提交时如何使用validate插件.md)
 
+[使用javascript实现页面跳转和重新加载](./subfile/_16Javascript实现页面跳转和重新加载.md)
+
 ### SpringMVC
 
 [SpringMVC核心组件](./subfile/_1SpringMVC核心组件.md)
