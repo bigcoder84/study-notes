@@ -10,6 +10,8 @@
 
 [VMware系统安装笔记](./其他/VMware系统安装笔记/index.md)
 
+[IDEA笔记](./其他/工具使用笔记/IDEA笔记/index.md)
+
 ## 其他
 
 [知识点补充](./基础笔记/Java基础加强/知识点补充/index.md)
