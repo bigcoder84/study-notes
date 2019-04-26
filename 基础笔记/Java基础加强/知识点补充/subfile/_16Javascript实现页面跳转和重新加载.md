@@ -6,7 +6,7 @@
 window.location.href="xxxx"
 ```
 
-二.页面的重新加载
+#### 二.页面的重新加载
 
 ```javascript
 window.location.reload();
