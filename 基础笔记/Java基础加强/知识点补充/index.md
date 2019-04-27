@@ -8,8 +8,6 @@
 
 [String类的split方法采用多分隔符分割](./subfile/_8String的split方法的拓展用法.md)
 
-[Cookie细节](./subfile/_15Cookie的细节.md)
-
 ### 前端
 
 [前端页面访问外链图片报403错误解决方法](./subfile/_13前端页面访问外链图片报403错误解决方法.md)
@@ -19,6 +17,8 @@
 [使用javascript实现页面跳转和重新加载](./subfile/_16Javascript实现页面跳转和重新加载.md)
 
 [常见Http状态码](./subfile/_17常见的Http状态码.md)
+
+[Cookie细节](./subfile/_15Cookie的细节.md)
 
 ### SpringMVC
 
@@ -41,6 +41,10 @@
 [MyBatis一对多或多对多limit分页查询结果条数不够问题解决](./subfile/_10MyBatis一对多或多对多分页查询的问题.md)
 
 [MyBatis在进行一对一或一对多查询时关联对象创建的问题](./subfile/_14MyBatis在进行一对一或一对多查询时关联对象创建的问题.md)
+
+### 数据库
+
+[使用MySQL数据库时为什么永远不要UTF-8编码](./subfile/_18使用MySQL数据库时为什么永远不要UTF-8编码.md)
 
 ### 工具使用
 
