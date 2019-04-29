@@ -8,6 +8,8 @@
 
 [String类的split方法采用多分隔符分割](./subfile/_8String的split方法的拓展用法.md)
 
+[Object类中的clone()方法](./subfile/_20Object中的clone方法.md)
+
 ### 前端
 
 [前端页面访问外链图片报403错误解决方法](./subfile/_13前端页面访问外链图片报403错误解决方法.md)
