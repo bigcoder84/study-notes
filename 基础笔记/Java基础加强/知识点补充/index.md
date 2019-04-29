@@ -40,7 +40,9 @@
 
 [Spring的全注解配置 ](./subfile/_19Spring的全注解配置.md)
 
-[Spring整合JUnit测试与传统测试的区别](./subfile/_21Spring整合JUnit测试.md)
+[Spring整合JUnit测试](./subfile/_21Spring整合JUnit测试.md)
+
+[SpringAOP](./subfile/_22SpringAOP.md)
 
 ### MyBatis
 
