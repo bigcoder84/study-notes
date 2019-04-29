@@ -105,7 +105,7 @@ public class SpringConfiguration {
 
 
 
-**@PropertySource注解——>` <cproperty-placeholder>`**
+**@PropertySource注解——>` <property-placeholder>`**
 
 - 作用：用于加载properties文件，与` <context:property-placeholder>`作用相同
 
