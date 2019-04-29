@@ -38,7 +38,7 @@
 
 [Spring加载Properties配置文件搭配@Value标签使用](./subfile/_4Spring加载Properties配置文件搭配@Value标签使用.md)
 
-[Spring的全注解配置](./subfile/_19Spring的全注解配置.md)
+[Spring的全注解配置 ](./subfile/_19Spring的全注解配置.md)
 [Spring整合JUnit测试与传统测试的区别](./subfile/_21Spring整合JUnit测试.md)
 
 ### MyBatis
