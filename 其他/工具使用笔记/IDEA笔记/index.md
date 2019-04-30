@@ -24,7 +24,6 @@
 
 [IDEA使用Git管理项目](./subfile/_2IDEA使用Git管理项目.md)
 
-[IDEA自带RESTClient工具的使用](./subfile/_3IDEA REST Client工具的使用.md)
+[IDEA自带RESTClient工具的使用](./subfile/_3IDEA_REST_Client工具的使用.md)
 
 [Linux远程管理工具的使用](./subfile/_9Linux远程管理工具.md)
-

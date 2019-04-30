@@ -23,10 +23,12 @@ ${user_hoe}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
 
 ![](./images/1.png)
 
-#### `pom.xml`配置文件
+#### `pom.xml`配置文件（Project Object Model）
 
+- modelVersion	根元素下的第一个子元素，指定当前pom模型的版本，对于Maven2和Maven3来说只能是`4.0.0`
+  
 - groupId	域名倒写
-
+  
 - artifactId	功能名称（模块名称）
 
 - version	版本号
@@ -42,7 +44,7 @@ ${user_hoe}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
   ```
 
 - dependencyManagement
-  
+
   1.  只能出现在父pom（习惯约定） 
   2.  作用：统一版本号  
   3.  作用：声明 (子POM里用到再引)
@@ -53,13 +55,13 @@ ${user_hoe}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
 
   - scope
 
-    - compile（默认）参与编译，也参与打包
-
-    - test	 表示依赖项目仅仅参与测试相关的工作，包括测试代码的编译，执行。比较典型的如junit
-
-    - provided	参与编译，但打包时不注入这个jar，因为别的环境会提供（例如servlet-api等）
-
-    - runtime	编译时不参与，打包时注入（例如JDBC，Java已经定义了接口，在编译时是不需要导入数据库驱动就能编写代码，只需要在运行时在classpath下放入数据库驱动即可）
+    | 依赖范围 | 对于编译classpath有效 | 对于测试classpath有效 | 对于运行时classpath有效 |     例子     |
+| :------: | :-------------------: | :-------------------: | :---------------------: | :----------: |
+    | compile  |           Y           |           Y           |            Y            | spring-core  |
+|   test   |                       |           Y           |                         |    JUnit     |
+    | provided |           Y           |           Y           |                         | servlet-api  |
+| runtime  |                       |           Y           |            Y            | JDBC驱动实现 |
+    |  system  |           Y           |           Y           |                         |  本地的jar   |
 
     - system	本地jar包，在中央仓库没有的代码，我们要么需要将它安装到本地仓库中或私服中，此时Maven提供了第三种方法，通过`scope=system`表明这个jar包存在本地
 
@@ -74,9 +76,7 @@ ${user_hoe}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
 
 #### 查看依赖树
 
-​	在控制台，通过`mvn dependency:tree`命令可以查看当前项目的依赖结构（需要进入到当前目录中）
-
-​	![](./images/2.png)
+​	在控制台，通过`mvn dependency:tree`命令可以查看当前项目的依赖结构（需要进入到当前目录中）![](./images/2.png)
 
 ```shell
 mvn dependency:tree > d.txt #意思打印当前项目依赖的树结构，将结果重定向到d.txt文件中
@@ -94,6 +94,16 @@ mvn dependency:tree > d.txt #意思打印当前项目依赖的树结构，将结
 |   test   |   test   |  -   |    -     |   test   |
 | provided | provided |  -   | provided | provided |
 | runtime  | runtime  |  -   |    -     | runtime  |
+
+​	最左边的一列表示第一直接依赖范围，最上面一行表示第二直接依赖范围。
+
+​	**表格的具体理解：**
+
+​	![](./images/10.png)
+
+​	对于这张图，A->B和A->D就是第一直接依赖，B->C和D->E是第二直接依赖。第一和第二的概念是相对于现在所处的项目来说的。假如A项目使我们此时需要编码的项目，B、D都是本项目直接依赖的jar，那么C、E分别是B、D的直接依赖，那他们是否会随着B和D的引入而引入A项目呢？
+
+​	根据表格得知，compile-test是无效的，也就是C根本不会被引入到A项目中；而compile-runtime是runtime也就是说E会被引入A项目，并且在A项目中E的scope是runtime。
 
 #### 依赖仲裁
 
@@ -178,5 +188,15 @@ mvn dependency:tree > d.txt #意思打印当前项目依赖的树结构，将结
 
 ![](./images/9.png)
 
-**生命周期中如果运行其中一个阶段，那么在此之前的阶段都会运行。**
+​	**生命周期中如果运行其中一个阶段，那么在此之前的阶段都会运行。**
+
+#### 常用命令
+
+​	`mvn dependency:list`：查看项目中所有引入的依赖
+
+​	`mvn dependency:tree`：查看项目的依赖树
+
+​	`mvn dependency:analyze`：帮助分析当前项目的依赖，结果主要分为两个部分：1. 使用但未声明的依赖，2. 未使用但声明的依赖。
+
+​	
 
