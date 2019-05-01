@@ -54,14 +54,13 @@ ${user_hoe}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
   - type
 
   - scope
-
-    | 依赖范围 | 对于编译classpath有效 | 对于测试classpath有效 | 对于运行时classpath有效 |     例子     |
+  | 依赖范围 | 对于编译classpath有效 | 对于测试classpath有效 | 对于运行时classpath有效 |     例子     |
 | :------: | :-------------------: | :-------------------: | :---------------------: | :----------: |
-    | compile  |           Y           |           Y           |            Y            | spring-core  |
+  | compile  |           Y           |           Y           |            Y            | spring-core  |
 |   test   |                       |           Y           |                         |    JUnit     |
-    | provided |           Y           |           Y           |                         | servlet-api  |
+  | provided |           Y           |           Y           |                         | servlet-api  |
 | runtime  |                       |           Y           |            Y            | JDBC驱动实现 |
-    |  system  |           Y           |           Y           |                         |  本地的jar   |
+  |  system  |           Y           |           Y           |                         |  本地的jar   |
 
     - system	本地jar包，在中央仓库没有的代码，我们要么需要将它安装到本地仓库中或私服中，此时Maven提供了第三种方法，通过`scope=system`表明这个jar包存在本地
 
