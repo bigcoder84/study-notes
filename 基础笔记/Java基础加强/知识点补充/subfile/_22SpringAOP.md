@@ -23,7 +23,7 @@
 
 #### SpringAOP所需环境
 
-​	处理Spring初始的4+2环境，还需要添加`spring-aop` `spring-aspects`包，还需要两个第三方包：
+​	除了Spring初始的4+2环境，还需要添加`spring-aop` `spring-aspects`包，还需要两个第三方包：
 
 ![](../images/21.png)
 
@@ -40,10 +40,10 @@
           Object result = pj.proceed();//执行目标方法，并获取返回值
           System.out.println("后置操作");
           return result;
-      }
+   }
   ```
 
-- 最终通知（after）最终通知（**不管前面是否遇到异常都会执行。如果不发生异常，它是在after-returning之前执行的；如果发生异常了，它是在after-throwing之前执行的**）
+- 最终通知（after）最终通知（**不管前面是否遇到异常都会执行。它与后置通知或异常通知的执行顺序取决于配置顺序**）
 
 - 异常抛出通知（after-throwing）
 
@@ -65,7 +65,7 @@
     返回值可以使用通配符，表示任意返回值
         * com.itheima.service.impl.AccountServiceImpl.saveAccount()
     包名可以使用通配符，表示任意包。但是有几级包，就需要写几个*.
-        * *.*.*.*.AccountServiceImpl.saveAccount())
+        * *.*.*.*.AccountServiceImpl.saveAccount()
     包名可以使用..表示当前包及其子包
         * *..AccountServiceImpl.saveAccount()
     类名和方法名都可以使用*来实现通配

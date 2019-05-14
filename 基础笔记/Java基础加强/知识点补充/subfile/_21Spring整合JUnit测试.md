@@ -26,7 +26,7 @@ public class TestSpring2 {
 
 #### Spring整合JUnit测试
 
-​	**第一步：导入``spring-test`jar包**
+​	**第一步：导入`spring-test`jar包**
 
 ​	Spring整合JUnit测试核心就是在JUnit运行之前，创建IOC容器，并且实现依赖注入。那么JUnit自带的`测试运行器`就无法实现这个功能了。所以此时我们需要向项目中导入`spring-test`。
 
@@ -40,7 +40,7 @@ public class TestSpring2 {
 
 ​	
 
-**第二步：配置Spring提供的`运行器**`（SpringJUnit4ClassRunner）
+**第二步：配置Spring提供的`运行器`**（SpringJUnit4ClassRunner）
 
 ​	JUnit提供了`@RunWith`注解，用配置当前测试类运行时所使用的运行器。
 
