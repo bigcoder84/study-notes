@@ -14,17 +14,23 @@
 
 [创建/克隆Git仓库（init、clone）](./subfile/_5创建Git仓库.md)
 
+[通过.ignore文件忽略工作区的文件](./subfile/_14忽略工作区中的文件.md)
+
 [Git的工作区和暂存区（add、rm、commit、status）](./subfile/_6Git的工作区和暂存区.md)
 
 [Git文件移动和重命名（mv）](./subfile/_7文件的重命名.md)
 
-[使用diff命令查看文件修改的具体细节](.subfile/_15使用diff命令查看文件修改的具体细节.md)
+[撤销操作](./subfile/_16撤销操作.md)
 
-[通过.ignore文件忽略工作区的文件](./subfile/_14忽略工作区中的文件.md)
+[使用diff命令查看文件修改的具体细节](.subfile/_15使用diff命令查看文件修改的具体细节.md)
 
 [查看Git版本演变历史（log）](./subfile/_8查看版本演变历史.md)
 
 [Git图形化工具（gitk）](./subfile/_9Git图形化界面.md)
+
+### Git远程仓库的使用
+
+[远程仓库的基本操作](./subfile/_17远程仓库的基本操作.md)
 
 ### Git内部原理
 
