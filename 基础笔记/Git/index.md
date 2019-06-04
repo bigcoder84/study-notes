@@ -24,9 +24,15 @@
 
 [使用diff命令查看文件修改的具体细节](.subfile/_15使用diff命令查看文件修改的具体细节.md)
 
+[添加别名](./subfile/_19Git别名)
+
 [查看Git版本演变历史（log）](./subfile/_8查看版本演变历史.md)
 
 [Git图形化工具（gitk）](./subfile/_9Git图形化界面.md)
+
+### Git分支
+
+[分支的基本操作](./subfile/_20分支基本操作.md)
 
 ### Git远程仓库的使用
 
