@@ -36,3 +36,34 @@ index 8f22c74..f761ec1 100644
 +bbb
 ```
 
+#### 查看两个提交对象的具体差别
+
+```shell
+git diff <SHA-1> <SHA-1>
+```
+
+```shell
+git log 
+commit c689ddfc8fdc6b689a13d3a7dd861df3230d0947 (HEAD -> master) # A Commit
+Author: tianjindong <tianjindong98@qq.com>
+Date:   Tue Jun 4 09:52:42 2019 +0800
+
+    dsa
+
+commit d21c01b28f1b21bffab3a64286fdc180405d6120
+Merge: 86984d0 8b43fc7
+Author: tianjindong <tianjindong98@qq.com>
+Date:   Tue Jun 4 09:28:36 2019 +0800
+
+    dsadas
+
+commit 8b43fc7441ced8d19b4edd1aaa333444b931b075 # B commit
+Author: tianjindong <tianjindong98@qq.com>
+Date:   Tue Jun 4 09:26:41 2019 +0800
+
+    dasdsad
+     
+git diff HEAD 8b43fc744  #查看A和B commit的区别
+
+```
+
