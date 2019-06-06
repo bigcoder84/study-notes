@@ -39,8 +39,9 @@ index 8f22c74..f761ec1 100644
 #### 查看两个提交对象的具体差别
 
 ```shell
-git diff <SHA-1> <SHA-1>
+git diff <source-commit> <target-commit>  #比较targit-commit相对于source-commit的具体区别
 ```
+**一定要注意：该命令显示的是后面的commit对象相对于前面的commit对象的变化**
 
 ```shell
 git log 

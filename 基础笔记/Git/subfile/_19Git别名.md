@@ -13,3 +13,4 @@ git config --global alias.st status
 ```
 
 ​	此时`git st`与`git status`等价
+
