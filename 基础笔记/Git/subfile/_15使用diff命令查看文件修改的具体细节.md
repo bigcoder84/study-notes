@@ -4,8 +4,10 @@
 
 #### **查看工作区中文件与暂存区文件的区别：**
 
+这里需要指出的是：该命令查看的是**工作区文件相对于暂存区文件**的区别。
+
 ```shell
-git diff 文件名
+git diff <文件名> #当文件名省略时，则表示查看所有修改过的文件的区别
 ```
 
 ```shell
@@ -15,14 +17,16 @@ index f761ec1..b2a7546 100644
 --- a/hello.java
 +++ b/hello.java
 @@ -1 +1 @@
--bbb
-+ccc
+-bbb    #原先暂存区中的文件
++ccc    #工作区新做出的变更
 ```
 
 #### 查看暂存区中的文件与上次提交的快照的具体区别：
 
+这里需要指出的是：该命令查看的是暂存区文件相对于HEAD指针指向的快照的文件的区别。
+
 ```shell
-git diff --cached 文件名
+git diff --cached <文件名>  #--cached的表示查看暂存区中文件与HEAD指针所指向的快照中的区别,当文件名省略时，则表示查看所有修改过的文件的区别
 ```
 
 ```shell
@@ -36,10 +40,12 @@ index 8f22c74..f761ec1 100644
 +bbb
 ```
 
+
+
 #### 查看两个提交对象的具体差别
 
 ```shell
-git diff <source-commit> <target-commit>  #比较targit-commit相对于source-commit的具体区别
+git diff <base-commit> <commit> <文件名>...  #如果省略文件名，就是比较commit相对于base-commit的所有文件的具体区别
 ```
 **一定要注意：该命令显示的是后面的commit对象相对于前面的commit对象的变化**
 
@@ -67,4 +73,3 @@ Date:   Tue Jun 4 09:26:41 2019 +0800
 git diff HEAD 8b43fc744  #查看A和B commit的区别
 
 ```
-
