@@ -44,6 +44,8 @@
 
 [远程分支](./subfile/_24远程分支.md)
 
+[禁用push-f操作](./subfile/_25禁用push-f操作.md)
+
 ### Git工具
 
 [Git贮藏工具](./subfile/_23堆栈保存当前工作进度.md)
