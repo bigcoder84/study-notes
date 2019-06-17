@@ -12,6 +12,8 @@
 
 [配置IDEA内存限制，开启IDEA内存占用显示](./subfile/_10开启IDEA内存占用显示.md)
 
+[配置Terminal为Gitbash，并解决gitbash中文乱码问题](./subfile/_11配置Terminal为gitbash.md)
+
 #### 项目构建
 
 [创建Web项目](./subfile/_4创建Web项目.md)
