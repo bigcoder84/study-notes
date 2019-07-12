@@ -1,6 +1,6 @@
 ## Object类中的clone方法
 
-#### clon()方法的作用
+#### clone()方法的作用
 
 - 克隆方法用于创建对象的拷贝，**为了使用clone方法，类必须实现java.lang.Cloneable接口**，如果没有实现Clonebale接口，调用父类的clone()方法时会抛出CloneNotSupportedException，Cloneable接口只是一个标识，和`Serializable`接口类似，接口中没有任何方法。
 

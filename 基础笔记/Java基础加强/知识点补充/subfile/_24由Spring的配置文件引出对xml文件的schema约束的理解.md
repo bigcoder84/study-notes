@@ -50,6 +50,7 @@
 
    
 
-
+原文地址：[关于Spring配置文件xml文档的schema约束](https://www.cnblogs.com/justfuck/p/5930773.html)
 
 ​	
+

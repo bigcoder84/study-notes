@@ -37,7 +37,7 @@ public class StringDemo {
 
 ​	**执行过程：**
 
- 1. 执行String str1 = "abc";`时，JVM常量池中并没有`"abc"`这个字符串，此时会在常量池中创建这个对象，然后将引用赋给`str1`。
+ 1. 执行String str1 = "abc";`时，JVM常量池中并没有`"abc"这个字符串，此时会在常量池中创建这个对象，然后将引用赋给`str1`。
 
  2. 执行`String str2 = "abc";`时，JVM在常量池中找到`"abc"`这个字符串了，所以直接将应用附给它。
 
