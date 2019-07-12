@@ -56,6 +56,10 @@
 
 [MyBatis在进行一对一或一对多查询时关联对象创建的问题](./subfile/_14MyBatis在进行一对一或一对多查询时关联对象创建的问题.md)
 
+### 设计模式
+
+[cglib动态代理](./subfile/_27cglib代理.md)
+
 ### 数据库
 
 [使用MySQL数据库时为什么永远不要UTF-8编码](./subfile/_18使用MySQL数据库时为什么永远不要UTF-8编码.md)
