@@ -14,6 +14,8 @@
 
 [VMware系统安装笔记](./其他/VMware系统安装笔记/index.md)
 
+[Hexo博客系统搭建傻详细教程](./其他/Hexo博客搭建/index.md)
+
 ## 语言学习
 
 [Python笔记](./基础笔记/Python/index.md)
