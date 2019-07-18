@@ -29,3 +29,7 @@
 [IDEA自带RESTClient工具的使用](./subfile/_3IDEA_REST_Client工具的使用.md)
 
 [Linux远程管理工具的使用](./subfile/_9Linux远程管理工具.md)
+
+#### IDEA插件
+
+[IDEA酷炫插件推荐](./subfile/_12IDEA酷炫插件推荐.md)
