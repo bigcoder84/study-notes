@@ -56,6 +56,8 @@
 
 [MyBatis在进行一对一或一对多查询时关联对象创建的问题](./subfile/_14MyBatis在进行一对一或一对多查询时关联对象创建的问题.md)
 
+[开启MyBatis日志输出](./subfile/_28启用Mybatis日志输出.md)
+
 ### 设计模式
 
 [cglib动态代理](./subfile/_27cglib代理.md)
