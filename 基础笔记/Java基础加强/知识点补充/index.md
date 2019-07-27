@@ -52,11 +52,15 @@
 
 ### MyBatis
 
+[MyBatis与Spring整合步骤](./subfile/_30MyBatis与Spring整合步骤.md)
+
 [MyBatis一对多或多对多limit分页查询结果条数不够问题解决](./subfile/_10MyBatis一对多或多对多分页查询的问题.md)
 
 [MyBatis在进行一对一或一对多查询时关联对象创建的问题](./subfile/_14MyBatis在进行一对一或一对多查询时关联对象创建的问题.md)
 
 [开启MyBatis日志输出](./subfile/_28启用Mybatis日志输出.md)
+
+[MyBatis抛出BindingException异常可能是你忘了配置资源拷贝](./subfile/_29MyBatis抛出BindingException异常可能是你忘了配置资源拷贝.md)
 
 ### 设计模式
 
