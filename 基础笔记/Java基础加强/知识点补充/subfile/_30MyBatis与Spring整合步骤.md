@@ -218,14 +218,16 @@ Mapper配置文件需要满足一下要求：
 
 ```
 
-需要注意的是，在applicationContext.xml中最后配置的`MapperScannerConfigurer`，它的作用是**从指定的包开始递归地搜索接口，并将它们注册为`MapperFactoryBean`。注意，只有具有至少一个方法的接口才会被注册;具体类将被忽略**。这也就是为什么前面要求：
+需要注意的是，在applicationContext.xml中最后配置的`MapperScannerConfigurer`，它的作用是**从指定的包开始递归地搜索接口，并将它们注册为`MapperFactoryBean`。注意，只有具有至少一个方法的接口才会被注册;具体类将被忽略**。并且会根据Mapper接口找到对应的映射文件，这也就是为什么前面要求：
 
 - Mapper配置文件与Mapper接口在一个包中
 - Mapper配置文件名与Mapper接口名相同
 
-**因为只有这样才能让`MapperScannerConfigurer`在找到接口时，顺利的找到接口对应的配置文件。**
+**因为只有这样才能让`MapperScannerConfigurer`在找到接口时，顺利的找到接口对应的配置文件**。
 
-那什么是`MapperFactoryBean`，它是我们Mapper接口的代理实现类，如果不在applicationContext.xml不配置`MapperScannerConfigurer`，那么我们就需要手动配置UserMapper接口的实现类，示例如下：
+### **什么是MapperFactoryBean**
+
+那什么是`MapperFactoryBean`，它是我们Mapper接口的实质代理实现类，如果不在applicationContext.xml不配置`MapperScannerConfigurer`，那么我们就需要手动配置UserMapper接口的实现类，示例如下：
 
 ```xml
 <bean id="userMapper" class="org.mybatis.spring.mapper.MapperFactoryBean">
@@ -235,3 +237,37 @@ Mapper配置文件需要满足一下要求：
 ```
 
 但是如果采用这种配置方式，那么每个接口都需要配置一次，会很麻烦，如果我们配置`MapperScannerConfigurer`那么只需要指定包名，就能将该包下所有接口注册为MapperFactoryBean。
+
+
+
+### **如何使接口与映射配置文件分离**
+
+由于我们在spring配置文件中配置了`MapperScannerConfigurer`，实质上我们并不需要在MyBatis核心配置文件中指定映射文件的路径，因为他找到接口后自然就能找到配置文件；但是如果想要使得Mapper配置文件与接口分开，我们就需要进行额外的配置：
+
+#### 方式一
+
+在Spring配置文件配置SqlSessionFactoryBean时通过mapperLocations属性指定映射文件路径
+
+```xml
+<!-- 让spring管理sqlsessionfactory 使用mybatis和spring整合包中的 -->
+<bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+	<!-- 数据库连接池 -->
+	<property name="dataSource" ref="dataSource" />
+	<!-- 加载mybatis的全局配置文件 -->
+	<property name="configLocation" value="classpath:SqlMapConfig.xml" />
+	<!--指定-->
+	<property name="mapperLocations" value="com/tjd/spring_mybatis_plus/pojo/*.xml"></property>
+</bean>
+```
+
+#### 方式二
+
+那么可以在MyBatis核心配置文件中采用`<mapper resource>`或`<mapper url>`载入配置文件。
+
+```xml
+<mappers>
+	<mapper resource="com/tjd/spring_mybatis_plus/pojo/UserMapper.xml"></mapper>
+</mappers>
+```
+
+配置文件与接口分离后，配置文件名也就没有与接口名相同的需求了。
