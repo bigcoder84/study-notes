@@ -52,6 +52,8 @@
 
 ### MyBatis
 
+[MyBatis动态代理开发理解](./subfile/_31MyBatis动态代理开发.md)
+
 [MyBatis与Spring整合步骤](./subfile/_30MyBatis与Spring整合步骤.md)
 
 [MyBatis一对多或多对多limit分页查询结果条数不够问题解决](./subfile/_10MyBatis一对多或多对多分页查询的问题.md)
