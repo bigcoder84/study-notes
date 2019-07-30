@@ -64,6 +64,8 @@
 
 [MyBatis抛出BindingException异常可能是你忘了配置资源拷贝](./subfile/_29MyBatis抛出BindingException异常可能是你忘了配置资源拷贝.md)
 
+[MyBatis延迟加载策略](./subfile/_32MyBatis延迟加载策略.md)
+
 ### 设计模式
 
 [cglib动态代理](./subfile/_27cglib代理.md)
