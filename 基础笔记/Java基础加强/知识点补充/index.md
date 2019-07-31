@@ -66,6 +66,8 @@
 
 [MyBatis延迟加载策略](./subfile/_32MyBatis延迟加载策略.md)
 
+[MyBatis两级缓存机制](./subfile/_33MyBatis缓存机制.md)
+
 ### 设计模式
 
 [cglib动态代理](./subfile/_27cglib代理.md)
