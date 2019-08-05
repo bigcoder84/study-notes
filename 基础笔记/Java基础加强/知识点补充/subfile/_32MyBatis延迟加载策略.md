@@ -28,8 +28,8 @@
 
 ```xml
 <settings>
-		<setting name="lazyLoadingEnabled"  value="true"/>
-		<setting name="aggressiveLazyLoading" value="true"/>
+	<setting name="lazyLoadingEnabled"  value="true"/>
+	<setting name="aggressiveLazyLoading" value="true"/>
 </settings>
 ```
 
@@ -51,9 +51,9 @@ public interface ArticleMapper {
 
 ```java
 public interface TagMapper {
-    Tag getTagById(Long id);
+    Tag getTagById(Long id); 
     
-     Tag getTagsByArticleId(Long id);
+	List<Tag> getTagsByArticleId(Long id);
 }
 ```
 

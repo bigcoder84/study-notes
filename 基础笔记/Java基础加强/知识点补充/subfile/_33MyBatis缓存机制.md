@@ -166,17 +166,86 @@ public class FirstCachedTest {
 
 ### 二级缓存需要注意的地方
 
-​	对于查询多commit少且用户对查询结果实时性要求不高，此时采用mybatis二级缓存技术降低数据库访问量，提高访问速度。但不能滥用二级缓存，二级缓存也有很多弊端，从MyBatis默认二级缓存是关闭的就可以看出来。
+​	对于查询多commit少且用户对查询结果实时性要求不高，此时采用mybatis二级缓存技术降低数据库访问量，提高访问速度。但不能滥用二级缓存，二级缓存也有很多弊端，从MyBatis默认二级缓存是关闭的就可以看出来。二级缓存是建立在同一个namespace下的，如果对表的操作查询可能有多个namespace，那么得到的数据就是错误的（脏读）。
 
-​	二级缓存是建立在同一个namespace下的，如果对表的操作查询可能有多个namespace，那么得到的数据就是错误的。
+​	举例来说：文章和标签，ArticleMapper、TagMapper。在查询文章时我们需要把文章对应的标签也查询出来，那么这个标签信息被二级缓存在ArticleMapper对应的namespace下，这个时候有人要修改Tag的基本信息，那就是在TagMapper的namespace下修改，他是不会影响到ArticleMapper的缓存的，那么你再次查找文章数据时，拿到的是缓存的数据，这个数据其实已经是过时的。
 
-​	举例来说：订单和订单详情，orderMapper、orderDetailMapper。在查询订单详情时我们需要把订单信息也查询出来，那么这个订单详情的信息被二级缓存在orderDetailMapper的namespace中，这个时候有人要修改订单的基本信息，那就是在orderMapper的namespace下修改，他是不会影响到orderDetailMapper的缓存的，那么你再次查找订单详情时，拿到的是缓存的数据，这个数据其实已经是过时的。
+### 二级缓存脏读测试
 
-​	**根据以上，想要使用二级缓存时需要想好两个问题**：
+Article和Tag是一对多的关系，其中Aticle是一，Tag是多。
+
+**ArticleMapper**
+
+```xml
+<mapper namespace="com.tjd.spring_mybatis_plus.mapper.ArticleMapper">
+    <cache />
+    <resultMap id="articleMap" type="Article">
+        <id column="id" property="id"></id>
+        <result column="title" property="title"></result>
+        <result column="content" property="content"></result>
+        <collection property="tags" ofType="Tag" column="id" select="com.tjd.spring_mybatis_plus.mapper.TagMapper.getTagsByArticleId"></collection>
+    </resultMap>
+    <select id="getArticleById" resultMap="articleMap" parameterType="long" useCache="true">
+      select * from article where id = #{id}
+    </select>
+</mapper>
+```
+
+**TagMapper**
+
+```xml
+<mapper namespace="com.tjd.spring_mybatis_plus.mapper.TagMapper">
+    <cache/>
+    <resultMap id="tagMap" type="Tag">
+        <id column="id" property="id"></id>
+        <result column="content" property="content"></result>
+        <association  property="article" column="article_id" javaType="Article" select="com.tjd.spring_mybatis_plus.mapper.ArticleMapper.getArticleById"></association>
+    </resultMap>
+    <update id="updateTag" parameterType="Tag">
+        update tag  set content=#{content} where id=#{id}
+    </update>
+    <select id="getTagsByArticleId" parameterType="long" resultMap="tagMap">
+        select * from tag where article_id=#{article_id}
+    </select>
+</mapper>
+```
+
+**测试代码**
+
+```java
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration("classpath:applicationContext.xml")
+public class SecondCachedErrorTest {
+
+    @Autowired
+    private ArticleMapper articleMapper;
+
+    @Autowired
+    private TagMapper tagMapper;
+
+    @Test
+    public void test() throws IOException {
+        //第一次查询，查询出来的aticle对象被缓存在ArticleMapper的namespace下
+        Article article = articleMapper.getArticleById(1L);
+        Tag tag = article.getTags().get(0);
+        tag.setContent("dasdas");
+        //更新Tag，那么TagMapper下的二级缓存被刷新（清空）
+        tagMapper.updateTag(tag);
+        //再次查询Article，此时获得是缓存数据，而关联的tag数据已经过时
+        Article article2 = articleMapper.getArticleById(1L);
+        //TagMapper对应的namespace下的缓存由于在更新时被刷新（清空），所以查询的结果是正确的
+        List<Tag> tags = tagMapper.getTagsByArticleId(1L);
+    }
+}
+```
+
+![](../images/41.gif)
+
+​	**根据以上测试，我们明白想要使用二级缓存时需要想好两个问题**：
 
 - 对该表的操作与查询都在同一个namespace下，其他的namespace如果有操作，就会发生数据的脏读。
-
 - 对关联表的查询，关联的所有表的操作都必须在同一个namespace。
+- 在有多表查询的情况下建议不使用二级缓存。
 
 
 
