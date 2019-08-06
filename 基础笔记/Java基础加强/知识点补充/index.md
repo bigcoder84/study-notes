@@ -50,6 +50,8 @@
 
 [由Spring的配置文件引出对xml文件的schema约束的理解](./subfile/_24由Spring的配置文件引出对xml文件的schema约束的理解.md)
 
+[Spring事务的七种传播行为](./subfile/_36Spring事务的传播行为.md)
+
 ### MyBatis
 
 [MyBatis动态代理开发理解](./subfile/_31MyBatis动态代理开发.md)
