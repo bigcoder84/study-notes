@@ -16,7 +16,7 @@ ${Maven_Home}**/lib/maven-model-builder-3.3.9.jar**/org/apache/maven/model/pom4.
 #### Maven配置文件加载顺序
 
 ```txt
-${user_hoe}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
+${user_home}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
 ```
 
 #### 项目结构
@@ -59,7 +59,7 @@ ${user_hoe}/.m2/setting.xml——>${MAVEN_HOME}/conf/setting.xml
     - system	本地jar包，在中央仓库没有的代码，我们要么需要将它安装到本地仓库中或私服中，此时Maven提供了第三种方法，通过`scope=system`表明这个jar包存在本地
 
       ```xml
-    <dependency>
+      <dependency>
           <groupId>mysql</groupId>
         <artifactId>mysql-connector-java</artifactId>
           <scope>system</scope>
