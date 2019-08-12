@@ -80,6 +80,8 @@
 
 [事务的并发问题](./subfile/_34事务的并发问题.md)
 
+[MySQL支持的数据类型](./subfile/_37MySQL支持的数据类型.md)
+
 ### 工具使用
 
 [Maven中循环依赖问题](./subfile/_11Maven循环依赖问题.md)
