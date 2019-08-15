@@ -6,11 +6,23 @@
 
 ![](../images/58.png)
 
+下面针对各个实现类的特点做一些说明：
+
+(1) HashMap：它根据键的hashCode值存储数据，大多数情况下可以直接定位到它的值，因而具有很快的访问速度，但遍历顺序却是不确定的。 HashMap最多只允许一条记录的键为null，允许多条记录的值为null。HashMap非线程安全，即任一时刻可以有多个线程同时写HashMap，可能会导致数据的不一致。如果需要满足线程安全，可以用 Collections的synchronizedMap方法使HashMap具有线程安全的能力，或者使用ConcurrentHashMap。
+
+(2) Hashtable：Hashtable是遗留类，很多映射的常用功能与HashMap类似，不同的是它承自Dictionary类，并且是线程安全的，任一时间只有一个线程能写Hashtable，并发性不如ConcurrentHashMap，因为ConcurrentHashMap引入了分段锁。Hashtable不建议在新代码中使用，不需要线程安全的场合可以用HashMap替换，需要线程安全的场合可以用ConcurrentHashMap替换。
+
+(3) LinkedHashMap：LinkedHashMap是HashMap的一个子类，保存了记录的插入顺序，在用Iterator遍历LinkedHashMap时，先得到的记录肯定是先插入的，也可以在构造时带参数，按照访问次序排序。
+
+(4) TreeMap：TreeMap实现SortedMap接口，能够把它保存的记录根据键排序，默认是按键值的升序排序，也可以指定排序的比较器，当用Iterator遍历TreeMap时，得到的记录是排过序的。如果使用排序的映射，建议使用TreeMap。在使用TreeMap时，key必须实现Comparable接口或者在构造TreeMap传入自定义的Comparator，否则会在运行时抛出java.lang.ClassCastException类型的异常。
+
+`对于上述四种Map类型的类，要求映射中的key是不可变对象`。不可变对象是该对象在创建后它的哈希值不会被改变。如果对象的哈希值发生变化，Map对象很可能就定位不到映射的位置了。
+
 ## HashMap的基本原理
 
 ​		如果小伙伴们对HashMap的基本原理还不熟悉，建议大家参考 [漫画：什么是HashMap？](https://mp.weixin.qq.com/s/HzRH9ZJYmidzW5jrMvEi4w)一文。这里对基本原理进行简单的梳理：
 
-​		HashMap是一个用于存储Key-Value键值对的集合，每一个键值对也叫做**Entry**。这些个键值对（Entry）分散存储在一个数组当中，这个数组就是HashMap的主干。
+​		HashMap是一个用于存储Key-Value键值对的集合，每一个键值对也叫做**Entry**。这些个键值对（Entry）分散存储在一个数组当中（这个数组被称为Hash桶数组），这个数组就是HashMap的基础。
 
 ![](../images/55.png)
 
@@ -22,11 +34,57 @@
 
 ​		在JDK7之前，HashMap解决Hash冲突时都是采用拉链法解决的；而在JDK8开始，HashMap采用链表+红黑树相结合的方式解决的，具体实现原理在后序源码讲解中体现。
 
+​		当HashMap中的数组中保存的Entry太多后，Hash冲突的可能性不断增大，这样会大大降低HashMap的执行效率，所以HashMap引入了扩容机制。这里就需要了解加载因子（负载因子）的概念，当元素个数大>数组容量*加载因子时就会触发扩容，扩容时HashMap中的数组增加至原来两倍，将原Map中的数组重新散列到新的数组中去，至此完成了扩容操作。
 
 
-## HashMap源码分析
 
-### 构造函数分析
+## **HashMap源码分析**
+
+### **HashMap中的常量值**
+
+```java
+	/**
+     * 默认的数组容量为16
+     */
+    static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
+
+    /**
+     *	数组的最大容量。在后面我们会将每一个数组元素看成一个桶，因为数组元素在后面可能连接的是一个链表或者是一颗树。
+     */
+    static final int MAXIMUM_CAPACITY = 1 << 30;
+
+    /**
+     * 默认的加载因子（负载因子）为0.75
+     */
+    static final float DEFAULT_LOAD_FACTOR = 0.75f;
+
+    /**
+     * 当链表长度到达TREEIFY_THRESHOLD时将链表转换为红黑树，也就是说链表最长为7。
+     */
+    static final int TREEIFY_THRESHOLD = 8;
+
+     /**
+     * . 桶的链表还原阈值：即 红黑树转为链表的阈值，当在扩容（resize（））时（此时HashMap的数据存储位置会重新计算），在重新计算存储位置后，当原有的红黑树内数量 < 6时，则将 红黑树转换成链表
+     */
+    static final int UNTREEIFY_THRESHOLD = 6;
+```
+
+​		上面部分常量值有可能不能完全理解，我们这里只做一些了解即可。
+
+### **HashMap中几个关键字段**
+
+```java
+int threshold;             // 所能容纳的key-value对极限 (阈值)
+final float loadFactor;    // 负载因子 
+int modCount;  //用于迭代的快速失败机制
+int size;  	//HashMap中实际存在的键值对数量
+```
+
+- **threshold和loadFactor**：Node[] table的初始化长度length(默认值是16)，Load factor为负载因子(默认值是0.75)，threshold是HashMap所能容纳的最大数据量的Node(键值对)个数。threshold = length * Load factor。也就是说，在数组定义好长度之后，负载因子越大，所能容纳的键值对个数越多。
+- **size**：这个字段其实很好理解，就是HashMap中实际存在的键值对数量。注意和table的长度length、容纳最大键值对数量threshold的区别。
+- **modCount**：这个字段主要用来记录HashMap内部结构发生变化的次数，主要用于迭代的快速失败。强调一点，内部结构发生变化指的是结构发生变化，例如put新键值对，但是某个key对应的value值被覆盖不属于结构变化
+
+### **构造函数分析**
 
 ```java
  /**
@@ -74,38 +132,9 @@
 
 采用位运算得到的结果与取模运算的效果完全相同，但是这样做的前提就是Length必须是2的幂。这也就是为什么HashMap会定义tableSizeFor方法返回容量的2次幂值。
 
-### HashMap中的常量值
 
-```java
-	/**
-     * 默认的数组容量为16
-     */
-    static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
-    /**
-     *	数组的最大容量。在后面我们会将每一个数组元素看成一个桶，因为数组元素在后面可能连接的是一个链表或者是一颗树。
-     */
-    static final int MAXIMUM_CAPACITY = 1 << 30;
-
-    /**
-     * 默认的加载因子（负载因子）为0.75
-     */
-    static final float DEFAULT_LOAD_FACTOR = 0.75f;
-
-    /**
-     * 当链表长度到达TREEIFY_THRESHOLD时将链表转换为红黑树，也就是说链表最长为7。
-     */
-    static final int TREEIFY_THRESHOLD = 8;
-
-     /**
-     * . 桶的链表还原阈值：即 红黑树转为链表的阈值，当在扩容（resize（））时（此时HashMap的数据存储位置会重新计算），在重新计算存储位置后，当原有的红黑树内数量 < 6时，则将 红黑树转换成链表
-     */
-    static final int UNTREEIFY_THRESHOLD = 6;
-```
-
-​		上面部分常量值有可能不能完全理解，我们这里只做一些了解即可。
-
-### 静态内部类
+### **静态内部类**
 
 ```java
 // Node实现了Map.Entry<K,V>接口，也就是说Node实际上就是我们前面提到的Entry
@@ -154,7 +183,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
 
 
 
-### put方法源码
+### **put方法源码**
 
 ```java
 	public V put(K key, V value) {
@@ -241,18 +270,19 @@ static class Node<K,V> implements Map.Entry<K,V> {
 
 
 
-### resize方法
+### **resize方法**
 
 ```java
- /**
+/**
      * 初始化Map中的Node数组，如果已经初始化则进行扩容操作
      */
     final Node<K,V>[] resize() {
         Node<K,V>[] oldTab = table;
         //获取数组的原始大小
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
-        //获取原阈值（阈值就是扩容的临界值）
+        //获取原始阈值
         int oldThr = thresholds;
+        //用于记录新容量和新阈值
         int newCap, newThr = 0;
         //如果原始容量大于0，则代表当前Map已经初始化过了，则应该进行扩容操作
         if (oldCap > 0) {
@@ -266,33 +296,38 @@ static class Node<K,V> implements Map.Entry<K,V> {
             	//将阈值也设为原先的两倍
                 newThr = oldThr << 1; // double threshold
         }
+        // 初始化数组走这里
+        // 如果构造函数定义了数组初始容量
         else if (oldThr > 0) // initial capacity was placed in threshold
             newCap = oldThr;
 
-        //如果构造函数没有定义初始容量
+        // 如果构造函数没有定义初始容量
         else {               // zero initial threshold signifies using defaults
         	//初始化数组容量（16）
             newCap = DEFAULT_INITIAL_CAPACITY;	
             //初始化阈值（16*0.75 = 12）
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
+        // 构造函数中定义了初始容量 在这里计算阈值
         if (newThr == 0) {
             float ft = (float)newCap * loadFactor;
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
                       (int)ft : Integer.MAX_VALUE);
         }
+        // 阈值
         threshold = newThr;
         @SuppressWarnings({"rawtypes","unchecked"})
 
-        //创建一个新的数组
+        //创建一个新的数组，可用于初始化，也可用于扩容
         Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
         table = newTab;
         if (oldTab != null) {
-        	//遍历就数组，将就数组中的元素，重新散列到新数组中去
+        	//遍历旧数组，将就数组中的元素，重新散列到新数组中去
             for (int j = 0; j < oldCap; ++j) {
-                //用一个e来表示数组上的节点
+            	//e表示数组上的节点
                 Node<K,V> e;
                 if ((e = oldTab[j]) != null) {
+                	//把头节点置为空
                     oldTab[j] = null;
                     //当就数组中头元素没有链表子节点时，直接散列该元素
                     if (e.next == null)
@@ -300,10 +335,10 @@ static class Node<K,V> implements Map.Entry<K,V> {
 
                     //如果数组头元素下面还有其他子节点，且子节点是树结构
                     else if (e instanceof TreeNode)
-                        //看起来是红黑树的操作
                         ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
-					// 如果你是一个链表 （长度不要大于8）你就应该进行以下操作
-                    else { 
+
+                    //如果是一个链表
+                    else { // preserve order
                         Node<K,V> loHead = null, loTail = null;
                         Node<K,V> hiHead = null, hiTail = null;
                         Node<K,V> next;
@@ -327,11 +362,14 @@ static class Node<K,V> implements Map.Entry<K,V> {
                             }
                         } while ((e = next) != null);
                         if (loTail != null) {
+                        	//将尾节点的next指针置为空
                             loTail.next = null;
+                            //将链接的不移动链表放到原索引位置
                             newTab[j] = loHead;
                         }
                         if (hiTail != null) {
                             hiTail.next = null;
+                            //将链接的移动链表放到新的索引位置
                             newTab[j + oldCap] = hiHead;
                         }
                     }
@@ -364,7 +402,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
 
 ![](../images/62.png)
 
-## 总结
+## **总结**
 
 **下图是美团技术团队的put函数的流程总结** ：
 
@@ -374,7 +412,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
 
 [漫画：什么是HashMap](https://mp.weixin.qq.com/s/HzRH9ZJYmidzW5jrMvEi4w)
 
-[HashMap源码分析 —— put与get（四）](https://www.jianshu.com/p/8f0ef73b7ff4)
+[HashMap源码分析——put和get（一）](https://www.jianshu.com/p/8244a21bd2b4)
 
 [美团HashMap技术博客](https://tech.meituan.com/2016/06/24/java-hashmap.html)
 
