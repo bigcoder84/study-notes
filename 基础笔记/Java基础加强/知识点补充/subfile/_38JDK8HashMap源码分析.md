@@ -380,7 +380,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
     }
 ```
 
-从61行开始代码进入了链表元素的迁移工作，`loHead`和`loTail`两个节点分别记录不需要移动的链表的头部和尾部，`hiHead`和`hiTail`分别记录需要移动的链表头部和尾部。
+从66行开始代码进入了链表元素的迁移工作，`loHead`和`loTail`两个节点分别记录不需要移动的链表的头部和尾部，`hiHead`和`hiTail`分别记录需要移动的链表头部和尾部。
 
 假设在扩容的时候某个数组下有这样一个链表 :
 
