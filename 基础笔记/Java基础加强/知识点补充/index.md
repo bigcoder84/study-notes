@@ -16,6 +16,8 @@
 
 [JDK8HashMap源码分析](./subfile/_38JDK8HashMap源码分析.md)
 
+[LinkedHashMap深入解析](./subfile/_39LinkedHashMap深入解析.md)
+
 ### 前端
 
 [前端页面访问外链图片报403错误解决方法](./subfile/_13前端页面访问外链图片报403错误解决方法.md)
