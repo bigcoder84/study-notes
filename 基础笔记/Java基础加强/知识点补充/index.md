@@ -18,73 +18,9 @@
 
 [LinkedHashMap深入解析](./subfile/_39LinkedHashMap深入解析.md)
 
-### 前端
-
-[前端页面访问外链图片报403错误解决方法](./subfile/_13前端页面访问外链图片报403错误解决方法.md)
-
-[使用Ajax提交时validate插件如何手动校验](./subfile/_12使用Ajax提交时如何使用validate插件.md)
-
-[使用javascript实现页面跳转和重新加载](./subfile/_16Javascript实现页面跳转和重新加载.md)
-
-[常见Http状态码](./subfile/_17常见的Http状态码.md)
-
-[Cookie细节](./subfile/_15Cookie的细节.md)
-
-### SpringMVC
-
-[SpringMVC核心组件](./subfile/_1SpringMVC核心组件.md)
-
-[SpringMVC多后缀名拦截](./subfile/_2SpringMVC多后缀名拦截.md)
-
-[SpringMVC   POST请求乱码问题](./subfile/_7SpringMVC请求乱码问题.md)
-
-[SpringMVC跳转到自定义404页面的三种方法](./subfile/_9SpringMVC404代码的页面跳转.md)
-
-### Spring
-
-[Spring项目分模块配置](./subfile/_3Spring项目分模块配置.md)
-
-[Spring加载Properties配置文件搭配@Value标签使用](./subfile/_4Spring加载Properties配置文件搭配@Value标签使用.md)
-
-[Spring的全注解配置 ](./subfile/_19Spring的全注解配置.md)
-
-[Spring整合JUnit测试](./subfile/_21Spring整合JUnit测试.md)
-
-[SpringAOP](./subfile/_22SpringAOP.md)
-
-[由Spring的配置文件引出对xml文件的schema约束的理解](./subfile/_24由Spring的配置文件引出对xml文件的schema约束的理解.md)
-
-[Spring事务的七种传播行为](./subfile/_36Spring事务的传播行为.md)
-
-### MyBatis
-
-[MyBatis动态代理开发理解](./subfile/_31MyBatis动态代理开发.md)
-
-[MyBatis与Spring整合步骤](./subfile/_30MyBatis与Spring整合步骤.md)
-
-[MyBatis一对多或多对多limit分页查询结果条数不够问题解决](./subfile/_10MyBatis一对多或多对多分页查询的问题.md)
-
-[MyBatis在进行一对一或一对多查询时关联对象创建的问题](./subfile/_14MyBatis在进行一对一或一对多查询时关联对象创建的问题.md)
-
-[开启MyBatis日志输出](./subfile/_28启用Mybatis日志输出.md)
-
-[MyBatis抛出BindingException异常可能是你忘了配置资源拷贝](./subfile/_29MyBatis抛出BindingException异常可能是你忘了配置资源拷贝.md)
-
-[MyBatis延迟加载策略](./subfile/_32MyBatis延迟加载策略.md)
-
-[MyBatis两级缓存机制](./subfile/_33MyBatis缓存机制.md)
-
 ### 设计模式
 
 [cglib动态代理](./subfile/_27cglib代理.md)
-
-### 数据库
-
-[使用MySQL数据库时为什么永远不要UTF-8编码](./subfile/_18使用MySQL数据库时为什么永远不要UTF-8编码.md)
-
-[事务的并发问题](./subfile/_34事务的并发问题.md)
-
-[MySQL支持的数据类型](./subfile/_37MySQL支持的数据类型.md)
 
 ### 工具使用
 
