@@ -1,6 +1,6 @@
 # StudyNotes
 
-## 知识点补充
+## Java知识点补充
 
 [知识点补充](./基础笔记/Java基础加强/知识点补充/index.md)
 
