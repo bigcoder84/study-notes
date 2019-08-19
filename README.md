@@ -32,7 +32,7 @@
 
 [VMware系统安装笔记](./工具使用/VMware系统安装笔记/index.md)
 
-[Hexo博客系统搭建傻详细教程](./工具使用/Hexo博客搭建/index.md)
+[Hexo博客系统搭建详细教程](./工具使用/Hexo博客搭建/index.md)
 
 ## 语言学习
 
