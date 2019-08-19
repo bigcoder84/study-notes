@@ -40,5 +40,9 @@
 
 [编写文章](./subfile/_10文章撰写.md)
 
+## 第三方笔记
 
+[[阿里云VPS搭建自己的的Hexo博客](https://segmentfault.com/a/1190000005723321)](https://segmentfault.com/a/1190000005723321)
+
+[博客更换ICARUS主题](https://dp2px.com/2019/06/04/icarus-theme/)
 
