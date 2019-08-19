@@ -3,3 +3,5 @@
 [一致性Hash算法](./subfile/_1一致性Hash算法.md)
 
 [什么是B-树](./subfile/_2什么是B-树.md)
+
+[什么是B+树](./subfile/_3什么是B+树.md)
