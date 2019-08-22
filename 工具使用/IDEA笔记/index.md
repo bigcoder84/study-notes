@@ -22,6 +22,8 @@
 
 [创建Maven聚合项目](./subfile/_6创建Maven聚合项目.md)
 
+[创建SpringBoot项目](./subfile/_13新建SpringBoot项目.md)
+
 #### IDEA工具的使用
 
 [IDEA使用Git管理项目](./subfile/_2IDEA使用Git管理项目.md)
