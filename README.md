@@ -16,6 +16,8 @@
 
 [Spring](./基础笔记/JavaWeb/Spring/index.md)
 
+[SpringBoot](./基础笔记/JavaWeb/SpringBoot/index.md)
+
 [MyBatis](./基础笔记/JavaWeb/MyBatis/index.md)
 
 ## 数据库
