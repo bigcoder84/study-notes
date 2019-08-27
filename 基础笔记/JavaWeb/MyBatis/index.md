@@ -16,3 +16,5 @@
 
 [MyBatis两级缓存机制](./subfile/_8MyBatis缓存机制.md)
 
+[驼峰命名自动转换](./subfile/_9驼峰命名自动转换.md)
+
