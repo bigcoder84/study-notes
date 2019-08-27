@@ -18,3 +18,5 @@
 
 [驼峰命名自动转换](./subfile/_9驼峰命名自动转换.md)
 
+[MyBatis参数传递](./subfile/_10MyBatis参数传递.md)
+
