@@ -20,3 +20,5 @@
 
 [MyBatis参数传递](./subfile/_10MyBatis参数传递.md)
 
+[动态SQL](./subfile/_11动态SQL.md)
+
