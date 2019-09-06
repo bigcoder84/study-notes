@@ -16,7 +16,7 @@
 
 JDK动态代理由于是JDK自带的，所以我们不需要在项目中引入第三方jar，但是cglib需要引入两个jar包：
 
-![](../images/26.png)
+![](../images/15.png)
 
 ## **cglib代理具体实例**
 
@@ -97,4 +97,4 @@ public class TestCglib {
 
 **执行结果：**
 
-![](../images/27.png)
+![](../images/16.png)

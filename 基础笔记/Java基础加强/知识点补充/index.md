@@ -18,10 +18,7 @@
 
 [LinkedHashMap深入解析](./subfile/_8LinkedHashMap深入解析.md)
 
-## 设计模式
-
-[cglib动态代理](./subfile/_9cglib代理.md)
-
 ## 其他
 
 [Redis常用数据类型](./subfile/_10Redis常用数据类型.md)
+
