@@ -6,3 +6,4 @@
 
 [SpringBoot自定义配置](./subfile/_3SpringBoot自定义配置.md)
 
+[SpringBoot热部署配置](./subfile/_5SpringBoot热部署配置.md)
