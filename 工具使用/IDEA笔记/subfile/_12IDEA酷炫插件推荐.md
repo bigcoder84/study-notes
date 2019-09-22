@@ -72,7 +72,13 @@ Mybatis现在是java中操作数据库的首选，在开发的时候，我们都
 
 
 
+## RestfulToolkit
 
+1. 根据 URL 直接跳转到对应的方法定义 ：在SpringMVC中我们通过RequestMapping设置了很多处理器，我们可以通过ctrl+\查找URL对应的处理器（Controller方法）
+
+2. 提供了一个 Services tree 的显示窗口
+
+![](../images/68.png)
 
 ## 其它插件
 
