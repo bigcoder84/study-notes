@@ -4,7 +4,7 @@
 
 新构建的项目目录结构如下：
 
-![img](file://E:/GitHub_Reporsitory/StudyNotes/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/JavaWeb/SpringBoot/images/9.png?lastModify=1566523893)
+![](../images/9.png)
 
 - SpringbootstudyApplication.java：应用程序的启动引导类，也是主要的Spring配置类。
 - application.properties：用于配置应用程序和SpringBoot的属性。
