@@ -14,3 +14,5 @@
 
 [SpringBoot与JSP集成](./subfile/_8SpringBoot与JSP集成.md)
 
+[SpringBoot项目的WAR部署方式](./subfile/_9SpringBoot项目的WAR部署方式.md)
+
