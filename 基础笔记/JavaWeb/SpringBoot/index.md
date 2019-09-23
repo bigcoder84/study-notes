@@ -12,3 +12,5 @@
 
 [SpringBoot事务配置](./subfile/_7SpringBoot事务配置.md)
 
+[SpringBoot与JSP集成](./subfile/_8SpringBoot与JSP集成.md)
+
