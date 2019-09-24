@@ -14,7 +14,7 @@
 
 ```java
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = SpringbootstudyApplication.class)
+@SpringBootTest(classes = SpringbootstudyApplication.class)//指定启动类
 public class SpringbootstudyApplicationTests {
 
     @Autowired

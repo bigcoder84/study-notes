@@ -8,6 +8,8 @@
 
 [SpringBoot热部署配置](./subfile/_5SpringBoot热部署配置.md)
 
+[SpringBoot进行Junit测试](./subfile/_4SpringBoot整合JUnit进行单元测试.md)
+
 [SpringBoot整合MyBatis](./subfile/_6SpringBoot整合MyBatis.md)
 
 [SpringBoot事务配置](./subfile/_7SpringBoot事务配置.md)
