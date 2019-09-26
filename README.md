@@ -30,13 +30,15 @@
 
 ## 工具学习
 
-[Git笔记](./工具使用/Git/index.md)
+[Git](./工具使用/Git/index.md)
 
-[Maven笔记](./工具使用/Maven笔记/index.md)
+[Docker](./工具使用/Docker/index.md)
 
-[IDEA笔记](./工具使用/IDEA笔记/index.md)
+[Maven](./工具使用/Maven笔记/index.md)
 
-[VMware系统安装笔记](./工具使用/VMware系统安装笔记/index.md)
+[IDEA](./工具使用/IDEA笔记/index.md)
+
+[VMware系统安装](./工具使用/VMware系统安装笔记/index.md)
 
 [Hexo博客系统搭建详细教程](./工具使用/Hexo博客搭建/index.md)
 
