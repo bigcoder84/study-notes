@@ -50,3 +50,11 @@ $ docker pull ubantu:15.10
 $ docker search ubuntu
 ```
 
+
+
+## 4. 删除镜像
+
+```shell
+$ docker rmi [镜像ID]
+```
+
