@@ -8,3 +8,5 @@
 
 [守护线程](./subfile/_4守护线程.md)
 
+[volatile关键字](./subfile/_5volatile关键字.md)
+
