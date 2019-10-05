@@ -12,5 +12,5 @@
 
 [volatile关键字](./subfile/_5volatile关键字.md)
 
-[线程的协作](./subfile/_6线程的协作.md)
+[wait()、notify()方法需要和synchronized一起使用](./subfile/_6wait()、notify()方法需要和synchronized一起使用.md)
 
