@@ -14,3 +14,5 @@
 
 [wait()、notify()方法需要和synchronized一起使用](./subfile/_6wait()、notify()方法需要和synchronized一起使用.md)
 
+[Thread类的join方法.](./subfile/_8join方法.md)
+
