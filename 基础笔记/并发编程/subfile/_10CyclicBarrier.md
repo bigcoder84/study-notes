@@ -122,8 +122,6 @@ public class MaxQueryConnectionsTest2 {
 
 ## 4. CountDownLatch与CyclicBarrier有什么区别
 
-从字面上理解，Countdown表示减法计数，Latch表示门闩的意思，计数为0的时候就可以打开门闩了。Cyclic Barrier表示循环的障碍物。两者都有一个“栅栏”的意思。
+- CountDownLatch放行一般由第三方控制，CyclicBarrier放行由这一组线程本身控制。
+- CyclicBarrier是可重用栅栏，而CountDownLatch是一次性的。
 
-CyclicBarrier是可循环使用的栅栏，当线程数达到阈值时，栅栏会释放所有线程（这些线程同时“起跑”），此时CyclicBarrier还可以重复使用，如果再次执行await()方法，线程仍会阻塞，只有目标数量的线程达到新栅栏时才会释放栅栏。
-
-CoutDownLatch是一次性栅栏，当栅栏的计数器减为零后，就会释放栅栏。与CyclicBarrier最大的不同是，CoutDownLatch的countDown操作可以在别的线程中完成，这样做就可以达到类似join的效果，及在前置服务线程执行完毕后，再执行后面的线程（详见：[CountDownLatch](./_9CountDownLatch.md)）。CyclicBarrier单纯的是等待相同任务到达起点线后，然后同时执行。
