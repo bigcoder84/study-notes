@@ -35,3 +35,7 @@
 [原子操作CAS](./subfile/_14原子操作CAS.md)
 
 [Java中原子操作类](./subfile/_15Java中原子操作类.md)
+
+## 显示锁
+
+[ReentrantLock](./subfile/_16ReentrantLock.md)
