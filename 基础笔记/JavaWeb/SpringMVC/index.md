@@ -10,3 +10,5 @@
 
 [SpringMVC获取请求参数](./subfile/_5SpringMVC获取请求参数.md)
 
+[SpringMVC全局异常处理](./subfile/_6SpringMVC全局异常处理.md)
+
