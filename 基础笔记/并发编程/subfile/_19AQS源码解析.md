@@ -452,3 +452,7 @@ private void doReleaseShared() {
 ### 6.2 releaseShared()小结
 
 本节我们详解了独占和共享两种模式下获取-释放资源(acquire-release、acquireShared-releaseShared)的源码，相信大家都有一定认识了。值得注意的是，acquire()和acquireShared()两种方法下，线程在等待队列中都是忽略中断的。AQS也支持响应中断的，acquireInterruptibly()/acquireSharedInterruptibly()即是，相应的源码跟acquire()和acquireShared()差不多，这里就不再详解了。 
+
+
+
+参考文章：https://www.cnblogs.com/waterystone/p/4920797.html
