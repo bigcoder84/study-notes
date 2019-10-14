@@ -36,6 +36,12 @@
 
 [Java中原子操作类](./subfile/_15Java中原子操作类.md)
 
-## 显示锁
+## 显示锁和AQS
 
 [ReentrantLock](./subfile/_16ReentrantLock.md)
+
+[ReentranReadWriteLock](./subfile/_17ReentranReadWriteLock.md)
+
+[使用AQS实现一把锁](./subfile/_18使用AQS实现一把锁.md)
+
+[AQS源码分析](./subfile/_19AQS源码解析.md)
