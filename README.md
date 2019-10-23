@@ -28,7 +28,7 @@
 
 [MySQL数据库](./基础笔记/数据库/MySQL/index.md)
 
-[SQLServer数据库](./基础笔记/数据库/SQL Server/index.md)
+[SQLServer数据库](./基础笔记/数据库/SQLServer/index.md)
 
 ## 并发编程
 
