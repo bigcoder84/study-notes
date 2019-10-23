@@ -26,7 +26,9 @@
 
 ## 数据库
 
-[数据库](./基础笔记/数据库/index.md)
+[MySQL数据库](./基础笔记/数据库/MySQL/index.md)
+
+[SQL Server](./基础笔记/数据库/SQL Server/index.md)
 
 ## 并发编程
 
