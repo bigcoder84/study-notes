@@ -45,3 +45,7 @@
 [使用AQS实现一把锁](./subfile/_18使用AQS实现一把锁.md)
 
 [AQS源码分析](./subfile/_19AQS源码解析.md)
+
+## 并发集合
+
+[JDK7中HashMap扩容死锁问题](./subfile/_20JDK7中HashMap扩容死锁问题.md)
