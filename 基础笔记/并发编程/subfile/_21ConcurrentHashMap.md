@@ -160,7 +160,9 @@ ConcurrentHashMap的size操作的实现方法也非常巧妙，一开始并不�
 
 ### 2.1ConcurrentHashMap数据结构
 
-JDK1.8的ConcurrentHashMap数据结构比JDK1.7之前的要简单的多，其使用的是HashMap一样的数据结构：数组+链表+红黑树。ConcurrentHashMap中包含一个table数组，其类型是一个Node数组；而Node是一个继承自Map.Entry<K, V>的链表，而当这个链表结构中的数据大于8，则将数据结构升级为TreeBin类型的红黑树结构。另外，JDK1.8中的ConcurrentHashMap中还包含一个重要属性sizeCtl，其是一个控制标识符，不同的值代表不同的意思：其为0时，表示hash表还未初始化，而为正数时这个数值表示初始化或下一次扩容的大小，相当于一个阈值；即如果hash表的实际大小>=sizeCtl，则进行扩容，默认情况下其是当前ConcurrentHashMap容量的0.75倍；而如果sizeCtl为-1，表示正在进行初始化操作；而为-N时，则表示有N-1个线程正在进行扩容。
+JDK1.8的ConcurrentHashMap数据结构比JDK1.7之前的要简单的多，其使用的是HashMap一样的数据结构：数组+链表+红黑树。ConcurrentHashMap中包含一个table数组，其类型是一个Node数组；而Node是一个继承自Map.Entry<K, V>的链表，而当这个链表结构中的数据大于8，则将数据结构升级为TreeBin类型的红黑树结构。
+
+另外，JDK1.8中的ConcurrentHashMap中还包含一个重要属性sizeCtl，其是一个控制标识符，不同的值代表不同的意思：其为0时，表示hash表还未初始化，而为正数时这个数值表示初始化或下一次扩容的大小，相当于一个阈值；即如果hash表的实际大小>=sizeCtl，则进行扩容，默认情况下其是当前ConcurrentHashMap容量的0.75倍；而如果sizeCtl为-1，表示正在进行初始化操作；而为-N时，则表示有N-1个线程正在进行扩容。
 
 ### 2.2 ConcurrentHashMap的初始化
 
@@ -254,24 +256,24 @@ JDK1.8的ConcurrentHashMap的put操作实现方式主要定义在putVal(K key, V
 ```java
 final V putVal(K key, V value, boolean onlyIfAbsent) {
     if (key == null || value == null) throw new NullPointerException();
-    int hash = spread(key.hashCode());
+    int hash = spread(key.hashCode());//计算Hash
     int binCount = 0;
     for (Node<K,V>[] tab = table;;) {
         Node<K,V> f; int n, i, fh;
         if (tab == null || (n = tab.length) == 0)
-            tab = initTable();
+            tab = initTable();//初始化Table数组
         else if ((f = tabAt(tab, i = (n - 1) & hash)) == null) {
             if (casTabAt(tab, i, null,
                          new Node<K,V>(hash, key, value, null)))
-                break;                   // no lock when adding to empty bin
+                break; 
         }
-        else if ((fh = f.hash) == MOVED)
-            tab = helpTransfer(tab, f);
-        else {
+        else if ((fh = f.hash) == MOVED)//MOVED值为-1
+            tab = helpTransfer(tab, f); //扩容操作
+        else { 
             V oldVal = null;
             synchronized (f) {
                 if (tabAt(tab, i) == f) {
-                    if (fh >= 0) {
+                    if (fh >= 0) {//链表的插入逻辑
                         binCount = 1;
                         for (Node<K,V> e = f;; ++binCount) {
                             K ek;
@@ -291,7 +293,7 @@ final V putVal(K key, V value, boolean onlyIfAbsent) {
                             }
                         }
                     }
-                    else if (f instanceof TreeBin) {
+                    else if (f instanceof TreeBin) {//红黑树的插入逻辑
                         Node<K,V> p;
                         binCount = 2;
                         if ((p = ((TreeBin<K,V>)f).putTreeVal(hash, key,
@@ -304,7 +306,7 @@ final V putVal(K key, V value, boolean onlyIfAbsent) {
                 }
             }
             if (binCount != 0) {
-                if (binCount >= TREEIFY_THRESHOLD)
+                if (binCount >= TREEIFY_THRESHOLD)//如果大于树化的阈值时，则将链表转换为树
                     treeifyBin(tab, i);
                 if (oldVal != null)
                     return oldVal;
@@ -365,5 +367,10 @@ public long mappingCount() {
 如代码所示，size只能获取int范围内的ConcurrentHashMap元素个数；而如果hash表中的数据过多，超过了int类型的最大值，则推荐使用mappingCount()方法获取其元素个数。
 
 以上主要分析了ConcurrentHashMap在JDK1.7和JDK1.8中的两种不同实现方案，当然ConcurrentHashMap的功能强大，还有很多方法本文都未能详细解析，但其分析方法与本文以上的内容类似，因此不再赘述，感兴趣的同学可以自行分析比较。通过学习JDK源码，对以后的Java程序设计也有一定的帮助。本系列文章将深入剖析Java concurrent包中的并发编程设计，并从中提炼出一些使用场景，从而为今后的Java程序设计提供一些小小的灵感。
+
+## 三. 总结
+
+1. JDK8版本ConcurrentHashMap采用Segment数组，直接用table保存数据，锁的粒度更小，减少并发冲突的概率。  
+2. 存储数据时采用了链表+红黑树的形式，纯链表的形式时间复杂度为O(n)，红黑树则为O（logn），性能提升很大。什么时候链表转红黑树？当key值相等的元素形成的链表中元素个数超过8个的时候。
 
 参考文章： https://blog.csdn.net/bill_xiang_/article/details/81122044 
