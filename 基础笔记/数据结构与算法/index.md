@@ -8,3 +8,4 @@
 
 [B树和B+树与磁盘读写之间的联系](./subfile/_4B树和B+树与磁盘读写之间的联系.md)
 
+[跳跃表（SkipList）原理](./subfile/_5跳跃表（SkipList）原理.md)
