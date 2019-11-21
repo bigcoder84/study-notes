@@ -271,7 +271,7 @@ final V putVal(K key, V value, boolean onlyIfAbsent) {
             tab = helpTransfer(tab, f); //扩容操作
         else { 
             V oldVal = null;
-            synchronized (f) {
+            synchronized (f) {//只有在真正写的时候才加锁，读的时候不需要加锁（因为Node中key和value都用valatile修饰）
                 if (tabAt(tab, i) == f) {
                     if (fh >= 0) {//链表的插入逻辑
                         binCount = 1;
@@ -326,9 +326,10 @@ put操作大致可分为以下几个步骤：
    -  如果table不为空，但没有找到key对应的Node节点，则直接调用casTabAt()方法插入一个新节点，此时不用加锁；
    -  如果table不为空，且key对应的Node节点也不为空，但Node头结点的hash值为-1，则表示需要扩容，此时调用helpTransfer()方法进行扩容；
    -  其他情况下，则直接向Node中插入一个新Node节点，此时需要对这个Node链表或红黑树通过synchronized加锁。
-
 - 插入元素后，判断对应的Node结构是否需要改变结构，如果需要则调用treeifyBin()方法将Node链表升级为红黑树结构；
 - 最后，调用addCount()方法记录table中元素的数量。
+
+**在JDK8的ConcurrentHashMap中，只有在写的时候才加锁，读的时候不需要加锁（因为Node中key和value都用valatile修饰）valatile保证变量的可见性即可。**
 
 #### 2.3.3 size
 
