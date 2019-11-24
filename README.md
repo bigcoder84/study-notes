@@ -38,11 +38,13 @@
 
 [Git](./工具使用/Git/index.md)
 
+[Nginx](./工具使用/Nginx/index.md)
+
 [Docker](./工具使用/Docker/index.md)
 
-[Maven](./工具使用/Maven笔记/index.md)
+[Maven](./工具使用/Maven/index.md)
 
-[Swagger](./工具使用/Swagger笔记/index.md)
+[Swagger](./工具使用/Swagger/index.md)
 
 [IDEA](./工具使用/IDEA笔记/index.md)
 
