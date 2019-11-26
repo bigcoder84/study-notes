@@ -5,3 +5,6 @@
 [服务器的启动与停止](./subfile/_2启停控制.md)
 
 [nginx.conf文件结构](./subfile/_3nginx.conf文件结构.md)
+
+[Nginx服务器基本配置](./subfile/_4Nginx服务器的基本配置.md)
+
