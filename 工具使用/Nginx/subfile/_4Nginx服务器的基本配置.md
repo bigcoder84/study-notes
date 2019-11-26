@@ -101,3 +101,52 @@ worker_connections number; #默认值为512
 
 
 
+### 八. 配置服务日志
+
+Nginx服务日志支持对服务日志的格式、大小、输出等进行配置，需要使用两个指令，分别是`access_log`和`log_format`指令。
+
+#### access_log指令
+
+```json
+access_log path [format [buffer=size]];
+```
+
+- path：配置服务日志的存放路径和名称。
+- format：可选项，自定义服务日志的格式，也可以通过“格式串的名称”使用`log_format`指令定义好的格式。
+- size：配置临时存放日志内存缓冲区大小。
+
+此指令可以在http块、server块或者location块中进行配置，默认配置为：
+
+```json
+access_log logs/access.log combined; #combined为log_format指令默认定义的日志格式字符串名称
+```
+
+如果取消服务日志记录功能，则使用：
+
+```json
+access_log off;
+```
+
+#### log_format指令：
+
+```json
+log_format name string ...;
+```
+
+- name：格式字符串的名称
+- string：服务日志的格式字符串。在定义过程中，可以使用Nginx预设定一些变量获取相关内容。
+
+示例：
+
+```json
+http {
+	log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+	        		'$status $body_bytes_sent "$http_referer" '
+	        		'"$http_user_agent" $http_x_forwarded_for '
+	 				'"$upstream_addr" "$upstream_status" "$upstream_response_time" "$request_time"'；
+	access_log logs/access.log main;
+}
+```
+
+
+
