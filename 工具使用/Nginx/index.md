@@ -8,3 +8,5 @@
 
 [Nginx服务器基本配置](./subfile/_4Nginx服务器的基本配置.md)
 
+[Nginx搭建静态web服务器](./subfile/_7Nginx搭建静态页面服务器.md)
+
