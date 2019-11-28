@@ -10,3 +10,5 @@
 
 [Nginx搭建静态web服务器](./subfile/_7Nginx搭建静态页面服务器.md)
 
+[Nginx配置反向代理](./subfile/_6Nginx反向代理配置.md)
+
