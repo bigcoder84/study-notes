@@ -19,3 +19,6 @@
 [SpringBoot项目的WAR部署方式](./subfile/_9SpringBoot项目的WAR部署方式.md)
 
 [SpringBoot整合WebSocket](./subfile/_10SpringBoot集成WebSocket.md)
+
+[SpringBoot中MVC解决日期转换配置](./subfile/_11SpringBoot中MVC解决日期转换配置.md)
+
