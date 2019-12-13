@@ -9,3 +9,6 @@
 [常见Http状态码](./subfile/_4常见的Http状态码.md)
 
 [Cookie细节](./subfile/_5Cookie的细节.md)
+
+[Ajax实现文件上传](./subfile/_6Ajax上传文件.md)
+
