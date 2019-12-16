@@ -158,7 +158,7 @@ public class GoodsController {
 
 origins表示允许跨域的源（如果不填表示所有源都可以跨域访问），如果我们只想要`http://localhost:4000`源能够跨域访问当前控制器，就用如上配置即可。
 
-查看**@CrossOrigin**注解源码：
+查看@**CrossOrigin**注解源码：
 
 ```java
 @Target({ ElementType.METHOD, ElementType.TYPE })
