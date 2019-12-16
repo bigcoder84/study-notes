@@ -24,3 +24,5 @@
 
 [SpringBoot中Jackson的使用](./subfile/_12SpringBoot中Jackson的使用.md)
 
+[SpringBoot聚合项目创建时，父工程不再是spring-boot-starter-parent如何解决](./subfile/_13SpringBoot聚合项目创建时，父工程不再是spring-boot-starter-parent如何解决.md)
+
