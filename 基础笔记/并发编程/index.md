@@ -18,6 +18,8 @@
 
 [Thread类的join方法.](./subfile/_8join方法.md)
 
+[死锁_活锁_饥饿](./subfile/_24死锁_活锁_饥饿.md)
+
 ## 并发工具类
 
 [CountDownLatch](./subfile/_9CountDownLatch.md)
