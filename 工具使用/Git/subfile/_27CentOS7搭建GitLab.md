@@ -187,3 +187,5 @@ gitlab-ctl restart
 如果没有设置域名，在浏览器里面直接输入服务器IP和指定的端口号就可以进行访问，第一次登陆的时候会默认进入修改密码界面：
 
 ![](../images/80.png)
+
+本文转载至：<https://www.cnblogs.com/dotnet261010/p/9811161.html>
