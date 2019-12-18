@@ -62,3 +62,6 @@
 
 [.git目录探秘](./subfile/_10探究Git目录结构.md)
 
+## GitLab
+
+[CentOS7搭建GitLab](./subfile/_27CentOS7搭建GitLab.md)
