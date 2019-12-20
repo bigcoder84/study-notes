@@ -28,4 +28,4 @@ double i = 1.0 / 0; //Infinity
 double j = 0.0 / 0; //NaN
 ```
 
-double中除零时不会抛出`ArithmeticException`异常。
+double中除零时**不会**抛出`ArithmeticException`异常。`1.0 / 0`会返回`Infinity`；`0.0 / 0`会返回NAN。
