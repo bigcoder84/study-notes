@@ -20,8 +20,6 @@
 
 [Java中NAN和Infinity问题](./subfile/_11Java中NAN和Infinity问题.md)
 
-[什么是Base64算法](./subfile/_12什么是Base64算法.md)
-
 ## 其他
 
 [Redis常用数据类型](./subfile/_10Redis常用数据类型.md)
