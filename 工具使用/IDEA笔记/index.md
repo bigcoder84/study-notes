@@ -37,3 +37,9 @@
 #### IDEA插件
 
 [IDEA酷炫插件推荐](./subfile/_12IDEA酷炫插件推荐.md)
+
+
+
+### IDEA使用问题
+
+[解决IDEA抽风报错](./subfile/_15解决IDEA抽风报错.md)
