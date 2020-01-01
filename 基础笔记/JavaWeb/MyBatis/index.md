@@ -20,5 +20,7 @@
 
 [MyBatis参数传递](./subfile/_10MyBatis参数传递.md)
 
-[动态SQL](./subfile/_11动态SQL.md)
+[动态SQL标签](./subfile/_11动态SQL标签.md)
+
+[使用Provider注解实现动态SQL](./subfile/_12使用Provider注解实现动态SQL.md)
 
