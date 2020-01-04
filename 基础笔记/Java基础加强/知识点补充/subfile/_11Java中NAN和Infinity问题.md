@@ -12,16 +12,12 @@ int j = 1 / 0;
 Exception in thread "main" java.lang.ArithmeticException: / by zero
 ```
 
-## float除零问题
+## float、double除零问题
 
 ```java
-float i = (float)1.0 / 0;
-float j = (float)0.0 / 0;
+float i = (float)1.0 / 0;//Infinity
+float j = (float)0.0 / 0;//NaN
 ```
-
-会抛出`ArithmeticException`异常
-
-## double除零问题
 
 ```java
 double i = 1.0 / 0; //Infinity
