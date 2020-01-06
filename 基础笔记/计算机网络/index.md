@@ -16,5 +16,11 @@
 [交换机与VLAN](./subfile/_5交换机与VLAN.md)
 
 - 多交换机互联
-
 - VLAN
+
+[ICMP协议](./subfile/_6ICMP协议（ping）.md)
+
+[网关](./subfile/_7网关.md)
+
+[路由协议](./subfile/_8路由协议.md)
+
