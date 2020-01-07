@@ -8,3 +8,5 @@
 
 [SQL_Server分页查询](./subfile/_4SQL_Server分页查询.md)
 
+[SQLServer解决单引号SQL注入问题](./subfile/_5SQLServer解决单引号SQL注入问题.md)
+
