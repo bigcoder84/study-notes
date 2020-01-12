@@ -40,6 +40,10 @@
 
 [并发编程](./基础笔记/并发编程/index.md)
 
+## 深入Java虚拟机
+
+[深入Java虚拟机](./基础笔记/深入Java虚拟机/index.md)
+
 ## 工具学习
 
 [Git](./工具使用/Git/index.md)
