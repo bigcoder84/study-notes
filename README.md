@@ -22,6 +22,8 @@
 
 [MyBatis](./基础笔记/JavaWeb/MyBatis/index.md)
 
+[Redis](./基础笔记/JavaWeb/Redis/index.md)
+
 [项目方案](./基础笔记/JavaWeb/项目方案/index.md)
 
 ## 数据库
