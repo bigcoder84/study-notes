@@ -1,4 +1,4 @@
-# HTTP协议中Connection头部参数
+# HTTP协议中连接复用机制
 
 在http请求时，我们一般会在request header 或 response header 中看到”Connection:Keep-Alive”或 “Connection:close”，这里具体的含义是有关http 请求的是否保持长连接，即链接是否复用，每次请求是复用已建立好的请求，还是重新建立一个新的请求。
 
