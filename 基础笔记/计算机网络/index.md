@@ -45,3 +45,7 @@
 [HTTP协议中连接复用](./subfile/_15HTTP协议中连接复用机制.md)
 
 [HTTP支持的请求方法](./subfile/_16HTTP支持的请求方法.md)
+
+[HTTP常见的状态码](./subfile/_17HTTP协议常见的状态码.md)
+
+[HTTP请求url长度以及请求消息体长度的研究](./subfile/_18HTTP请求url长度以及请求消息体长度的研究.md)
