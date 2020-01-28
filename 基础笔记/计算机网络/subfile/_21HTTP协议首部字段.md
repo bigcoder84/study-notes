@@ -471,3 +471,156 @@ Referer: http://www.hackr.jp/index.htm
 
 
 ## 六. 响应首部字段
+
+响应首部字段是由服务器端向客户端返回响应报文中所使用的字段，用于补充响应的附加信息、服务器信息，以及对客户端的附加要求等信息。
+
+### 6.1 Accept-Ranges
+
+```shell
+Accept-Ranges: bytes
+```
+
+首部字段 Accept-Ranges 是用来告知客户端服务器是否能处理范围请求，以指定获取服务器端某个部分的资源。
+
+可指定的字段值有两种，可处理范围请求时指定其为 bytes，如果不能处理范围请求则指定其为 none。
+
+### 6.2 Age
+
+![](../images/89.jpg)
+
+```shell
+Age: 600
+```
+
+首部字段 Age 能告知客户端，源服务器在多久前创建了响应。字段值的单位为秒。
+
+若创建该响应的服务器是缓存服务器，Age 值是指缓存后的响应再次发起认证到认证完成的时间值。代理创建响应时必须加上首部字段Age。
+
+### 6.3 Location
+
+使用首部字段 Location 可以将响应接收方引导至某个与请求 URI 位置不同的资源。
+
+```shell
+Location: http://www.usagidesign.jp/sample.html
+```
+
+![](../images/90.jpg)
+
+基本上，该字段会配合 3xx ：Redirection 的响应，提供重定向的URI。
+
+几乎所有的浏览器在接收到包含首部字段 Location 的响应后，都会强制性地尝试对已提示的重定向资源的访问。
+
+### 6.4 Retry-After
+
+```shell
+Retry-After: 120
+```
+
+首部字段 Retry-After 告知客户端应该在多久之后再次发送请求。主要配合状态码 503 Service Unavailable 响应，或 3xx Redirect 响应一起使用。
+
+首部字段 Retry-After 告知客户端应该在多久之后再次发送请求。主要配合状态码 503 Service Unavailable 响应，或 3xx Redirect 响应一起使用。
+
+### 6.5 Server
+
+```shell
+Server: Apache/2.2.17 (Unix)
+```
+
+首部字段 Server 告知客户端当前服务器上安装的 HTTP 服务器应用程序的信息。不单单会标出服务器上的软件应用名称，还有可能包括版本号和安装时启用的可选项。
+
+```shell
+Server: Apache/2.2.6 (Unix) PHP/5.2.5
+```
+
+
+
+## 七. 实体首部字段
+
+实体首部字段是包含在请求报文和响应报文中的实体部分所使用的首部，用于补充内容的更新时间等与实体相关的信息。
+
+### 7.1 Allow
+
+![](../images/91.jpg)
+
+首部字段 Allow 用于通知客户端能够支持 Request-URI 指定资源的所有 HTTP 方法。当服务器接收到不支持的 HTTP 方法时，会以状态码405 Method Not Allowed 作为响应返回。与此同时，还会把所有能支持的 HTTP 方法写入首部字段 Allow 后返回。
+
+### 7.2 Content-Encoding
+
+```shell
+Content-Encoding: gzip
+```
+
+首部字段 Content-Encoding 会告知客户端服务器对实体的主体部分选用的内容编码方式。内容编码是指在不丢失实体信息的前提下所进行的压缩。
+
+![](../images/92.jpg)
+
+主要采用以下 4 种内容编码的方式。（各方式的说明请参考 5.3 节Accept-Encoding 首部字段）。
+
+- **gzip**
+- **compress**
+- **deflate**
+- **identity**
+
+### 7.3 Content-Language
+
+```shell
+Content-Language: zh-CN
+```
+
+首部字段 Content-Language 会告知客户端，实体主体使用的自然语言（指中文或英文等语言）。
+
+### 7.4 Content-Length
+
+```shell
+Content-Length: 15000
+```
+
+首部字段 Content-Length 表明了实体主体部分的大小（单位是字节）。**对实体主体进行内容编码传输时，不能再使用 Content-Length首部字段**。由于实体主体大小的计算方法略微复杂，所以在此不再展开。读者若想一探究竟，可参考 RFC2616 的 4.4。
+
+### 7.5 Content-Location
+
+```shell
+Content-Location: http://www.hackr.jp/index-ja.html
+```
+
+首部字段 Content-Location 给出与报文主体部分相对应的 URI。和首部字段 Location 不同，Content-Location 表示的是报文主体返回资源对应的 URI。
+
+比如，对于使用首部字段 Accept-Language 的服务器驱动型请求，当返回的页面内容与实际请求的对象不同时，首部字段 Content-Location内会写明 URI。（访问 http://www.hackr.jp/ 返回的对象却是http://www.hackr.jp/index-ja.html 等类似情况）
+
+
+
+### 7.6 Content-MD5
+
+![](../images/93.jpg)
+
+图：客户端会对接收的报文主体执行相同的 **MD5** 算法，然后与首部字段 **Content-MD5** 的字段值比较
+
+```shell
+Content-MD5: OGFkZDUwNGVhNGY3N2MxMDIwZmQ4NTBmY2IyTY==
+```
+
+首部字段 Content-MD5 是一串由 MD5 算法生成的值，其目的在于检查报文主体在传输过程中是否保持完整，以及确认传输到达。
+
+对报文主体执行 MD5 算法获得的 128 位二进制数，再通过 Base64 编码后将结果写入 Content-MD5 字段值。由于 HTTP 首部无法记录二进制值，所以要通过 Base64 编码处理。为确保报文的有效性，作为接收方的客户端会对报文主体再执行一次相同的 MD5 算法。计算出的值与字段值作比较后，即可判断出报文主体的准确性。
+
+采用这种方法，对内容上的偶发性改变是无从查证的，也无法检测出恶意篡改。其中一个原因在于，内容如果能够被篡改，那么同时意味着 Content-MD5 也可重新计算然后被篡改。所以处在接收阶段的客户端是无法意识到报文主体以及首部字段 Content-MD5 是已经被篡改过的。
+
+### 7.7 Content-Range
+
+![](../images/94.jpg)
+
+```shell
+Content-Range: bytes 5001-10000/10000
+```
+
+针对范围请求，返回响应时使用的首部字段 Content-Range，能告知客户端作为响应返回的实体的哪个部分符合范围请求。字段值以字节为单位，表示当前发送部分及整个实体大小。
+
+### 7.8 Content-Type
+
+```shell
+Content-Type: text/html; charset=UTF-8
+```
+
+首部字段 Content-Type 说明了实体主体内对象的媒体类型。和首部字段 Accept 一样，字段值用 type/subtype 形式赋值。
+
+参数 charset 使用 iso-8859-1 或 euc-jp 等字符集进行赋值。
