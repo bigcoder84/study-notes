@@ -26,6 +26,8 @@
 
 [路由协议](./subfile/_8路由协议.md)
 
+[IP协议](./subfile/_19IP协议.md)
+
 ## 传输层协议
 
 [UDP协议](./subfile/_9UDP协议.md)
@@ -33,6 +35,8 @@
 [TCP协议](./subfile/_10TCP协议.md)
 
 [TCP协议详解](./subfile/_11TCP协议原理详解.md)
+
+[TCP协议与IP协议之间的关系](./subfile/_20TCP协议和IP协议之间的关系.md)
 
 ## 应用层协议
 
