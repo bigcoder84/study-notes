@@ -5,3 +5,6 @@
 [大文件分片上传](./subfile/_2大文件分片上传.md)
 
 [JWT—JSON Web Token](./subfile/_3JWT.md)
+
+[深入JWT的使用场景和优劣](./subfile/_4深入JWT的使用场景和优劣.md)
+
