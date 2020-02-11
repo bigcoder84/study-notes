@@ -26,6 +26,8 @@
 
 [项目方案](./基础笔记/JavaWeb/项目方案/index.md)
 
+[项目踩坑](./基础笔记/JavaWeb/项目踩坑/index.md)
+
 ## 数据库
 
 [MySQL数据库](./基础笔记/数据库/MySQL/index.md)
@@ -61,10 +63,3 @@
 ## 编程语言
 
 [Python笔记](./基础笔记/Python/index.md)
-
-
-
-
-
-
-
