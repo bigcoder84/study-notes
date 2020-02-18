@@ -24,3 +24,5 @@
 
 [使用Provider注解实现动态SQL](./subfile/_12使用Provider注解实现动态SQL.md)
 
+[MyBatis接收存储过程返回的多个结果集](./subfile/_13MyBatis接收存储过程多个结果集.md)
+
