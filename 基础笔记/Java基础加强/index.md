@@ -24,7 +24,7 @@
 
 [LocalDateTime——Date的替代者](./subfile/_12LocalDateTime——Date的替代者.md)
 
-[Java异常栈信息查看](./subfile/_14Java异常栈信息查看.md)
+[如何读懂Java异常栈信息](./subfile/_14如何读懂Java异常栈信息.md)
 
 [Java注解](./subfile/_15Java注解.md)
 
