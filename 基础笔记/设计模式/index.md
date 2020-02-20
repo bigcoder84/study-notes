@@ -17,3 +17,6 @@
 [cglib代理](./subfile/_8cglib代理.md)
 
 [建造者模式](./subfile/_9建造者模式.md)
+
+[策略模式](./subfile/_10策略模式.md)
+
