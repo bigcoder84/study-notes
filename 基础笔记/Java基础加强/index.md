@@ -28,6 +28,8 @@
 
 [Java注解](./subfile/_15Java注解.md)
 
+[策略枚举](./subfile/_16策略枚举.md)
+
 ## 其他
 
 [Redis常用数据类型](./subfile/_10Redis常用数据类型.md)
