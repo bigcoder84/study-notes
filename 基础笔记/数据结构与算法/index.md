@@ -12,3 +12,5 @@
 
 [什么是Base64算法](./subfile/_6什么是Base64算法.md)
 
+[字符串匹配算法KMP](./subfile/_7字符串匹配算法KMP.md)
+
