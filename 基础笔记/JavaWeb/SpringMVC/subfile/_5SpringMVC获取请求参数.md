@@ -118,6 +118,120 @@ public class QueryVo{
 
 
 
+## 方式七：从Body中获取复杂对象
+
+### 复杂对象数组：
+
+```json
+[
+    {
+        "colData": "a",
+        "colDisplay": "a",
+        "colName": "a",
+        "colPref": "a"
+    },
+	{
+        "colData": "a",
+        "colDisplay": "a",
+        "colName": "a",
+        "colPref": "a"
+    },
+    {
+        "colData": "a",
+        "colDisplay": "a",
+        "colName": "a",
+        "colPref": "a"
+    }
+]
+```
+
+向这种复杂对象的数组可以由Body传输后接收：
+
+```java
+public Dto<Object> saveConditions(@RequestBody List<QueryCondition> conditions) {}
+```
+
+```java
+public class QueryCondition {
+    private String colName;
+    private String colDisplay;
+    private String colData;
+    private String colPref;
+    //省略Getter/Setter
+}
+```
+
+如果单独创建一个对象不方便的话，用`List<Map>`接收也可以：
+
+```java
+public Dto<Object> saveConditions(@RequestBody List<Map<String,String>> conditions) {}
+```
+
+### 包含数组的复杂对象：
+
+```json
+{
+    "id": "aaa",
+    "conditions": [
+        {
+            "colData": "a",
+            "colDisplay": "a",
+            "colName": "a",
+            "colPref": "a"
+        },
+        {
+            "colData": "a",
+            "colDisplay": "a",
+            "colName": "a",
+            "colPref": "a"
+        },
+        {
+            "colData": "a",
+            "colDisplay": "a",
+            "colName": "a",
+            "colPref": "a"
+        }
+    ]
+}
+```
+
+类似于上面的结构，采用下面这种方式接收是**不行**的：
+
+![](../images/25.png)
+
+可以采用Map接收：
+
+```java
+public Dto<Object> saveConditions(@RequestBody Map<String,Object> obj) {}
+```
+
+![](../images/26.png)
+
+也可以采用封装类接收：
+
+```java
+public Dto<Object> saveConditions(@RequestBody QueryVo obj) {}
+```
+
+```java
+public class QueryVo {
+    private String id;
+    private List<QueryCondition> conditions;
+	//省略Getter/Setter
+}
+public class QueryCondition {
+    private String colName;
+    private String colDisplay;
+    private String colData;
+    private String colPref;
+    //省略Getter/Setter
+}
+```
+
+![](../images/27.png)
+
+
+
 ## 总结
 
 方式二和方式三可以混合使用，如果封装类型中的属性和局部变量的名称相同，则两个都会同时接收参数。
