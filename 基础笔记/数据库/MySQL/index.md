@@ -16,3 +16,5 @@
 
 [数据库索引对高并发环境下查询时间的提升](./subfile/_8数据库索引对高并发环境下查询时间的提升.md)
 
+[truncate和delete语句的区别](./subfile/_9truncate和delete语句的区别.md)
+
