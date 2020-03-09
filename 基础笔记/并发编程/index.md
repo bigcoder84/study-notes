@@ -42,6 +42,8 @@
 
 [ReentrantLock](./subfile/_16ReentrantLock.md)
 
+[synchronized和显示锁存在哪些区别](./subfile/_25synchronized和显示锁存在哪些区别.md)
+
 [ReentranReadWriteLock](./subfile/_17ReentranReadWriteLock.md)
 
 [使用AQS实现一把锁](./subfile/_18使用AQS实现一把锁.md)
