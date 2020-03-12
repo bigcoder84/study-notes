@@ -18,3 +18,5 @@
 
 [truncate和delete语句的区别](./subfile/_9truncate和delete语句的区别.md)
 
+[MySQL锁](./subfile/_10MySQL锁.md)
+
