@@ -25,7 +25,7 @@ public class GlobalExceptionResolver {
      * @return
      */
     @ExceptionHandler(AuthorizationException.class)
-    public String handlerException(){
+    public String handlerException(AuthorizationException e){
         return "unauthorized";
     }
 }
