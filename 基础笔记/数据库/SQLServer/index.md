@@ -10,3 +10,5 @@
 
 [SQLServer解决单引号SQL注入问题](./subfile/_5SQLServer解决单引号SQL注入问题.md)
 
+[SQL Server日期类型范围](./subfile/_6SQL Server日期类型范围.md)
+
