@@ -6,3 +6,5 @@
 
 [CPU占用过高解决思路](./subfile/_3CPU占用过高解决思路.md)
 
+[Tomcat服务启动变灰如何解决](./subfile/_4Tomcat服务启动变灰如何解决.md)
+
