@@ -42,7 +42,7 @@
 
 [深入Java虚拟机](./基础笔记/深入Java虚拟机/index.md)
 
-## 工具学习
+## 工具
 
 [Git](./工具使用/Git/index.md)
 
@@ -60,6 +60,9 @@
 
 [Hexo博客系统搭建详细教程](./工具使用/Hexo博客搭建/index.md)
 
-## 编程语言
+## 其他
 
 [Python笔记](./基础笔记/Python/index.md)
+
+[项目部署](./其他/项目部署/index.md)
+
