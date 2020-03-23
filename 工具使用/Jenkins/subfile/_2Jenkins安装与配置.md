@@ -123,7 +123,7 @@ sed -i 's/http:\/\/updates.jenkinsci.org\/download/https:\/\/mirrors.tuna.tsing
 **第三步**：Manage Plugins点击Advanced，把Update Site改为国内插件下载地址
 
 ```shell
-https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.jso
+https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
 ```
 
 ![](../images/14.png)
