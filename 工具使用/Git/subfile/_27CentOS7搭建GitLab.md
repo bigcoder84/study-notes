@@ -73,7 +73,7 @@ sudo systemctl reload firewalld
 ### 8. 安装Postfix以发送邮件
 
 ```shell
-sudo yum install postfix
+sudo yum install -y postfix
 ```
 
 ![](../images/60.png)
@@ -97,7 +97,7 @@ sudo systemctl start postfix
 ### 11. 安装wget，用于从外网上下载插件
 
 ```shell
-sudo  yum -y install wget
+sudo yum install -y wget
 ```
 
 出现如下的界面表示安装成功：
@@ -107,7 +107,7 @@ sudo  yum -y install wget
 ### 12. 安装VIM
 
 ```shell
-sudo yum install vim -y
+sudo yum install -y vim 
 ```
 
 ![](../images/64.png)
@@ -131,7 +131,7 @@ wget https://mirrors.tuna.tsinghua.edu.cn/gitlab-ce/yum/el7/gitlab-ce-10.5.7-ce.
 ### 2. 安装Gitlab
 
 ```shell
-rpm -i gitlab-ce-10.5.7-ce.0.el7.x86_64.rpm
+rpm -ivh gitlab-ce-10.5.7-ce.0.el7.x86_64.rpm
 ```
 
 安装过程会需要一些时间，如果出现下图所示的界面，则表示Gitlab安装成功：
