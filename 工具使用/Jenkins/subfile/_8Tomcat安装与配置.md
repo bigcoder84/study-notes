@@ -41,7 +41,16 @@ vim /usr/local/apache-tomcat-8.5.49/conf/tomcat-users.xml
 -->
 ```
 
-第四步：访问tomcat，点击后台管理，输入用户名密码看到如下内容及代表配置成功：
+第四步：启动tomcat
+
+```shell
+cd  /usr/local/apache-tomcat-8.5.49/bin
+./startup.sh
+```
+
+
+
+第五步：访问tomcat，点击后台管理，输入用户名密码看到如下内容及代表配置成功：
 
 ![](../images/39.png)
 
