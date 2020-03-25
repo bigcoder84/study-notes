@@ -65,7 +65,13 @@ service.bat install
 编辑`{tomcat_home}/conf/tomcat-users.xml`文件，在`<Context></Context>`标签中添加如下配置：
 
 ```xml
-  <user username="root" password="123456" roles="manager-gui,manager-script,manager-jmx,manager-status,admin-gui"/>
+<role rolename="tomcat"/>
+<role rolename="manager-script"/>
+<role rolename="manager-gui"/>
+<role rolename="manager-status"/>
+<role rolename="admin-gui"/>
+<role rolename="admin-script"/>
+<user username="root" password="123456789" roles="manager-gui,manager-script,tomcat,admin-gui,admin-script"/>
 ```
 
 但是这样配置后只能使用服务器本机访问管理页面，如果需要允许其他主机访问管理页面，需要编辑`{tomcat_home}/webapps/manager/META-INF/context.xml`，注释掉以下部分：
