@@ -7,3 +7,5 @@
 [聚合与继承](./subfile/_3聚合与继承.md)
 
 [Maven打包成jar后运行main方法](./subfile/_4Maven打包成jar后运行main方法.md)
+
+[修改Maven打包后的名称](./subfile/_5修改Maven最终打包后的文件名.md)
