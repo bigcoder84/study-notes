@@ -28,7 +28,7 @@ vim /usr/local/apache-tomcat-8.5.49/conf/tomcat-users.xml
 <role rolename="manager-status"/>
 <role rolename="admin-gui"/>
 <role rolename="admin-script"/>
-<user username="root" password="123456789" roles="manager-gui,manager-script,tomcat,admin-gui,admin-script"/></tomcat-users>
+<user username="root" password="123456789" roles="manager-gui,manager-script,tomcat,admin-gui,admin-script"/>
 ```
 
 为了使第三方主机能登录Tomcat管理器中需要将`{tomcat_home}/$webapps/manager/META-INF/context.xml`
