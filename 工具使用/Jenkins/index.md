@@ -26,3 +26,4 @@
 
 [Maven风格项目构建](./subfile/_11Maven风格项目构建.md)
 
+[Pipeline流水线项目构建](./subfile/_12Pipeline流水线项目构建.md)

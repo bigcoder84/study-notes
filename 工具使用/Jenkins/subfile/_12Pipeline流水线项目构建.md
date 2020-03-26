@@ -134,3 +134,36 @@ node {
 
 ### 4.2 生成构建脚本
 
+![](../images/58.png)
+
+使用`sh:Shell Script`来生成Shell脚本执行模板：
+
+![](../images/59.png)
+
+**将脚本复制到，Pipeline脚本声明里面**：
+
+![](../images/60.png)
+
+### 4.3 生成发布脚本
+
+![](../images/61.png)
+
+选择`deploy:Deploy war/ear to a container`生成发布脚本：
+
+![](../images/62.png)
+
+
+
+## 五. Pipeline Script from SCM
+
+刚才我们都是直接在Jenkins页面中配置Pipeline脚本，这样不方便脚本维护，建议把Pipeline脚本放在项目中（一起进行版本控制），这样即使服务器宕机，脚本文件也不会丢失。
+
+#### 第一步：在项目根目录建立Jenkinsfifile文件，把内容复制到该文件中
+
+![](../images/63.png)
+
+将该文件推送到Git服务器上面。
+
+#### 第二步：在Jenkins项目中引用该文件
+
+![](../images/64.png)
