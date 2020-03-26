@@ -28,5 +28,6 @@
 
 [Pipeline流水线项目构建](./subfile/_12Pipeline流水线项目构建.md)
 
-[使用Jsenkins内置触发器完成自动构建](./subfile/_13Jenkins内置触发器.md)
+[使用Jenkins内置触发器完成自动构建](./subfile/_13Jenkins内置触发器.md)
 
+[使用Git钩子触发自动构建](./subfile/_14Git钩子触发自动构建.md)
