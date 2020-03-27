@@ -52,6 +52,8 @@
 
 [Git贮藏工具](./subfile/_23堆栈保存当前工作进度.md)
 
+[git_grep工具的使用](./subfile/_28git_grep工具的使用.md)
+
 ### Git内部原理
 
 [Git文件对象（blob）](./subfile/_11文件对象（blob）.md)
