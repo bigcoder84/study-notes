@@ -30,3 +30,5 @@
 
 [SpringBoot手动回滚事务](./subfile/_15SpringBoot手动回滚事务.md)
 
+[SpringBoot项目中AOP的配置](./subfile/_16SpringBoot项目中AOP的配置.md)
+
