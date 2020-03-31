@@ -1,5 +1,7 @@
 # MyBatis
 
+[MyBatis内部对象的生命周期](./subfile/_14MyBatis内部对象的生命周期.md)
+
 [MyBatis动态代理开发理解](./subfile/_1MyBatis动态代理开发.md)
 
 [MyBatis与Spring整合步骤](./subfile/_2MyBatis与Spring整合步骤.md)
