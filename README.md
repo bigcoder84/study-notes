@@ -56,7 +56,7 @@
 
 [Jenkins](./工具使用/Jenkins/index.md)
 
-[IDEA](./工具使用/IDEA笔记/index.md)
+[IDEA](./工具使用/IDEA/index.md)
 
 [VMware系统安装](./工具使用/VMware系统安装笔记/index.md)
 
