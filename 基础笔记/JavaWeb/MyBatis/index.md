@@ -28,4 +28,9 @@
 
 [MyBatis接收存储过程返回的多个结果集](./subfile/_13MyBatis接收存储过程多个结果集.md)
 
+## 源码分析
+
 [使用IDEA工具导入MyBatis源码进行调试](./subfile/_15使用IDEA工具导入MyBatis源码进行调试.md)
+
+[MyBatis日志模块源码分析](./subfile/_16MyBatis日志模块源码分析.md)
+
