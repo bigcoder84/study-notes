@@ -34,3 +34,5 @@
 
 [MyBatis日志模块源码分析](./subfile/_16MyBatis日志模块源码分析.md)
 
+[MyBatis数据源模块源码分析](./subfile/_17MyBatis数据源模块源码分析.md)
+
