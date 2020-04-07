@@ -34,6 +34,8 @@
 
 [Java的Object.hashCode()的返回值到底是不是对象内存地址?](./subfile/_18Java的Object.hashCode()的返回值到底是不是对象内存地址.md)
 
+[缓存穿透、缓存击穿、缓存雪崩的区别和解决方案](./subfile/_19缓存穿透、缓存击穿、缓存雪崩的区别和解决方案.md)
+
 ## 其他
 
 [Redis常用数据类型](./subfile/_10Redis常用数据类型.md)
