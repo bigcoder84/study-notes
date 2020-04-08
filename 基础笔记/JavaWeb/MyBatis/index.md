@@ -36,3 +36,5 @@
 
 [MyBatis数据源模块源码分析](./subfile/_17MyBatis数据源模块源码分析.md)
 
+[MyBatis缓存模块源码分析](./subfile/_18MyBatis缓存模块源码分析.md)
+
