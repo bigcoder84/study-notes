@@ -6,6 +6,10 @@
 
 [方法引用](./_23方法引用.md)
 
+## 二. 元注解扩展
+
+参考[《Java注解》](./_15Java注解.md)第三章内容
+
 ## 二. 接口默认方法——Java也会出现多继承问题
 
  [Java8新特性default关键字，引出Java多继承问题](https://blog.csdn.net/tianjindong0804/article/details/85383376)
