@@ -22,17 +22,19 @@
 
 [MyBatis](./基础笔记/JavaWeb/MyBatis/index.md)
 
-[Redis](./基础笔记/JavaWeb/Redis/index.md)
-
-[项目方案](./基础笔记/项目方案/index.md)
-
-[项目踩坑](./基础笔记/项目踩坑/index.md)
-
 ## 数据库
 
 [MySQL数据库](./基础笔记/数据库/MySQL/index.md)
 
 [SQLServer数据库](./基础笔记/数据库/SQLServer/index.md)
+
+[Redis](./基础笔记/JavaWeb/Redis/index.md)
+
+## 项目经验
+
+[项目方案](./基础笔记/项目方案/index.md)
+
+[项目踩坑](./基础笔记/项目踩坑/index.md)
 
 ## 技术进阶
 
@@ -61,6 +63,8 @@
 [VMware系统安装](./工具使用/VMware系统安装笔记/index.md)
 
 [Hexo博客系统搭建详细教程](./工具使用/Hexo博客搭建/index.md)
+
+[其它工具](./工具使用/其它工具/index.md)
 
 ## 其他
 
