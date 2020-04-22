@@ -64,6 +64,10 @@
 
 [.git目录探秘](./subfile/_10探究Git目录结构.md)
 
+### Git实践
+
+[Git多平台统一换行符](./subfile/_29git多平台统一换行符.md)
+
 ## GitLab
 
 [CentOS7搭建GitLab](./subfile/_27CentOS7搭建GitLab.md)
