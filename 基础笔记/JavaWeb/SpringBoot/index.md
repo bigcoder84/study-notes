@@ -32,3 +32,5 @@
 
 [SpringBoot项目中AOP的配置](./subfile/_16SpringBoot项目中AOP的配置.md)
 
+[SpringBoot项目配置文件加密](./subfile/_17SpringBoot项目配置文件加密.md)
+
