@@ -2,7 +2,7 @@
 
 ​	缓存是提高软硬件系统性能的一种重要手段；硬件层面，现代先进CPU有三级缓存，而MyBatis也提供了缓存机制，通过缓存机制可以大大提高我们查询性能。
 
-## **一级缓存**
+## 一级缓存
 
 ​	Mybatis对缓存提供支持，但是在没有配置的默认情况下，它只开启一级缓存，一级缓存只是相对于同一个SqlSession而言，一级缓存又叫本地缓存。所以在参数和SQL完全一样的情况下，我们使用同一个SqlSession对象调用一个Mapper方法，往往只执行一次SQL，因为使用SelSession第一次查询后，MyBatis会将其放在缓存中，以后再查询的时候，如果没有声明需要刷新，并且缓存没有超时的情况下，SqlSession都会取出当前缓存的数据，而不会再次发送SQL到数据库。
 
@@ -10,14 +10,14 @@
 
 为什么要使用一级缓存，不用多说也知道个大概。但是还有几个问题我们要注意一下。
 
-### **一级缓存的生命周期**
+### 一级缓存的生命周期
 
 1. MyBatis在开启一个数据库会话时，会创建一个新的SqlSession对象，SqlSession对象中会有一个新的Executor对象。Executor对象中持有一个新的PerpetualCache对象；当会话结束时，SqlSession对象及其内部的Executor对象还有PerpetualCache对象也一并释放掉。
 2. 如果SqlSession调用了`close()`方法，会释放掉一级缓存PerpetualCache对象，一级缓存将不可用。
 3. 如果SqlSession调用了`clearCache()`，会清空PerpetualCache对象中的数据，但是该对象仍可使用。- 
 4. SqlSession中执行了任何一个update操作(update()、delete()、insert()) ，都会清空PerpetualCache对象的数据，但是该对象可以继续使用。
 
-### **如何判断两次查询是完全相同的呢**
+### 如何判断两次查询是完全相同的呢
 
 mybatis认为，对于两次查询，如果以下条件都完全一样，那么就认为它们是完全相同的两次查询。
 
@@ -26,9 +26,7 @@ mybatis认为，对于两次查询，如果以下条件都完全一样，那么�
 - 这次查询所产生的最终要传递给JDBC java.sql.Preparedstatement的Sql语句字符串（boundSql.getSql() ）
 -  传递给java.sql.Statement要设置的参数值
 
-
-
-### **一级缓存的测试**
+### 一级缓存的测试
 
 ```java
 public class FirstCachedTest {
@@ -50,6 +48,40 @@ public class FirstCachedTest {
 ![](../images/13.png)
 
 需要注意的是，这是在单独使用MyBatis时进行的以及缓存测试，`如果MyBatis与Spring整合，那么MyBatis的一级缓存可能会失效`，详情参见 https://blog.csdn.net/ctwy291314/article/details/81938882
+
+### 关闭一级缓存
+
+在集群部署环境下一级缓存可能也会带来问题。
+
+假设现在有一个服务集群，有两个节点。
+
+首先，两个节点都进行了同样的查询，两个节点都有自己的一级缓存，后续同样的查询，两个节点将不再查询数据库。
+
+![](../images/38.png)
+
+如果此时节点 1 执行了 update 语句，那么节点 1 的一级缓存会被刷新，而节点 2 的一级缓存不会改变。
+
+![](../images/39.png)
+
+ 为了避免这个问题，可以将一级缓存的级别设为 statement 级别的，这样每次查询结束都会清掉一级缓存。MyBatis 源码（BaseExecutor::query()）如下：
+
+![](../images/40.png)
+
+在 MyBatis 的核心配置文件中，添加以下配置：
+
+```xml
+<settings>
+        <setting name="localCacheScope" value="STATMENT"/>
+</settings>
+```
+
+如果不需要全局关闭以及缓存，可以在查询时指定刷新缓存，也就是在select标签上添加`fluhCache=true`配置：
+
+```xml
+<select id="getStudentById" resultType="Student" flushCache="true">
+    select t_password password,t_name name,sex,description from student where id = #{id}
+</select>
+```
 
 
 
@@ -251,9 +283,7 @@ public class SecondCachedErrorTest {
 
 ## 两级缓存的优先级
 
-如果两级缓存同时开启，那么二级缓存比一级缓存优先级高，也就是在执行数据库查询操作时，优先读取二级缓存中的内容。
-
-
+如果两级缓存同时开启，那么二级缓存比一级缓存优先级高，也就是在执行数据库查询操作时，**优先读取二级缓存中的内容**。
 
 
 
