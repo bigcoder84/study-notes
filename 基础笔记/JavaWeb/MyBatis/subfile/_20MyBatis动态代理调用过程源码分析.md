@@ -21,7 +21,7 @@ public void testMyBatisBuild() throws IOException {
 SqlSessionFactory sessionFactory = new SqlSessionFactoryBuilder().build(input);
 ```
 
-上面代码是MyBatis解析配置文件并生成`SqlSessionFactory`的代码，我们通过跟踪`build`方法的源码，我们可以发现，`build`方法实际上返回的是`DefaultSqlSessionFactory`的实例。`DefaultSqlSessionFactory`就是`SqlSessionFactory`接口的唯一实现类。
+`build`方法用于解析配置文件并生成`SqlSessionFactory`，我们通过跟踪`build`方法的源码，我们可以发现，`build`方法实际上返回的是`DefaultSqlSessionFactory`的实例。`DefaultSqlSessionFactory`就是`SqlSessionFactory`接口的唯一实现类。
 
 ```java
 public SqlSessionFactory build(InputStream inputStream, String environment) {
@@ -216,7 +216,7 @@ public Object invoke(Object proxy, Method method, Object[] args) throws Throwabl
 
 **PlainMethodInvoker**：类是Mapper接口普通方法的调用类，它实现了`MethodInvoker`接口。其内部封装了`MapperMethod`实例。
 
-**MapperMethod：**封装了Mapper接口中对应方法的信息，以及对应的SQL语句的信息；它是mapper接口与映射配置文件中SQL语句的桥梁。
+**MapperMethod**：封装了Mapper接口中对应方法的信息，以及对应的SQL语句的信息；它是mapper接口与映射配置文件中SQL语句的桥梁。
 
 此时我们跳出`cachedInvoker`方法回到`MapperProxy::invoke`方法中。
 
