@@ -1,6 +1,6 @@
 # MyBatis反射模块源码分析
 
-> 说明：本文大部分内容参考转载至<https://www.jianshu.com/p/baba62bbc107>
+> 说明：本文参考至<https://www.jianshu.com/p/baba62bbc107>
 
 `MyBatis` 在进行参数处理、结果映射时等操作时，会涉及大量的反射操作。为了简化这些反射相关操作，`MyBatis` 在 `org.apache.ibatis.reflection` 包下提供了专门的反射模块，对反射操作做了近一步封装，提供了更为简洁的 `API`。
 

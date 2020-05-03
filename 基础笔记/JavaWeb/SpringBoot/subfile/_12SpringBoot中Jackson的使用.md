@@ -46,3 +46,5 @@ private Date birthday;
 private String name;
 ```
 
+Jackson详细使用方法请见：[《Jackson详解》](../../辅助工具/subfile/Jackson详解.md)、[《Jackson注解》](../../辅助工具/subfile/Jackson注解.md)
+
