@@ -301,7 +301,7 @@ public Object invoke(Object proxy, Method method, Object[] args, SqlSession sqlS
 
 ![](../images/41.png)
 
-由于图片版幅较大，网页显示字体极小，这里博主给出下载链接供大家下载：[MyBatis核心调用流程时序图-GitHub](https://github.com/tianjindong/StudyNotes/tree/master/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/JavaWeb/MyBatis/subfile/MyBatis%E6%BA%90%E7%A0%81%E6%97%B6%E5%BA%8F%E5%9B%BE)；[MyBatis核心调用流程时序图-Gitee](https://gitee.com/tianjindong/StudyNotes/tree/master/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/JavaWeb/MyBatis/subfile/MyBatis%E6%BA%90%E7%A0%81%E6%97%B6%E5%BA%8F%E5%9B%BE)
+由于图片版幅较大，网页显示字体会看不清，这里给出下载链接：[MyBatis核心调用流程时序图-GitHub](https://github.com/tianjindong/StudyNotes/tree/master/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/JavaWeb/MyBatis/subfile/MyBatis%E6%BA%90%E7%A0%81%E6%97%B6%E5%BA%8F%E5%9B%BE)；[MyBatis核心调用流程时序图-Gitee](https://gitee.com/tianjindong/StudyNotes/tree/master/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/JavaWeb/MyBatis/subfile/MyBatis%E6%BA%90%E7%A0%81%E6%97%B6%E5%BA%8F%E5%9B%BE)
 
 
 
