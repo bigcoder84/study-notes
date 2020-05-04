@@ -42,5 +42,5 @@
 
 [MyBatis动态代理调用过程源码分析](./subfile/_20MyBatis动态代理调用过程源码分析.md)
 
-[MyBatis中SqlSession查询源码分析](./subfile/_21MyBatis中SqlSession查询源码分析.md)
+[MyBatis核心接口SqlSession实现原理](./subfile/_21MyBatis核心接口SqlSession实现原理.md)
 

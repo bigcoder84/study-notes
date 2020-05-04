@@ -1,4 +1,4 @@
-# 源码分析——MyBatis的核心接口SqlSession到底做了什么
+# 源码分析——MyBatis核心接口SqlSession实现原理
 
 在上一篇文章中（[《MyBatis动态代理调用过程源码分析》](./_20MyBatis动态代理调用过程源码分析.md)），我们知道了MyBatis动态代理的核心是`MapperProxy`，在它内部封装了动态代理的调用逻辑，而我们也知道了在使用动态代理进行操作的时候实际上还是调用的`SqlSession`中的API去实现的，那么我们今天就来分析一波`SqlSession`的源码，由于`SqlSession`中方法很多，我们就已查询方法为例进行分析。
 
