@@ -12,3 +12,5 @@
 
 [SQL Server日期类型范围](./subfile/_6SQL Server日期类型范围.md)
 
+[SQL Server表与表之间小数据量的数据迁移操作](./subfile/_7SQL Server表与表之间小数据量的数据迁移操作.md)
+
