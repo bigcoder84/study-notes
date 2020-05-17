@@ -10,7 +10,7 @@
 
 [SQLServer解决单引号SQL注入问题](./subfile/_5SQLServer解决单引号SQL注入问题.md)
 
-[SQL Server日期类型范围](./subfile/_6SQL Server日期类型范围.md)
+[SQL_Server日期类型范围](./subfile/_6SQL_Server日期类型范围.md)
 
-[SQL Server表与表之间小数据量的数据迁移操作](./subfile/_7SQL Server表与表之间小数据量的数据迁移操作.md)
+[SQL_Server表与表之间小数据量的数据迁移操作](./subfile/_7SQL_Server表与表之间小数据量的数据迁移操作.md)
 
