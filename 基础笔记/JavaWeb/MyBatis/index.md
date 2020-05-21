@@ -44,3 +44,5 @@
 
 [MyBatis核心接口SqlSession实现原理](./subfile/_21MyBatis核心接口SqlSession实现原理.md)
 
+[MyBatis与Spring整合后如何保证SqlSession线程安全](./subfile/_22MyBatis与Spring整合后如何保证SqlSession线程安全.md)
+
