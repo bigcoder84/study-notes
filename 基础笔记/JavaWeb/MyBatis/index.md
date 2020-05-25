@@ -46,3 +46,4 @@
 
 [MyBatis与Spring整合后如何保证SqlSession线程安全](./subfile/_22MyBatis与Spring整合后如何保证SqlSession线程安全.md)
 
+[MyBatis插件原理](./subfile/_23MyBatis插件原理.md)
