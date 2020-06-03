@@ -14,6 +14,8 @@
 
 [配置Terminal为Gitbash，并解决gitbash中文乱码问题](./subfile/_11配置Terminal为gitbash.md)
 
+[MyBatis项目开启SQL智能提醒](./subfile/_17开启SQL智能提醒.md)
+
 #### 项目构建
 
 [创建Web项目](./subfile/_4创建Web项目.md)
