@@ -67,23 +67,23 @@ Java堆是Javaer需要重点关注的一块区域，因为涉及到内存的分�
 
 ### JDK6：
 
-![](E:/GitHub_Reporsitory/StudyNotes/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/%E6%B7%B1%E5%85%A5Java%E8%99%9A%E6%8B%9F%E6%9C%BA/images/2.png)
+![](../images/2.png)
 
 ### JDK7：
 
 在JDK7中，运行时常量池由方法区移至堆中。
 
-![](E:/GitHub_Reporsitory/StudyNotes/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/%E6%B7%B1%E5%85%A5Java%E8%99%9A%E6%8B%9F%E6%9C%BA/images/3.png)
+![](../images/3.png)
 
 ### JDK8：
 
 在JDK8中方法区的概念被移除，取而代之的是元空间（metaspace）的概念。
 
-![](E:/GitHub_Reporsitory/StudyNotes/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/%E6%B7%B1%E5%85%A5Java%E8%99%9A%E6%8B%9F%E6%9C%BA/images/4.png)
+![](../images/4.png)
 
 注意：元空间不处于“运行时数据区”，而是处于本地内存中，所以在JDK8中的元空间可以说内存大小不取决于JVM，而是取决于本地内存大小。
 
-![](E:/GitHub_Reporsitory/StudyNotes/%E5%9F%BA%E7%A1%80%E7%AC%94%E8%AE%B0/%E6%B7%B1%E5%85%A5Java%E8%99%9A%E6%8B%9F%E6%9C%BA/images/10.png)
+![](../images/10.png)
 
 **直接内存：**不是虚拟机运行时数据区的一部分，也不是java虚拟机规范中定义的内存区域；这块内存不受java堆大小限制，但受本机总内存的限制，可以通过MaxDirectMemorySize来设置（默认与堆内存最大值一样），所以也会出现OOM异常；
 
