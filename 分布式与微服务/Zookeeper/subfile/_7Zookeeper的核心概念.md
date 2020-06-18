@@ -97,7 +97,6 @@ ACL由`<schema>:<id>:<acl>`三段组成:
 
 - schema：控制模式
   - world：它下面只有一个id, 叫`anyone`, world:anyone代表任何人
-  - auth：它不需要id, 只要是通过authentication的user都有权限
   - digest：它对应的id为username:BASE64(SHA1(password))，它需要先通过username:password形式的authentication
   - host/ip：它对应的id为客户机的IP地址，设置的时候可以设置一个ip段，比如ip:192.168.1.0/16,
     表示匹配前16个bit的IP段

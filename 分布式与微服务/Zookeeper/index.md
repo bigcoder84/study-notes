@@ -6,5 +6,7 @@
 
 [Zookeeper的核心概念](./subfile/_7Zookeeper的核心概念.md)
 
+[Zookeeper的ACL权限控制](./subfile/_8Zookeeper的ACL权限控制.md)
+
 [Paxos算法](./subfile/_4Paxos算法.md)
 
