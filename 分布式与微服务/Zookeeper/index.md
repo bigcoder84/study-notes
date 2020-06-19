@@ -6,9 +6,11 @@
 
 [Zookeeper的核心概念](./subfile/_7Zookeeper的核心概念.md)
 
-[使用ZK客户端连接Zookeeper服务器](./subfile/_10使用ZK客户端连接Zookeeper服务器.md)
+[使用ZK客户端连接ZK服务器](./subfile/_9使用ZK客户端连接ZK服务器.md)
 
 [Zookeeper的ACL权限控制](./subfile/_8Zookeeper的ACL权限控制.md)
 
 [Paxos算法](./subfile/_4Paxos算法.md)
+
+[Zookeeper的Watcher机制](./subfile/_11Zookeeper的Watcher机制.md)
 
