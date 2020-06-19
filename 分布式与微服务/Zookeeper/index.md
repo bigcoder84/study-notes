@@ -14,6 +14,9 @@
 
 [Zookeeper的Watcher机制](./subfile/_10Zookeeper的Watcher机制.md)
 
+[使用Zookeeper实现简单的服务注册与发现](./subfile/_11使用Zookeeper实现简单的服务注册与发现.md)
+
 ## 一致性算法
 
 [Paxos算法](./subfile/_4Paxos算法.md)
+
