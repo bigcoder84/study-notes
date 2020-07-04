@@ -2,6 +2,8 @@
 
 [Spring项目分模块配置](./subfile/_1Spring项目分模块配置.md)
 
+[从零搭建分模块SSM项目](./subfile/_9从零搭建分模块SSM项目.md)
+
 [Spring加载Properties配置文件搭配@Value标签使用](./subfile/_2Spring加载Properties配置文件搭配@Value标签使用.md)
 
 [Spring的全注解配置 ](./subfile/_3Spring的全注解配置.md)
