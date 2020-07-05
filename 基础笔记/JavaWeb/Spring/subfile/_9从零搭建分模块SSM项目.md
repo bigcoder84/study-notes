@@ -8,13 +8,13 @@
 
 ### 1.1 创建Maven父工程
 
-file->new Project->Maven->next->输入项目名称和Maven坐标：
+file->new Project->Maven->next->输入项目名称和Maven坐标（不需要选择Maven模板）：
 
 ![](../images/14.png)
 
 ### 1.2 创建Web模块
 
-右击父项目->new Module->Maven->next->：
+右键单击父项目->new Module->Maven->next->：
 
 ![](../images/15.png)
 
@@ -544,8 +544,6 @@ public class TestController {
 </configuration>
 ```
 
-
-
 **实际上在大多数情况下，MyBatis核心配置文件可以省略**，因为MyBatis核心配置文件中的配置项大多都可以在整合Spring时由Spring的配置替代。只有在需要配置Mybatis插件等特殊情况下才需要MyBatis核心配置文件的参与。
 
 ### 5.2 创建`db.properties`文件
@@ -705,4 +703,6 @@ public List<User> test2(){
     return users;
 }
 ```
+
+**项目示例**：<https://github.com/tianjindong/ssm-empty>
 
