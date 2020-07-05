@@ -285,7 +285,7 @@ public class SecondCachedErrorTest {
 
 如果两级缓存同时开启，那么二级缓存比一级缓存优先级高，也就是在执行数据库查询操作时，**优先读取二级缓存中的内容**。
 
-
+推荐文章（美团点评团队）：<https://tech.meituan.com/2018/01/19/mybatis-cache.html>
 
 文章参考至：
 
