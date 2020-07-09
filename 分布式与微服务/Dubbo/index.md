@@ -8,3 +8,5 @@
 
 [SpringBoot整合Dubbo](./subfile/_4SpringBoot整合Dubbo.md)
 
+[启动时检查](./subfile/_5启动时检查.md)
+
