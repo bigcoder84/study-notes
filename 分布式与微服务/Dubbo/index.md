@@ -4,9 +4,9 @@
 
 [SSM整合Dubbo](./subfile/_2SSM整合Dubbo.md)
 
-[Dubbo标签及其性质](./subfile/_3Dubbo标签及其性质.md)
-
 [SpringBoot整合Dubbo](./subfile/_4SpringBoot整合Dubbo.md)
 
-[启动时检查](./subfile/_5启动时检查.md)
+[Dubbo标签及其性质](./subfile/_3Dubbo标签及其性质.md)
+
+[常用配置项](./subfile/_5常用配置项.md)
 
