@@ -46,7 +46,7 @@ num.partitions=1
 num.recovery.threads.per.data.dir=1
 #segment文件保留的最长时间，超时将被删除
 log.retention.hours=168
-#配置连接Zookeeper集群地址
+#配置连接Zookeeper集群地址，形式：hostname:port/path，/path是可选配置，用于指定Kafka依赖Zookeeper的根节点
 zookeeper.connect=hadoop102:2181,hadoop103:2181,hadoop104:2181
 ```
 
