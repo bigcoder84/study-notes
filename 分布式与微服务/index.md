@@ -6,3 +6,5 @@
 
 [Dubbo](./Dubbo/index.md)
 
+[Kafka](./Kafka/index.md)
+

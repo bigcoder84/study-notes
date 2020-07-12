@@ -58,9 +58,9 @@ Topic: tjd	PartitionCount: 2	ReplicationFactor: 1	Configs:
 ./kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic tjd
 ```
 
-## 三. 消费者
+## 三. 生成者
 
-### 3.1 启动消费者消费消息
+### 3.1 启动生产者生产消息
 
 ```shell
 ./kafka-console-producer.sh --broker-list localhost:9092 --topic tjd
