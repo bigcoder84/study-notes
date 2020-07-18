@@ -14,7 +14,7 @@
 
 ## WEB
 
-[前端](./基础笔记/JavaWeb/前端/index.md)
+[前端](./基础笔记/前端/index.md)
 
 [SpringMVC](./基础笔记/JavaWeb/SpringMVC/index.md)
 
