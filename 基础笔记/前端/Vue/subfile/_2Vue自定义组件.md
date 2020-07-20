@@ -7,7 +7,8 @@
 - [五. data必须是一个函数](#data必须是一个函数)
 - [六. 组件之间的通信](#组件之间的通信)
   - [6.1 父传子](#父传子)
-    - [6.6.1 props数据验证](#props数据验证)
+    - [6.6.1 props驼峰命名避坑](#props驼峰命名避坑)
+    - [6.6.2 props数据验证](#props数据验证)
   - [6.2 子传父](#子传父)
 
 组件化是Vue.js中的重要思想，它提供了一种抽象，让我们可以开发出一个个独立可复用的小组件来构造我们的应用。任何的应用都会被抽象成一颗组件树。
@@ -241,7 +242,44 @@ Vue.component('cpn', {
 
 ![](../images/5.png)
 
-#### 6.1.1 props数据验证 <a name="props数据验证"> </a>
+#### 6.1.1 props驼峰命名避坑<a name="props驼峰命名避坑"> </a>
+
+**需要注意的是我们在使用`v-bind`指令给子组件绑定值时不能使用大写，因为HTML标签属性是不区分大小写的，换句话说类似于驼峰命名的格式也不能使用，不然子组件无法接受到父组件传入的值**。例如：
+
+```javascript
+//下面这个情况子组件接收不到值
+<cpn :productList="books[0]"></cpn>
+
+const cpn = {
+    template: `
+      <div>
+        <h2>{{productList.title}}</h2>
+        <p>{{productList.price}}</p>
+      </div>
+    `,
+    //通过props接收父组件传入的值
+    props: ['productList']
+  }
+```
+
+如果我们props需要使用驼峰进行语义区分，我们需要在使用`v-bind`绑定参数时使用`-`分割：
+
+```java
+//使用“-”区分语义，然后pros使用驼峰即可
+<cpn :product-list="books[0]"></cpn>
+const cpn = {
+    template: `
+      <div>
+        <h2>{{productList.title}}</h2>
+        <p>{{productList.price}}</p>
+      </div>
+    `,
+    //通过props接收父组件传入的值
+    props: ['productList']
+  }
+```
+
+#### 6.1.2 props数据验证 <a name="props数据验证"> </a>
 
 在前面，我们的props选项是使用一个数组。我们说过，除了数组之外，我们也可以使用对象，当需要对**props**进行类型等验证时，就需要对象写法了。验证都支持哪些数据类型呢？
 
@@ -261,4 +299,67 @@ Vue.component('cpn', {
 ![](../images/6.png)
 
 ### 6.2 子传父<a name="子传父"> </a>
+
+子组件向父组件传进行通信，需要子组件通过`this.emit`发射事件，然后父组件捕捉到事件，从而触发这个事件绑定函数。如果需要传递数据，则在发送数据时通过`this.emit`携带数据即可。
+
+子传父通信流程：
+
+![](../images/7.png)
+
+```html
+<!--全局组件能够在多个Vue实例中使用-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<div id="app">
+  <cpn v-on:change-selective="cpnEvent"></cpn>
+  {{category<=0?'':category}}
+</div>
+</body>
+<script src="./js/vue.js"></script>
+<script>
+  const cpn = {
+    template: `
+      <select @change="changeSelective" v-model="category">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    `,
+    data() {
+      return {
+        category: null
+      }
+    },
+    methods: {
+      changeSelective() {
+        //发射事件，第一个参数是发射的事件名称，第二个参数是事件携带的数据
+        this.$emit('change-selective', this.category);
+      }
+    }
+  }
+  const app = new Vue({
+    "el": "#app",
+    data: {
+      category: "-1"
+    },
+    components: {
+      //ES6简略写法，等同于"cpn":cpn
+      cpn
+    },
+    methods: {
+      cpnEvent(eventValue) {
+        alert(eventValue)
+      }
+    }
+  })
+</script>
+</body>
+</html>
+```
 
