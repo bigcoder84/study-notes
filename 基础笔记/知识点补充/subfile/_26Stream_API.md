@@ -1,10 +1,44 @@
 # Stream API
 
+- [一. Stream操作步骤](#Stream操作步骤)
+  - [1.1 Stream的三个操作步骤](#Stream有如下三个操作步骤)
+  - [1.2 Stream的特征](#Stream的特征)
+  - [1.3 入门小案例](#入门小案例)
+- [二. 创建流](#创建流)
+  - [2.1 创建有限流](#创建有限流)
+  - [2.2 创建无限流](#创建无限流)
+- [三. Stream中间操作](#Stream中间操作)
+  - [3.1 筛选与切片](#筛选与切片)
+    - [3.1.1 filter](#filter)
+    - [3.1.2 limit](#limit)
+    - [3.1.3 skip](#skip)
+    - [3.1.4 distinct](#distinct)
+  - [3.2 映射](#映射)
+    - [3.2.1 map](#map)
+    - [3.2.2 flatMap](#flatMap)
+  - [3.3 排序](#排序)
+    - [3.3.1 自然排序](#自然排序)
+    - [3.3.2 定制排序](#定制排序)
+- [四. 终止操作](#终止操作)
+  - [4.1 查找与匹配](#查找与匹配)
+  - [4.2 规约（reduce）](#规约（reduce）)
+  - [4.3 收集（collect）](#收集（collect）)
+    - [4.3.1 收集为数组](#收集为数组)
+    - [4.3.2 收集成集合](#收集成集合)
+    - [4.3.3 收集聚合信息（类似于SQL中的聚合函数）](#收集聚合信息（类似于SQL中的聚合函数）)
+    - [4.3.4 分组收集（类似于SQL中的group by语句）](#分组收集（类似于SQL中的group by语句）)
+    - [4.3.5 分区收集](#分区收集)
+    - [4.3.6 拼接字符串](#拼接字符串)
+  - [4.4 循环](#循环)
+- [五. 并行流](#并行流)
+  - [5.1 如何创建并行流](#如何创建并行流)
+  - [5.2 串行流和并行流的对比](#串行流和并行流的对比)
+
 Java8的两个重大改变，一个是Lambda表达式，另一个就是本节要讲的Stream API表达式。Stream 是Java8中处理集合的关键抽象概念，它可以对集合进行非常复杂的查找、过滤、筛选等操作，在新版的JPA中，也已经加入了Stream。
 
-## 一. Stream操作步骤
+## 一. Stream操作步骤<a name="Stream操作步骤"></a>
 
-### 1.1 Stream有如下三个操作步骤：
+### 1.1 Stream有如下三个操作步骤：<a name="Stream有如下三个操作步骤"></a>
 
 **第一步：创建流**
 
@@ -12,19 +46,21 @@ Java8的两个重大改变，一个是Lambda表达式，另一个就是本节要
 
 **第二步：进行中间操作**
 
-一个流后面可以跟0个或多个中间操作，多个中间操作可以连接起来形成一条流水线，除非流水线上触发终止操作，否则中间操作不会执行任何的处理。而在终止操作时一次性全部处理。
+一个流后面可以跟0个或多个中间操作，多个中间操作可以连接起来形成一条流水线。中间操作通常在没有结束操作之前是不会被触发的。
 
-**第三步：终止操作**
+**第三步：获取结果**（结束操作）
 
-一个流只能有一个结束操作，当这个操作执行后，前面的中间操作会被触发，此时流就再无法被使用。
+一个流只能有一个结束操作，当这个操作执行后，前面的中间操作会被触发，此时流就再无法被使用。Stream中几乎所有返回是void方法都是结束操作。
 
-### 1.2 Stream的特征
+### 1.2 Stream的特征<a name="Stream的特征"></a>
+
+**第一步：创建流**
 
 - 流不会存储值，通过管道的方式获取值。
 - 对流的操作会生成一个结果，不过并不会修改底层的数据源
 - 一个流只能使用一次
 
-### 1.3 入门小案例
+### 1.3 入门小案例<a name="入门小案例"></a>
 
 假设有一个Person类和一个Person列表，现在有两个需求：1）找到年龄大于18岁的人并输出；2）找出所有中国人的数量。
 
@@ -50,7 +86,7 @@ List<Person> personList = new ArrayList<>();
 personList.add(new Person("欧阳雪",18,"中国",'F'));
 personList.add(new Person("Tom",24,"美国",'M'));
 personList.add(new Person("Harley",22,"英国",'F'));
-    personList.add(new Person("向天笑",20,"中国",'M'));
+personList.add(new Person("向天笑",20,"中国",'M'));
 personList.add(new Person("李康",22,"中国",'M'));
 personList.add(new Person("小梅",20,"中国",'F'));
 personList.add(new Person("何雪",21,"中国",'F'));
@@ -81,9 +117,9 @@ public static void main(String[] args) {
 
 
 
-## 二. 创建流
+## 二. 创建流<a name="创建流"></a>
 
-### 2.1 创建有限流
+### 2.1 创建有限流<a name="创建有限流"></a>
 
 有限流的意思就是创建出来的流是基于一个已经存在的数据源，也就是说流在创建的时候数据源的个数已经基本确定了。
 
@@ -102,7 +138,7 @@ Stream<String> stream2 = Arrays.stream(arr);
 Stream<String> stream3 = Stream.of("a", "b", "c");
 ```
 
-### 2.2 创建无限流
+### 2.2 创建无限流<a name="创建无限流"></a>
 
 无限流相对于有限流，并没有一个特定定的数据源，它是通过循环执行"元素生成器"来不断产生新元素的。这种方式在日常开发中相对少见。
 
@@ -136,16 +172,16 @@ Stream<Double> stream5 = Stream.generate(Math::random);
 
 
 
-## 二. Stream中间操作
+## 三. Stream中间操作<a name="Stream中间操作"></a>
 
-### 2.1 筛选与切片
+### 3.1 筛选与切片<a name="筛选与切片"></a>
 
 - filter：从流中排除某些操作；
 - limit(n)：截断流，使其元素不超过给定对象
 - skip(n)：跳过元素，返回一个扔掉了前n个元素的流，若流中元素不足n个，则返回一个空流，与limit(n)互补
 - distinct：筛选，通过流所生成元素的hashCode()和equals()去除重复元素。
 
-#### 2.1.1 filter
+#### 3.1.1 filter<a name="filter"></a>
 
 ```java
 //保留流中person.getAge()==20的元素
@@ -159,7 +195,7 @@ Person(name=向天笑, age=20, country=中国, sex=M)
 Person(name=小梅, age=20, country=中国, sex=F)
 ```
 
-#### 2.1.2 limit
+#### 3.1.2 limit<a name="limit"></a>
 
 ```java
 personList.stream().limit(2).forEach(System.out::println);
@@ -172,7 +208,7 @@ Person(name=欧阳雪, age=18, country=中国, sex=F)
 Person(name=Tom, age=24, country=美国, sex=M)
 ```
 
-#### 2.1.3 skip
+#### 3.1.3 skip<a name="skip"></a>
 
 ```java
 personList.stream().skip(1).forEach(System.out::println);
@@ -189,7 +225,7 @@ Person(name=何雪, age=21, country=中国, sex=F)
 Person(name=李康, age=22, country=中国, sex=M)
 ```
 
-#### 2.1.4 distinct
+#### 3.1.4 distinct<a name="distinct"></a>
 
 ```java
 personList.stream().distinct().forEach(System.out::println);
@@ -209,9 +245,9 @@ Person(name=何雪, age=21, country=中国, sex=F)
 
 
 
-### 2.2 映射
+### 3.2 映射<a name="映射"></a>
 
-#### 2.2.1 map
+#### 3.2.1 map<a name="map"></a>
 
 map映射是接收一个Function接口的实例，它将Stream中的所有元素依次传入进去，`Function.apply`方法**将原数据转换成其他形式的数据**。
 
@@ -266,7 +302,7 @@ personList.stream().map(person -> person.getName()).forEach(System.out::println)
 stream.map(Person::getName).forEach(System.out::println);
 ```
 
-#### 2.2.2 flatMap
+#### 3.2.2 flatMap<a name="flatMap"></a>
 
 **flatMap接收一个函数作为参数，将流中的每一个值转换成另一个流，然后把所有流合并在一起**。
 
@@ -318,9 +354,9 @@ public static Stream<Character> toCharacterStream(String str) {
 
 
 
-### 2.3 排序
+### 3.3 排序<a name="排序"></a>
 
-#### 2.3.1 自然排序
+#### 3.3.1 自然排序<a name="自然排序"></a>
 
 自然排序需要流中的实例实现了`Comparable`接口。
 
@@ -328,7 +364,7 @@ public static Stream<Character> toCharacterStream(String str) {
 personList.stream().sorted().forEach(System.out::println);
 ```
 
-#### 2.3.2 定制排序
+#### 3.3.2 定制排序<a name="定制排序"></a>
 
 定制排序，需要传入一个`Comparator`
 
@@ -338,21 +374,21 @@ personList.stream().sorted((o1, o2) -> o1.getAge()-o2.getAge()).forEach(System.o
 
 
 
-## 三. 终止操作
+## 四. 终止操作<a name="终止操作"></a>
 
-### 3.1 查找与匹配
+### 4.1 查找与匹配<a name="查找与匹配"></a>
 
 - allMatch：检查是否匹配所有元素，返回boolean
 - anyMatch：检查是否至少匹配一个元素，返回boolean
 - noneMatch：检查是否没有匹配所有元素,返回boolean
-
 - findFirst：返回第一个元素
 - findAny：返回当前流中任意元素
 - count：返回元素中元素的总个数
 - max：返回流中的最大值
 - min：返回流中的最小值
+- forEach：循环
 
-### 3.2 规约（reduce）
+### 4.2 规约（reduce）<a name="规约（reduce）"></a>
 
 reduce是将流中的元素反复结合起来，得到一个最终值：
 
@@ -384,11 +420,17 @@ Optional<Integer> reduce = personList.stream().map(person -> person.getAge()).re
 System.out.println(reduce.get());
 ```
 
-### 3.3 收集（collect）
+### 4.3 收集（collect）<a name="收集（collect）"></a>
 
 `collect()`将流转化为其他形式。接收一个`Collector`（收集器）接口的实现，用于收集流中的元素。`Collector`接口中的方法决定了如何对流进行收集操作，`Collectors`类提供了很多静态方法，可以方便地创建常用的收集器：
 
-#### 3.3.1 收集成集合
+#### 4.3.1 收集为数组<a name="收集为数组"></a>
+
+```java
+Person[] personArray = personList.stream().toArray(Person[]::new);
+```
+
+#### 4.3.2 收集成集合<a name="收集成集合"></a>
 
 - `Collectors.toList()`：将所有元素收集到一个List中
 
@@ -415,7 +457,7 @@ Map<String, Person> collect = personList.stream().distinct().collect(Collectors.
 HashSet<Person> collect = personList.stream().collect(Collectors.toCollection(HashSet::new));
 ```
 
-#### 3.3.2 收集聚合信息（类似于SQL中的聚合函数）
+#### 4.3.3 收集聚合信息（类似于SQL中的聚合函数）<a name="收集聚合信息（类似于SQL中的聚合函数）"></a>
 
 - `Collectors.averagingInt()`：收集所有元素求平均值。
 
@@ -456,9 +498,7 @@ System.out.println(summary.getCount());
 System.out.println(summary.getMin());
 ```
 
-
-
-#### 3.3.3 分组收集  （类似于SQL中的group by语句）
+#### 4.3.4 分组收集（类似于SQL中的group by语句）<a name="分组收集（类似于SQL中的group by语句）"></a>
 
 ```java
 //分类器函数将输入元素映射到键(单级分组)
@@ -466,6 +506,11 @@ groupingBy(Function<? super T, ? extends K> classifier)
     
 //多级分组。downstream实现下级分组
 groupingBy(Function<? super T, ? extends K> classifier,Collector<? super T, A, D> downstream)
+
+//多级分组，并且指定当前分组创建Map的方法
+Collector<T, ?, M> groupingBy(Function<? super T, ? extends K> classifier,
+                                  Supplier<M> mapFactory,
+                                  Collector<? super T, A, D> downstream)
 ```
 
 例如我们需要按照年龄进行分组：
@@ -473,6 +518,10 @@ groupingBy(Function<? super T, ? extends K> classifier,Collector<? super T, A, D
 ```java
 //按照年龄进行分组
 Map<Integer, List<Person>> collect = personList.stream().collect(Collectors.groupingBy(person -> person.getAge()));
+```
+
+```java
+Map<Integer, List<Person>> collect = personList.stream().collect(Collectors.groupingBy(Person::getAge, HashMap::new, Collectors.toCollection(ArrayList::new)));
 ```
 
 ```json
@@ -505,7 +554,21 @@ Map<Integer, List<Person>> collect = personList.stream().collect(Collectors.grou
 ```java
 Map<Integer, Map<String, List<Person>>> collect = personList.stream().collect(
                 Collectors.groupingBy(person -> person.getAge(), Collectors.groupingBy(o -> o.getCountry())));
+
+//或者这么写也可以
+Map<Integer, Map<String, List<Person>>> collect = personList.stream().collect(
+                Collectors.groupingBy(Person::getAge, Collectors.groupingBy(Person::getCountry)));
 ```
+
+如果我们每一级的集合对象都需要自定义，我们可以这样做：
+
+```java
+HashMap<Integer, TreeMap<String, LinkedList<Person>>> collect = personList.stream().collect(
+                Collectors.groupingBy(Person::getAge,
+                        HashMap::new, Collectors.groupingBy(Person::getCountry,TreeMap::new,
+                                Collectors.toCollection(LinkedList::new))));
+```
+
 
 ```json
 {
@@ -539,7 +602,7 @@ Map<Integer, Map<String, List<Person>>> collect = personList.stream().collect(
 }
 ```
 
-#### 3.3.4 分区收集
+#### 4.3.5 分区收集<a name="分区收集"></a>
 
 分区收集能将符合条件的放在一个集合中，不符合条件的放在另一个集合中
 
@@ -548,7 +611,7 @@ Map<Integer, Map<String, List<Person>>> collect = personList.stream().collect(
 Map<Boolean, List<Person>> collect = personList.stream().collect(Collectors.partitioningBy(person -> person.getAge() >= 20));
 ```
 
-#### 3.3.5 拼接字符串
+#### 4.3.6 拼接字符串<a name="拼接字符串"></a>
 
 `Collectors.joining`收集器按顺序将输入元素连接到一个字符串中：
 
@@ -561,15 +624,23 @@ String str = personList.stream().map(Person::getName).collect(Collectors.joining
 {欧阳雪,Tom,Harley,向天笑,李康,小梅,何雪,李康}
 ```
 
+### 4.4 循环<a name="循环"></a>
+
+- foreach
+
+```java
+personList.stream().forEach(System.out::println);
+```
 
 
-## 四. 并行流
+
+## 五. 并行流<a name="并行流"></a>
 
 前面我么所将的流的操作都建立在串行流的基础上，在数据量小的情况下没有任何问题，但是一旦数据量多起来，单线程的效率问题就会凸显。
 
 不同于串行流，并行流底层使用了Fork-Join框架，将任务分派到多个线程上执行，这样可以大大提高CPU资源的利用率。
 
-### 4.1 如何创建并行流
+### 5.1 如何创建并行流<a name="如何创建并行流"></a>
 
  **在创建时直接创建并行流**：
 
@@ -591,7 +662,7 @@ Stream实例.sequential();
 
 
 
-### 4.2 串行流和并行流的对比
+### 5.2 串行流和并行流的对比<a name="串行流和并行流的对比"></a>
 
 我们分别使用串行流和并行流进行一百亿个数的累加：
 
