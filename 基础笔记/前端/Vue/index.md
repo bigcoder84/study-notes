@@ -4,3 +4,5 @@
 
 [Vue自定义组件](./subfile/_2Vue自定义组件.md)
 
+[插槽](./subfile/_3插槽.md)
+
