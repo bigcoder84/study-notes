@@ -9,7 +9,15 @@
   - [6.1 父传子](#父传子)
     - [6.6.1 props驼峰命名避坑](#props驼峰命名避坑)
     - [6.6.2 props数据验证](#props数据验证)
+    - [6.1.3 子组件中应该避免修改props中的值](#子组件中应该避免修改props中的值)
   - [6.2 子传父](#子传父)
+- [七.组件访问](#组件访问)
+  - [7.1 父组件访问子组件](#父组件访问子组件)
+    - [7.1.1 $children](#$children)
+    - [7.1.2 $refs](#$refs)
+  - [7.2 子组件访问父组件](#子组件访问父组件)
+    - [7.2.1 $parent](#$parent)
+    - [7.2.2 $root](#$root)
 
 组件化是Vue.js中的重要思想，它提供了一种抽象，让我们可以开发出一个个独立可复用的小组件来构造我们的应用。任何的应用都会被抽象成一颗组件树。
 
@@ -300,6 +308,77 @@ const cpn = {
 
 ![](../images/6.png)
 
+#### 6.1.3 子组件中应该避免修改props中的值<a name="子组件中应该避免修改props中的值"> </a>
+
+在父组件给子组件传值时子组件会使用props创建一个属性去接收父组件传入的值，这个值我们在子组件中是不建议改变的，不然Vue会报出警告：
+
+![](../images/8.png)
+
+```html
+<div id="app">
+  <cpn :num1="num1" :num2="num2"></cpn>
+</div>
+
+const app = new Vue({
+    el: '#app',
+    data: {
+      num1: 1,
+      num2: 0
+    },
+    components: {
+      cpn: {
+        template: `
+          <div>
+            <h2>{{num1}}</h2>
+            <input type="text" v-model="num1">
+            <h2>{{num2}}</h2>
+            <input type="text" v-model="num2">
+          </div>
+        `,
+        props: [
+          'num1', 'num2'
+        ]
+      }
+    }
+```
+
+如果我们真的有需求对父组件传入的值进行修改，我们可以在子组件中创建一个data属性，让其初始化为props接收的值，然后我们就可以修改data中属性的值了：
+
+```html
+const app = new Vue({
+    el: '#app',
+    data: {
+      num1: 1,
+      num2: 0
+    },
+    components: {
+      cpn: {
+        template: `
+          <div>
+            <h2>{{dnum1}}</h2>
+            <input type="text" v-model="dnum1">
+            <h2>{{dnum2}}</h2>
+            <input type="text" v-model="dnum2">
+          </div>
+        `,
+        data() {
+          return {
+            dnum1: this.num1,
+            dnum2: this.num2
+          };
+        },
+        props: [
+          'num1', 'num2'
+        ]
+      }
+    }
+  });
+```
+
+
+
+
+
 ### 6.2 子传父<a name="子传父"> </a>
 
 子组件向父组件传进行通信，需要子组件通过`this.emit`发射事件，然后父组件捕捉到事件，从而触发这个事件绑定函数。如果需要传递数据，则在发送数据时通过`this.emit`携带数据即可。
@@ -364,4 +443,141 @@ const cpn = {
 </body>
 </html>
 ```
+
+## 七.组件访问<a name="组件访问"> </a>
+
+有时候需要父组件访问子组件，子组件访问父组件，或者是子组件访问根组件。 在组件实例中，Vue提供了相应的属性，包括`$parent`、​`$children`、`​$refs`和`​$root`，这些属性都挂载在组件的this上。本文将详细介绍Vue组件实例间的直接访问
+
+### 7.1 父组件访问子组件<a name="父组件访问子组件"> </a>
+
+#### 7.1.1 `$children`<a name="$children"> </a>
+
+我们可以通过`$children`拿到子组件的对象，调用子组件的方法或者获取属性值。通过`console.log`打印`$children`我们发现它实际上是一个数组，数组中每一个元素就是当前组件的一个子组件：
+
+![](../images/9.png)
+
+假如饿哦们在子组件中定义了一个`showMessage`方法用于打印组件中`message`属性，现在我们可以通过`$children`获取子组件，然后调用它的`showMessage`方法：
+
+```html
+<cpn></cpn>
+<button @click="showChildMessage">调用子组件的showMessage方法</button>
+
+const app = new Vue({
+    el: '#app',
+    methods:{
+      showChildMessage(){
+        this.$children[0].showMessage();
+      }
+    },
+    components: {
+      cpn: {
+        template: `
+          <div>
+            子组件：{{message}}
+          </div>
+        `,
+        data() {
+          return {
+            message: '子组件消息'
+          };
+        },
+        methods:{
+          showMessage(){
+            console.log(this.message);
+          }
+        }
+      }
+    }
+  });
+```
+
+#### 7.1.2 `$refs`<a name="$refs"> </a>
+
+由于我们使用`$children`时会返回的是子组件数组，而这个数组会随着HTML中组件的使用顺序去改变，所以在开发中通过下标写死会给后序的维护带来很多潜在的大坑（别人可能在你写的组件前加了一个新组件后，发现原来的功能不能用了）。
+
+我们可以使用`$refs`来解决这个问题，我们只需要在使用组件时给组件指定一个key:
+
+```html
+<cpn ref="aaa"></cpn>
+```
+
+然后我们就可以通过`$refs.key`获取到指定的组件对象了：
+
+```html
+<div id="#app">
+    <cpn ref="aaa"></cpn>
+	<button @click="showChildMessage">调用子组件的showMessage方法</button>
+</div>
+
+const app = new Vue({
+    el: '#app',
+    methods:{
+      showChildMessage(){
+        this.$refs.aaa.showMessage();
+      }
+    },
+    components: {
+      cpn: {
+        template: `
+          <div>
+            子组件：{{message}}
+          </div>
+        `,
+        data() {
+          return {
+            message: '子组件消息'
+          };
+        },
+        methods:{
+          showMessage(){
+            console.log(this.message);
+          }
+        }
+      }
+    }
+  });
+```
+
+### 7.2 子组件访问父组件<a name="子组件访问父组件"> </a>
+
+#### 7.2.1 `$parent`<a name="$parent"> </a>
+
+`$parent`可以获取当前组件的父组件对象：
+
+```html
+<div id="app">
+  父组件：{{message}}
+  <cpn></cpn>
+</div>
+
+const app = new Vue({
+    el: '#app',
+    methods:{
+      showMessage(){
+        console.info(this.message)
+      }
+    },
+    data:{
+      message: "父组件消息"
+    },
+    components: {
+      cpn: {
+        template: `
+          <div>
+            <button @click="showParentMessage">访问父组件</button>
+          </div>
+        `,
+        methods:{
+          showParentMessage(){
+            this.$parent.showMessage();
+          }
+        }
+      }
+    }
+  });
+```
+
+#### 7.2.2 `$root`<a name="$root"> </a>
+
+`$root`可以获取根组件，也就是Vue实例。
 
