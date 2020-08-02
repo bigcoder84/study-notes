@@ -18,3 +18,5 @@
 
 [JS数组的流式操作](./subfile/_9JS数组的流式操作.md)
 
+[ES6模块化](./subfile/_10ES6模块化.md)
+
