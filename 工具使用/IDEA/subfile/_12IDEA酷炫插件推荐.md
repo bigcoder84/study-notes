@@ -86,3 +86,6 @@ Mybatis现在是java中操作数据库的首选，在开发的时候，我们都
 
 **GsonFormat**     把 JSON 字符串转换为Java类
 
+**GenerateO2O**    对象转换的生产工具
+
+**SonarLint**    代码质量检测工具
