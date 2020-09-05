@@ -20,3 +20,9 @@
 
 [ES6模块化](./subfile/_10ES6模块化.md)
 
+[JS中函数的this指针](./subfile/_11JS中函数的this指针.md)
+
+[JS中Call方法调用](./subfile/_12JS中Call方法调用.md)
+
+
+
