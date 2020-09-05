@@ -370,6 +370,7 @@ personList.stream().sorted().forEach(System.out::println);
 
 ```java
 personList.stream().sorted((o1, o2) -> o1.getAge()-o2.getAge()).forEach(System.out::println);
+personList.stream().sorted(Comparator.comparing(Person::getAge)) //使用Comparator静态方法构造
 ```
 
 
