@@ -1,6 +1,6 @@
 # 前端
 
-[前端基础](./前端基础/index.md)
+[JavaScript](./前端基础/javascript/index.md)
 
 [Vue](./Vue/index.md)
 
