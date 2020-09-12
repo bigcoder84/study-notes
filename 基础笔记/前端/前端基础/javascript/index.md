@@ -36,6 +36,10 @@
 
 [Promise](./subfile/_21Promise.md)
 
+[集合](./subfile/_23集合.md)
+
+[类](./subfile/_24类.md)
+
 ## 拓展
 
 [深入理解浏览器缓存机制](./subfile/_7深入理解浏览器缓存机制.md)

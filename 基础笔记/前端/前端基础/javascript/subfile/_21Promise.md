@@ -54,6 +54,8 @@ ajax.ifSuccess(success)
 
 古人云：“君子一诺千金”，这种“承诺将来会执行”的对象在JavaScript中称为Promise对象。
 
+**Promise是ES6引入的异步编程的新解决方案。语法上Promise是一个构造函数，用来封装异步操作并可以获取其成功或失败的结果**。
+
 Promise有各种开源实现，在ES6中被统一规范，由浏览器直接支持。我们先看一个最简单的Promise例子：生成一个0-2之间的随机数，如果小于1，则等待一段时间后返回成功，否则返回失败：
 
 ```js
@@ -97,5 +99,34 @@ new Promise(test).then(function (result) {
 });
 ```
 
-**Promise是ES6引入的异步编程的新解决方案。语法上Promise是一个构造函数，用来封装异步操作并可以获取其成功或失败的结果**。
+需要注意的是，成功方法不仅可以使用then-catch分开写，还可以写在一起：
+
+```js
+//第一个参数是成功时调用的函数，第二个参数是失败时调用的函数 
+var p2 = p1.then(result=> {
+    console.log('成功：' + result);
+  },reason=>{
+    console.log('失败' + reason);
+  });
+```
+
+实际上catch方法就是一个语法糖，它就是调用then方法，然后第一个参数传null。
+
+then()方法会返回一个**新**的Promise实例，所以then()方法后面可以继续跟另一个then()方法进行链式调用。
+
+```js
+let p = new Promise((resolve, reject) => {
+    setTimeout(resolve, 1000, 'success');
+});
+p.then(
+    res => {
+        console.log(res);
+        return `${res} again`;
+    }
+).then(
+    res => console.log(res)
+);
+```
+
+
 
