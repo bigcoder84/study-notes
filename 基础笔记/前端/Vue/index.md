@@ -8,3 +8,5 @@
 
 [Vue工程化演进过程](./subfile/_4Vue工程化演进过程.md)
 
+[路由](./subfile/_6路由.md)
+
