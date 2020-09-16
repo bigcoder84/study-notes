@@ -33,6 +33,8 @@ history.pushState({},'','about')
 history.pushState({},'','bar')
 >>> http://localhost:8080/bar
 
+history.replaceState({},'','/about')//替换栈顶元素，pushState是压栈操作，浏览器可以通过回退键回退到上一个URL
+
 history.back()
 >>> http://localhost:8080/about
 
