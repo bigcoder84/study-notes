@@ -10,3 +10,6 @@
 
 [路由](./subfile/_6路由.md)
 
+[URL_hash和HTML5_history](./subfile/_7URL_hash和HTML5_history.md)
+
+[理解Vue.use方法](./subfile_8理解Vue.use方法.md)
