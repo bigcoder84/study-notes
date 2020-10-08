@@ -128,5 +128,19 @@ p.then(
 );
 ```
 
+实际上我们使用return直接返回结果，实际上返回的是一个Promise实例，是下面这种方式的简写：
+
+```js
+return Promise.resolve(`${res} again`);
+```
+
+而这种方式又是下面的简写：
+
+```js
+return new Promise(resolve => {
+    return `${res} again`;
+})
+```
+
 
 
