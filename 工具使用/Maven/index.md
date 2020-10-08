@@ -9,3 +9,6 @@
 [Maven打包成jar后运行main方法](./subfile/_4Maven打包成jar后运行main方法.md)
 
 [修改Maven打包后的名称](./subfile/_5修改Maven最终打包后的文件名.md)
+
+[更改项目编译版本号](./subfile/_6更改项目编译版本号.md)
+
