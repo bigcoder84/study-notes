@@ -153,7 +153,7 @@ public static void main(String[] args) {
 
 可以看到我们并没有把`f.complete(100);`放在另外的线程中去执行，但是在大部分情况下我们可能会用一个线程池去执行这些异步任务。`CompletableFuture.complete()`、`CompletableFuture.completeExceptionally`只能被调用一次。但是我们有两个后门方法可以重设这个值:`obtrudeValue`、`obtrudeException`，但是使用的时候要小心，因为`complete`已经触发了客户端，有可能导致客户端会得到不期望的结果。
 
-## 二. 创建CompletableFuture对象。
+## 二. 创建CompletableFuture对象
 
 `CompletableFuture.completedFuture`是一个静态辅助方法，用来返回一个已经计算好的`CompletableFuture`。
 
@@ -299,7 +299,7 @@ System.out.println(f.get()); //"1000"
 
 需要注意的是，这些转换并不是马上执行的，也不会阻塞，而是在前一个stage完成后继续执行。
 
-## 四. 纯消费(执行Action)
+## 四. 消费(执行Action)
 
 上面的方法是当计算完成的时候，会生成新的计算结果(`thenApply`, `handle`)，或者返回同样的计算结果`whenComplete`，`CompletableFuture`还提供了一种处理结果的方法，只对结果执行`Action`,而不返回新的计算值，因此计算值为`Void`:
 
