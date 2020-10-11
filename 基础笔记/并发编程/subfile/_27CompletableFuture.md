@@ -97,7 +97,7 @@ join:
 
 ![](../images/48.png)
 
-尽管Future可以代表在另外的线程中执行的一段异步代码，但是你还是可以在本身线程中执行：
+尽管Future可以代表在另外的线程中执行的一段异步代码，但是你还是可以在本身线程中执行，下面代码中`future`没有关联任何的`Callback`、线程池、异步任务等，如果客户端调用`future.get`就会一致傻等下去。
 
 ```java
 public static CompletableFuture<Integer> compute() {
@@ -107,7 +107,7 @@ public static CompletableFuture<Integer> compute() {
 }
 ```
 
-上面的代码中`future`没有关联任何的`Callback`、线程池、异步任务等，如果客户端调用`future.get`就会一致傻等下去。你可以通过下面的代码完成一个计算，触发客户端的等待：
+你可以通过下面的代码完成一个计算，触发客户端的等待：
 
 ```java
 f.complete(100);
@@ -531,3 +531,32 @@ public static <T> CompletableFuture<T> toCompletable(Future<T> future, Executor 
 
 github有多个项目可以实现Java CompletableFuture与其它Future (如Guava ListenableFuture)之间的转换，如[spotify/futures-extra](https://github.com/spotify/futures-extra)、[future-converter](https://github.com/lukas-krecan/future-converter)、[scala/scala-java8-compat ](https://github.com/scala/scala-java8-compat/blob/master/src/main/scala/scala/compat/java8/FutureConverters.scala)等。
 
+## 九. 方法总结
+
+- get()：获取执行结果，如果任务还在执行该方法会阻塞
+
+- complete()：标记任务执行完成，并返回执行结果（一个CompleteFuture只能调用一次）
+
+- completeExceptionally()：标记任务执行失败，抛出异常（一个CompleteFuture只能调用一次）
+
+  
+
+- runAsync()：异步执行，无返回值
+
+- supplyAsync()：异步执行，有返回值
+
+  
+
+- whenComplete()：当上一阶段任务执行完成时执行，传入BiConsumer实例，代表既能处理正常结果，也能处理异常结果，沿用上一阶段返回值。
+
+- whenCompleteAsync()：功能同上，不带`Async`代表使用上一任务执行的线程执行任务，而`Async`可能会使用其它的线程去执行(如果使用相同的线程池，也可能会被同一个线程选中执行)。
+
+- exceptionally()：处理异常结果
+
+  
+
+- handle()：与上面那组方法不同的是，`handle*`创建的处理阶段可以拥有自己的返回值，而`when*`创建的新处理阶段只能沿用上一阶段的返回值。
+
+- handleAsync()：使用与上一阶段任务不同的线程去执行
+
+- thenApply()/thenApplyAsync()：根据上一阶段任务的结果，处理此阶段任务，`handle*`同样也具有转换的效果，它们与`handle`方法的区别在于`handle`方法会处理正常计算值和异常，因此它可以屏蔽异常，避免异常继续抛出。而`thenApply`方法只是用来处理正常值，因此一旦有异常就会抛出。
