@@ -531,7 +531,7 @@ public static <T> CompletableFuture<T> toCompletable(Future<T> future, Executor 
 
 github有多个项目可以实现Java CompletableFuture与其它Future (如Guava ListenableFuture)之间的转换，如[spotify/futures-extra](https://github.com/spotify/futures-extra)、[future-converter](https://github.com/lukas-krecan/future-converter)、[scala/scala-java8-compat ](https://github.com/scala/scala-java8-compat/blob/master/src/main/scala/scala/compat/java8/FutureConverters.scala)等。
 
-## 九. 方法总结
+## 九. 总结
 
 - get()：获取执行结果，如果任务还在执行该方法会阻塞
 
@@ -560,3 +560,43 @@ github有多个项目可以实现Java CompletableFuture与其它Future (如Guava
 - handleAsync()：使用与上一阶段任务不同的线程去执行
 
 - thenApply()/thenApplyAsync()：根据上一阶段任务的结果，处理此阶段任务，`handle*`同样也具有转换的效果，它们与`handle`方法的区别在于`handle`方法会处理正常计算值和异常，因此它可以屏蔽异常，避免异常继续抛出。而`thenApply`方法只是用来处理正常值，因此一旦有异常就会抛出。
+
+## 十. 思考
+
+```java
+@Test
+public void testCompletion() throws InterruptedException {
+    CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+        try {
+            Thread.sleep(1000);
+            System.out.println("a");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return "a";
+    });
+    future.whenCompleteAsync((s, throwable) -> {
+        System.out.println("b");
+    });
+    future.whenCompleteAsync((s, throwable) -> {
+        System.out.println("c");
+    });
+    Thread.sleep(1500);//将此行注释会得到不一样的结果
+    future.whenCompleteAsync((s, throwable) -> {
+        System.out.println("d");
+    });
+    CompletableFuture<String> e = future.whenComplete((s, throwable) -> {
+        System.out.println("e");
+    });
+    e.whenCompleteAsync((s, throwable) -> System.out.println("e.a"));
+    e.whenCompleteAsync((s, throwable) -> System.out.println("e.b"));
+
+    Thread.sleep(50000);
+}
+```
+
+该程序会输出：
+
+![](../images/58.png)
+
+由于CompletableFuture内部维护着一个任务栈，后加进去的的任务会入栈，当父级任务执行完成后，就会pop执行子任务，至于为什么会打印出这个结果，看完下一节的源码分析你应该就清楚了。
