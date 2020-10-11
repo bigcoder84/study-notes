@@ -22,3 +22,6 @@
 
 [Java8新特性——接口静态方法](https://blog.csdn.net/tianjindong0804/article/details/89570746)
 
+## 六. API
+
+[Comparator静态方法](./_29JDK8中Comparator默认方法.md)
