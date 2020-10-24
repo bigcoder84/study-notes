@@ -40,6 +40,8 @@
 
 [Git标签](./subfile/_26Git标签.md)
 
+[reset和revert](./subfile/_30reset和revert.md)
+
 ### Git远程仓库的使用
 
 [远程仓库的基本操作](./subfile/_17远程仓库的基本操作.md)
@@ -71,3 +73,7 @@
 ## GitLab
 
 [CentOS7搭建GitLab](./subfile/_27CentOS7搭建GitLab.md)
+
+## 其他操作
+
+[其它常用命令](./subfile/_31其它常用命令.md)
