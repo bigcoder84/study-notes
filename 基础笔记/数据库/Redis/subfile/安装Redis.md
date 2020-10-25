@@ -13,7 +13,7 @@
 ### **第二步：下载安装包**
 
 ```shell
-wget http://download.redis.io/releases/redis-5.0.3.tar.gz
+wget https://download.redis.io/releases/redis-6.0.8.tar.gz
 ```
 
 如果没有wget命令，则执行下列语句安装wget：
@@ -31,7 +31,7 @@ tar -zxvf redis-5.0.3.tar.gz
 ### **第四步：编译并安装Redis**
 
 ```shell
-# 新建入刚刚解压的文件夹
+# 进入刚刚解压的文件夹
 cd redis-5.0.3
 
 # 编译源文件
