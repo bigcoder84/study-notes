@@ -9,7 +9,7 @@
 这是我修改后的终端样式：
 
 ![](../../../%E5%B7%A5%E5%85%B7%E4%BD%BF%E7%94%A8/%E5%85%B6%E5%AE%83%E5%B7%A5%E5%85%B7/images/2.png)
-  
+
 
 ## 安装zsh
 
@@ -70,3 +70,33 @@ WSL配置字体其实就是配置终端的字体，点击设置会自动跳转�
 ## 配置环境变量
 
 编辑`/etc/zsh/zshrc`文件，该文件类似ubuntu系统bash环境下的bashrc文件
+
+## 安装自动提示插件
+
+[zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions)
+
+1. 下载自动补全插件至`oh-my-zsh`的插件目录中  `~/.oh-my-zsh/custom/plugins`
+
+   ```shell
+   git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+   ```
+
+2. 编辑 `~/.zshrc`文件，注册插件:
+
+   ```shell
+   plugins=(zsh-autosuggestions)
+   ```
+
+3. 重新加载`~/.zshrc`
+
+   ```shell
+   source ~/.zshrc
+   ```
+
+安装自动补全插件可能会遇到问题：
+
+![](../images/3.png)
+
+解决方案：
+
+https://github.com/zsh-users/zsh-autosuggestions/issues/557
