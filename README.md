@@ -32,7 +32,7 @@
 
 [SQLServer数据库](./基础笔记/数据库/SQLServer/index.md)
 
-[Redis](./基础笔记/JavaWeb/Redis/index.md)
+[Redis](./基础笔记/数据库/Redis/index.md)
 
 ## 项目经验
 
