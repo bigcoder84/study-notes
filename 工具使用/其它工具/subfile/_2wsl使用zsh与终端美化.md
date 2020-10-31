@@ -100,3 +100,7 @@ WSL配置字体其实就是配置终端的字体，点击设置会自动跳转�
 解决方案：
 
 https://github.com/zsh-users/zsh-autosuggestions/issues/557
+
+## wsl的ls文件夹为绿色的问题
+
+https://www.cnblogs.com/sgmder/p/13177561.html
