@@ -14,3 +14,7 @@
 
 [理解Vue.use方法](./subfile/_8理解Vue.use方法.md)
 
+## 实践采坑
+
+[使用$refs调用子组件undefined的问题](./subfile/_11使用$refs调用子组件undefined的问题.md)
+
