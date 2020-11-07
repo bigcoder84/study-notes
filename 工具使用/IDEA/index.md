@@ -40,6 +40,8 @@
 
 [使用BookMark对代码进行标记方便阅读源码](./subfile/_18使用BookMark对代码进行标记方便阅读源码.md)
 
+[IDEA查看UML图](./subfile/_19IDEA查看UML图.md)
+
 #### IDEA插件
 
 [IDEA酷炫插件推荐](./subfile/_12IDEA酷炫插件推荐.md)
