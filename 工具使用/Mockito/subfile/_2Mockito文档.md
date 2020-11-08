@@ -1,6 +1,6 @@
 # Mockito 中文文档 (3.0.6)
 
-> 说明：本文clone至https://github.com/hehonghui/mockito-doc-zh，一下内容会根据实际情况对原文有所修改和删减。
+> 说明：本文clone至https://github.com/hehonghui/mockito-doc-zh，以下内容会根据实际情况对原文有所修改和删减。
 
 ![](../images/3.png)
 
@@ -859,7 +859,6 @@ class Lines extends List<Line> {
 ---
 
 ### 33. (new) Mockito Junit rule<a name="33"></a>
-
 
 Mockito 现在提供一个 JUnit rule。目前为止，有两种方法可以初始化 fields ，使用 Mockito 提供的注解比如
 [@Mock][Mock_], [@Spy][Spy_], [@InjectMocks][InjectMocks_] 等等。
