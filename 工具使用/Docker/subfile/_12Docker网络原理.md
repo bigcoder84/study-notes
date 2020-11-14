@@ -21,10 +21,14 @@ Docker自身的4种网络工作方式，和一些自定义网络模式
 
 ## 二. 默认网络
 
-当你安装Docker时，它会自动创建三个网络。你可以使用以下docker network ls命令列出这些网络：
+当你安装Docker时，它会自动创建三个网络。你可以使用以下`docker network ls`命令列出这些网络：
 
 ```shell
-`$ docker network ls``NETWORK ID          NAME                DRIVER``7fca4eb8c647        bridge              bridge``9f904ee27bf5        none                ``null``cf03ee007fb4        host                host`
+$ docker network ls
+NETWORK ID          NAME                DRIVER
+7fca4eb8c647        bridge              bridge
+9f904ee27bf5        none                null
+cf03ee007fb4        host                host
 ```
 
 Docker内置这三个网络，运行容器时，你可以使用该--network标志来指定容器应连接到哪些网络。
@@ -202,7 +206,13 @@ Host模式使用是在容器启动时候指明--network host，此时容器共�
 例如，我们在10.10.0.186/24的机器上用host模式启动一个含有nginx应用的Docker容器，监听tcp80端口。
 
 ```shell
-`# 运行容器;``$ docker run --name=nginx_host --net=host -p 80:80 -d nginx``74c911272942841875f4faf2aca02e3814035c900840d11e3f141fbaa884ae5c` `# 查看容器;``$ docker ps  ``CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS               NAMES``74c911272942        nginx               ``"nginx -g 'daemon ..."`   `25 seconds ago      Up 25 seconds                           nginx_host`
+# 运行容器;
+$ docker run --name=nginx_host --net=host -p 80:80 -d nginx
+74c911272942841875f4faf2aca02e3814035c900840d11e3f141fbaa884ae5c
+# 查看容器;
+$ docker ps  
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS               NAMES
+74c911272942        nginx        "nginx -g 'daemon ..."         25 seconds ago      Up 25 seconds                           nginx_host
 ```
 
 当我们在容器中执行任何类似ifconfig命令查看网络环境时，看到的都是宿主机上的信息。而外界访问容器中的应用，则直接使用10.10.0.186:80即可，不用任何NAT转换，就如直接跑在宿主机中一样。但是，容器的其他方面，如文件系统、进程列表等还是和宿主机隔离的。

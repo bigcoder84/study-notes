@@ -93,83 +93,19 @@ PING hub (172.17.0.2) 56(84) bytes of data.
 
 可见，selenium_hub和hub都指向172.17.0.2。
 
-## 三. --link下容器间的通信
+## 三. --link的原理
 
-按照上例的方法就可以成功的将selenium_hub和node容器链接起来，那这2个容器间是怎么通信传送数据的呢？另外，前言中提到的接收容器可以获取源容器的一些信息，比如环境变量，又是怎么一回事呢？
+我们使用`--link`连接容器，实际上容器做了下面两件事：
 
-源容器和接收容器之间传递数据是通过以下2种方式：
+1. 容器里添加了解析
 
-- 设置环境变量
-- 更新/etc/hosts文件
+2. 环境变量里设置了相应的地址和ip
 
-### 3.1 设置环境变量
-
-当使用`--link`时，docker会自动在接收容器内创建基于--link参数的环境变量：
-
-docker会在接收容器中设置名为`<alias>_NAME`的环境变量，该环境变量的值为：
-` <alias>_NAME`=`/接收容器名/源容器alias`
-
-我们进入node容器，看下此环境变量：
-
-```shell
-docker exec -it node /bin/bash
-seluser@c4cc05d832e0:/$ env | grep -i hub_name
-HUB_NAME=/node/hub
-```
-
-另外，docker还会在接收容器中创建关于源容器暴露的端口号的环境变量，这些环境变量有一个统一的前缀名称：
-
-```shell
-<name>_PORT_<port>_<protocol>
-```
-
-其中：
-
-- `name`表示链接的源容器alias
-- `port`是源容器暴露的端口号
-- `protocol`是通信协议：TCP or UDP
-
-docker用上面定义的前缀定义3个环境变量：
-
-```shell
-<name>_PORT_<port>_<protocol>ADDR
-<name>_PORT_<port>_<protocol>PORT
-<name>_PORT_<port>_<protocol>PROTO
-```
-
-注意，若源容器暴露了多个端口号，则每1个端口都有上面的一组环境变量（包含3个环境变量），即若源容器暴露了4个端口号，则会有4组12个环境变量。
-
-[查看selenium/hub的Dockerfile](https://link.jianshu.com/?t=https://github.com/SeleniumHQ/docker-selenium/blob/master/Hub/Dockerfile)，可见只暴露了4444端口号：
-
-```shell
-EXPOSE 4444
-```
-
-我们进入node容器，看这些此环境变量：
-
-```shell
-docker exec -it node /bin/bash
-seluser@c4cc05d832e0:/$ env | grep -i HUB_PORT_4444_TCP_
-HUB_PORT_4444_TCP_PROTO=tcp
-HUB_PORT_4444_TCP_ADDR=172.17.0.2
-HUB_PORT_4444_TCP_PORT=4444
-```
-
-可见，确实有3个以`<name>_PORT_<port>_<protocol>`为前缀的环境变量存在。
-
-另外，docker还在接收容器中创建1个名为`<alias>_PORT`的环境变量，值为源容器的URL：源容器暴露的端口号中最小的那个端口号。
-
-我们进入node容器，看下此环境变量：
-
-```shell
-docker exec -it node /bin/bash
-seluser@c4cc05d832e0:/$ env | grep -i HUB_PORT=
-HUB_PORT=tcp://172.17.0.2:4444
-```
-
-...
+![](../images/16.png)
 
 文章参考至：
 
 https://www.jianshu.com/p/21d66ca6115e
+
+https://www.codenong.com/cs106463217/
 
