@@ -11,6 +11,8 @@
   - [2.2 删除一个网络](#2.2)
   - [2.3 查看网络详情](#2.3)
   - [2.4 清除未使用的docker网络](#2.4)
+- [三. 高级网络配置](#3)
+  - [3.1 端口映射原理](#3.1)
 
 当你安装Docker时，它会自动创建三个网络。你可以使用以下docker network ls命令列出这些网络：
 
@@ -76,7 +78,6 @@ $ docker network inspect testbridge
         "Labels": {}
     }
 ]
-
 ```
 
 ### 1.1 设置驱动类型<a name="1.1"></a>
@@ -192,5 +193,44 @@ $ docker network prune -f
 ```
 
 
+
+## 三. 高级网络配置<a name="3"></a>
+
+### 3.1 端口映射原理<a name="3.1"></a>
+
+容器允许外部访问，可以在 `docker run` 时候通过 `-p` 或 `-P` 参数来启用。
+
+不管用那种办法，其实也是在本地的 `iptable` 的 nat 表中添加相应的规则。
+
+使用 `-P` 时：
+
+```shell
+$ iptables -t nat -nL
+...
+Chain DOCKER (2 references)
+target     prot opt source               destination
+DNAT       tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:49153 to:172.17.0.2:80
+```
+
+使用 `-p 80:80` 时：
+
+```shell
+$ iptables -t nat -nL
+Chain DOCKER (2 references)
+target     prot opt source               destination
+DNAT       tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:80 to:172.17.0.2:80
+```
+
+注意：
+
+- 这里的规则映射了 `0.0.0.0`，意味着将接受主机来自所有接口的流量。用户可以通过 `-p IP:host_port:container_port` 或 `-p IP::port` 来指定允许访问容器的主机上的 IP、接口等，以制定更严格的规则。
+
+- 如果希望永久绑定到某个固定的 IP 地址，可以在 Docker 配置文件 `/etc/docker/daemon.json` 中添加如下内容。
+
+  ```shell
+  {
+    "ip": "0.0.0.0"
+  }
+  ```
 
 文章参考：https://www.codenong.com/cs106463217/
