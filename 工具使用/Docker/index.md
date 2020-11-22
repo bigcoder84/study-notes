@@ -1,5 +1,7 @@
 # Docker
 
+## 容器和镜像的基本管理
+
 [CentOS8安装Docker](./subfile/_1Docker安装.md)
 
 [Docker基本概念](./subfile/_2Docker基本概念.md)
@@ -8,15 +10,19 @@
 
 [镜像和容器的基本管理](./subfile/_4镜像和容器的基本管理.md)
 
-[容器的网络端口映射](./subfile/_6容器的网络端口映射.md)
+[容器数据卷](./subfile/_8容器数据卷.md)
+
+## 镜像构建
 
 [commit创建镜像](./subfile/_7commit创建镜像.md)
 
-[容器数据卷](./subfile/_8容器数据卷.md)
+[使用Dockerfile构建镜像](./subfile/_9Dockerfile.md)
 
 [Dockerfile指令](./subfile/_10Dockerfile指令.md)
 
 ## Docker网络
+
+[容器的网络端口映射](./subfile/_6容器的网络端口映射.md)
 
 [Docker网络原理](./subfile/_12Docker网络原理.md)
 
@@ -27,3 +33,4 @@
 ## 实战部署
 
 [Docker实践-部署Nginx](./subfile/_11Docker实践-部署Nginx.md)
+
