@@ -1,6 +1,29 @@
 # MySQL用户及权限
 
-## **引言**
+- [引言](#0)
+- [一. MySQL用创建与授权](#1)
+  - [1.1 MySQL 8.0 之前版本创建用户与授权](#1.1)
+  - [1.2 MySQL 8.0 创建用户与授权](#1.2)
+  - [1.3 修改密码](#1.3)
+- [二. MySQL权限原理](#2)
+  - [2.1 用户认证](#2.1)
+  - [2.2 MySQL用户权限层级](#2.2)
+  - [2.3 MySQL权限简单分类](#2.3)
+  - [2.4 MySQL权限详情](#2.4)
+- [三. MySQL访问控制](#3)
+  - [3.1 用户连接时的检查](#3.1)
+  - [3.2 执行SQL语句时的检查](#3.2)
+- [四. 权限表字段详解](#4)
+  - [4.1 user表](#4.1)
+  - [4.2 db表](#4.2)
+  - [4.3 tables_priv表](#4.3)
+  - [4.4 columns_priv表](#4.4)
+  - [4.5 procs_priv表](#4.5)
+- [五. MySQL 用户和权限管理经验](#5)
+  - [5.1 用户管理经验](#5.1)
+  - [5.2 权限管理经验](#5.2)
+
+## **引言**<a name="0"></a>
 
 数据库保存着应用程序日积夜累记录下来的数据资产，安全级别特别高，所以只能让授权的用户可以访问，其他用户需一律拒绝。MySQL是一个多用户数据库，拥有功能强大的访问控制系统，可以为不同的用户指定不同的权限。 小编一直对MySQL的用户及权限管理都是一知半解，存有疑问，具体疑问如下:
 
@@ -16,19 +39,11 @@
 
 继续使用图书馆的栗子，当你要进图书馆的时候，需要刷卡或者与管理员沟通，如果无效，那么将会出现谢绝参阅的礼貌回复；假如你有权限进入图书馆，但是你没有借书的权利，那么在你借书的时候，会借书失败。在MySQL Server中， 一个用户想要对MySQL Server进行操作，MySQL Server是如何控制用户行为的？
 
-## 一. 权限管理
-
-MySQL 8.0 在用户管理方面增加了角色管理，默认的密码加密方式也做了调整，由之前的 `SHA1` 改为了 `SHA2`。同时加上 MySQL 5.7 的禁用用户和用户过期的功能，MySQL 在用户管理方面的功能和安全性都较之前版本大大的增强了。
-
-在本教程中，我们将介绍 MySQL 下用户管理上的一些新特性和如何使用角色来简化权限管理。
-
-> 注：本教程大部分特性要 MySQL 8.0 + 以上版本才支持。
-
-## 二. MySQL用创建与授权
+## 一. MySQL用创建与授权<a name="1"></a>
 
 MySQL 8.0 的用户创建与授权语句和之前版本有所区别，老版本的常用授权语句在 MySQL 8.0 版本中 已不能使用，如使用旧版本授权语句会报错。
 
-### 2.1 在 MySQL 8.0 用之前版本授权语句创建用户。
+### 1.1 MySQL 8.0 之前版本创建用户与授权<a name="1.1"></a>
 
 ```shell
 mysql> GRANT ALL PRIVILEGES ON *.* TO `mike`@`%` IDENTIFIED BY '000000' WITH GRANT OPTION;
@@ -51,14 +66,14 @@ ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that 
 
 备注：可以使用GRANT重复给用户添加权限，权限叠加，比如你先给用户添加一个select权限，然后又给用户添加一个insert权限，那么该用户就同时拥有了select和insert权限。
 
-### 2.2 在 MySQL 8.0 版本中正确授权语句。
+### 1.2 MySQL 8.0 创建用户与授权<a name="1.2"></a>
 
 ```shell
 mysql> CREATE USER 'mike'@'%' IDENTIFIED BY '000000';
 mysql> GRANT ALL ON *.* TO 'mike'@'%' WITH GRANT OPTION;
 ```
 
-### 2.3 修改密码
+### 1.3 修改密码<a name="1.3"></a>
 
 ```shell
   ALTER USER 'root'@'localhost' IDENTIFIED BY '你的密码';  
@@ -66,13 +81,13 @@ mysql> GRANT ALL ON *.* TO 'mike'@'%' WITH GRANT OPTION;
 
 
 
-## 三. MySQL权限原理
+## 二. MySQL权限原理<a name="2"></a>
 
-### 3.1 用户认证
+### 2.1 用户认证<a name="2.1"></a>
 
 MySQL的用户认证形式是: 用户名+主机。比如test@127.0.0.1和test@192.168.10.10是不一样的用户。就好比现实中的牛家村的张三和马家村的张三是分别两个人一样。MySQL中的权限分配都是分配到用户+主机的实体上。MySQL的主机信息可以是本地(localhost)，某个IP，某个IP段，以及任何地方等，即用户的地址可以限制到某个具体的IP，或者某个IP范围，或者任意地方。MySQL用户分为普通用户和root用户。root用户是超级管理员，拥有所有权限，普通用户只拥有被授予的各种权限。
 
-### 3.2 MySQL用户权限层级
+### 2.2 MySQL用户权限层级<a name="2.2"></a>
 
 - 全局层级：全局权限适用于一个给定MySQL Server中的所有数据库，这些权限存储在`mysql.user`表中。
 
@@ -114,7 +129,7 @@ GRANT EXECUTE ON PROCEDURE mydb.myproc TO 'user'@'host';
 
 `mydb.mytable` 表示`mysql`数据库下的`mytable`表，PROCEDUR表示存储过程
 
-### 3.3 MySQL权限简单分类
+### 2.3 MySQL权限简单分类<a name="2.3"></a>
 
 - **数据权限**分为：库、表和字段三种级别
 - **管理权限**主要是管理员要使用到的权限，包括：数据库创建，临时表创建、主从部署、进程管理等
@@ -122,7 +137,7 @@ GRANT EXECUTE ON PROCEDURE mydb.myproc TO 'user'@'host';
 
 ![](../images/29.png)
 
-### 3.4 MySQL权限详情
+### 2.4 MySQL权限详情<a name="2.4"></a>
 
 ![](../images/30.png)
 
@@ -138,29 +153,29 @@ MYSQL的权限如何分布，就是针对表可以设置什么权限，针对列
 
 程序权限：Execute, Alter Routine, Grant
 
-## 三. MySQL访问控制
+## 三. MySQL访问控制<a name="3"></a>
 
 MySQL访问控制分为两个阶段:
 
 1. 用户连接检查阶段
 2. 执行SQL语句时检查阶段
 
-### 3.1 用户连接时的检查
+### 3.1 用户连接时的检查<a name="3.1"></a>
 
 1. 当用户连接时，MySQL服务器首先从user表里匹配host, user, password，匹配不到则拒绝该连接
 2. 接着检查user表的max_connections和max_user_connections，如果超过上限则拒绝连接
 3. 检查user表的SSL安全连接，如果有配置SSL，则需确认用户提供的证书是否合法只有上面3个检查都通过后，服务器才建立连接，连接建立后，当用户执行SQL语句时，需要做SQL语句执行检查。
 
-### 3.2 执行SQL语句时的检查
+### 3.2 执行SQL语句时的检查<a name="3.2"></a>
 
 1. 从user表里检查max_questions和max_updates，如果超过上限则拒绝执行SQL下面几步是进行权限检查：
 2. 首先检查user表，看是否具有相应的全局性权限，如果有，则执行，没有则继续下一步检查
 3. 接着到db表，看是否具有数据库级别的权限，如果有，则执行，没有则继续下一步检查
 4. 最后到tables_priv, columns_priv, procs_priv表里查看是否具有相应对象的权限从以上的过程我们可以知道，MySQL检查权限是一个比较复杂的过程，所以为了提高性能，MySQL的启动时就会把这5张权限表加载到内存。
 
-## 四. 权限表字段详解
+## 四. 权限表字段详解<a name="4"></a>
 
-### 4.1 user表
+### 4.1 user表<a name="4.1"></a>
 
 user表的权限是基于服务器范围的所有权限，比如用户拥有服务器中所有数据库的select权限那么在user表中的Select_priv列为Y,如果用户单单只拥有某个一数据库的select权限那么user表中的Select_priv为N,会在DB表中记录一条信息在DB表中的select_priv为Y。
 
@@ -170,7 +185,7 @@ desc mysql.user;
 
 ![](../images/31.png)
 
-### 4.2 db表
+### 4.2 db表<a name="4.2"></a>
 
 如果授予一个用户单独某个数据库的权限，就会在db表中记录一条相关信息。
 
@@ -180,7 +195,7 @@ desc mysql.db;
 
 ![](../images/32.png)
 
-### 4.3 tables_priv表
+### 4.3 tables_priv表<a name="4.3"></a>
 
 ```text
 desc mysql.tables_priv;
@@ -190,7 +205,7 @@ desc mysql.tables_priv;
 
 > 上面的Column_priv比较奇怪，因为照理说tables_priv只显示表级别的权限，列级别的权限应该在columns_priv里显示才对。后来查了资料才知道，原来这是为了提高权限检查时的性能，试想一下，权限检查时，如果发现tables_priv.Column_priv为空，就不需要再检查columns_priv表了，这种情况在现实中往往占大多数。
 
-### 4.4 columns_priv表
+### 4.4 columns_priv表<a name="4.4"></a>
 
 ```text
 desc mysql.columns_priv;
@@ -198,7 +213,7 @@ desc mysql.columns_priv;
 
 ![](../images/34.png)
 
-### 4.5 procs_priv表
+### 4.5 procs_priv表<a name="4.5"></a>
 
 ```text
 desc mysql.procs_priv;
@@ -206,9 +221,9 @@ desc mysql.procs_priv;
 
 ![](../images/35.png)
 
-## 五. MySQL 用户和权限管理经验
+## 五. MySQL 用户和权限管理经验<a name="5"></a>
 
-### 5.1 用户管理经验
+### 5.1 用户管理经验<a name="5.1"></a>
 
 1. 尽量使用create user, grant等语句，而不要直接修改权限表。
 
@@ -218,7 +233,7 @@ desc mysql.procs_priv;
 
 匿名用户没有密码，不但不安全，还会产生一些莫名其妙的问题，强烈建议删除。
 
-### 5.2 权限管理经验
+### 5.2 权限管理经验<a name="5.2"></a>
 
 1. 只授予能满足需要的最小权限，防止用户干坏事。比如用户只是需要查询，那就只给select权限就可以了，不要给用户赋予update、insert或者delete权限。
 
