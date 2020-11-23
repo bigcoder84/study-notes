@@ -55,3 +55,8 @@
 [使用javascript实现页面跳转和重新加载](./subfile/_3Javascript实现页面跳转和重新加载.md)
 
 [Ajax实现文件上传](./subfile/_6Ajax上传文件.md)
+
+## 开发中遇到的坑
+
+[Axios_get请求中Json字符串中括号没有编码](./subfile/_25Axios_get请求中Json字符串中括号没有编码.md)
+
