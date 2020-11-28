@@ -54,6 +54,8 @@
 
 [Git](./工具使用/Git/index.md)
 
+[Linux](./工具使用/Linux/CentOS/index.md)
+
 [Mockito](./工具使用/Mockito/index.md)
 
 [Nginx](./工具使用/Nginx/index.md)
