@@ -5,6 +5,7 @@
   - [1.1 MySQL 8.0 之前版本创建用户与授权](#1.1)
   - [1.2 MySQL 8.0 创建用户与授权](#1.2)
   - [1.3 修改密码](#1.3)
+  - [1.4 刷新权限](#1.4)
 - [二. MySQL权限原理](#2)
   - [2.1 用户认证](#2.1)
   - [2.2 MySQL用户权限层级](#2.2)
@@ -76,7 +77,15 @@ mysql> GRANT ALL ON *.* TO 'mike'@'%' WITH GRANT OPTION;
 ### 1.3 修改密码<a name="1.3"></a>
 
 ```shell
-  ALTER USER 'root'@'localhost' IDENTIFIED BY '你的密码';  
+ALTER USER 'root'@'localhost' IDENTIFIED BY '你的密码';  
+```
+
+### 1.4 刷新权限<a name="1.4"></a>
+
+在创建用户或授权后需手动刷新权限缓存。
+
+```shell
+flush privileges;
 ```
 
 
