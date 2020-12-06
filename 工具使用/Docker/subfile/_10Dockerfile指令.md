@@ -91,7 +91,7 @@ ADD --chown=10:11 files* /mydir/
 
 - `shell` 格式：`CMD <命令>`
 - `exec` 格式：`CMD ["可执行文件", "参数1", "参数2"...]`
-- 参数列表格式：`CMD ["参数1", "参数2"...]`。在指定了 `ENTRYPOINT` 指令后，用 `CMD` 指定具体的参数。
+- 参数列表格式：`CMD ["参数1", "参数2"...]`。在指定了 `ENTRYPOINT` 指令后，用于为ENTRYPOINT提供参数。
 
 之前介绍容器的时候曾经说过，Docker 不是虚拟机，容器就是进程。既然是进程，那么在启动容器的时候，需要指定所运行的程序及参数。`CMD` 指令就是用于指定默认的容器主进程的启动命令的。
 
@@ -137,17 +137,17 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ## 四. ENTRYPOINT 入口点<a name="4"></a>
 
-`ENTRYPOINT` 的目的和 `CMD` 一样，都是在指定容器启动程序及参数。`ENTRYPOINT` 在运行时也可以替代，不过比 `CMD` 要略显繁琐，需要通过 `docker run` 的参数 `--entrypoint` 来指定。
+**`ENTRYPOINT` 的目的和 `CMD` 一样，都是在指定容器启动程序及参数。**
 
-`ENTRYPOINT` 的格式和 `RUN` 指令格式一样，分为 `exec` 格式和 `shell` 格式。
-
-当指定了 `ENTRYPOINT` 后，`CMD` 的含义就发生了改变，不再是直接的运行其命令，而是将 `CMD` 的内容作为参数传给 `ENTRYPOINT` 指令，换句话说实际执行时，将变为：
+**当指定了 `ENTRYPOINT` 后，`CMD` 的含义就发生了改变，不再是直接的运行其命令，而是将 `CMD` 的内容作为参数传给 `ENTRYPOINT` 指令**，换句话说实际执行时，将变为：
 
 ```shell
 <ENTRYPOINT> "<CMD>"
 ```
 
 那么有了 `CMD` 后，为什么还要有 `ENTRYPOINT` 呢？这种 `<ENTRYPOINT> "<CMD>"` 有什么好处么？让我们来看几个场景。
+
+`ENTRYPOINT` 在运行时也可以替代，需要通过 `docker run` 的参数 `--entrypoint` 来指定。
 
 ### 场景一：让镜像变成像命令一样使用<a name="4.1"></a>
 
@@ -270,7 +270,7 @@ uid=0(root) gid=0(root) groups=0(root)
 - `ENV <key> <value>`
 - `ENV <key1>=<value1> <key2>=<value2>...`
 
-这个指令很简单，就是设置环境变量而已，无论是后面的其它指令，如 `RUN`，还是运行时的应用，都可以直接使用这里定义的环境变量。
+这个指令很简单，就是设置环境变量而已，无论是**后面的其它指令，如 `RUN`，还是运行时的应用（容器内），都可以直接使用这里定义的环境变量**。
 
 ```shell
 ENV VERSION=1.0 DEBUG=on \
@@ -279,25 +279,15 @@ ENV VERSION=1.0 DEBUG=on \
 
 这个例子中演示了如何换行，以及对含有空格的值用双引号括起来的办法，这和 Shell 下的行为是一致的。
 
-定义了环境变量，那么在后续的指令中，就可以使用这个环境变量。比如在官方 `node` 镜像 `Dockerfile` 中，就有类似这样的代码：
+定义了环境变量，那么在后续的指令中，就可以使用这个环境变量：
 
 ```shell
-ENV NODE_VERSION 7.2.0
-
-RUN curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz" \
-  && curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc" \
-  && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc \
-  && grep " node-v$NODE_VERSION-linux-x64.tar.xz\$" SHASUMS256.txt | sha256sum -c - \
-  && tar -xJf "node-v$NODE_VERSION-linux-x64.tar.xz" -C /usr/local --strip-components=1 \
-  && rm "node-v$NODE_VERSION-linux-x64.tar.xz" SHASUMS256.txt.asc SHASUMS256.txt \
-  && ln -s /usr/local/bin/node /usr/local/bin/nodejs
+FROM centos
+LABEL author="Jindong.Tian" email="bigcoder84@gmail.com"
+ENV TMP_DIR="tmp/"
+COPY ${TMP_DIR} /opt/
+EXPOSE 80/tcp
 ```
-
-在这里先定义了环境变量 `NODE_VERSION`，其后的 `RUN` 这层里，多次使用 `$NODE_VERSION` 来进行操作定制。可以看到，将来升级镜像构建版本的时候，只需要更新 `7.2.0` 即可，`Dockerfile` 构建维护变得更轻松了。
-
-下列指令可以支持环境变量展开： `ADD`、`COPY`、`ENV`、`EXPOSE`、`FROM`、`LABEL`、`USER`、`WORKDIR`、`VOLUME`、`STOPSIGNAL`、`ONBUILD`、`RUN`。
-
-可以从这个指令列表里感觉到，环境变量可以使用的地方很多，很强大。通过环境变量，我们可以让一份 `Dockerfile` 制作更多的镜像，只需使用不同的环境变量即可。
 
 ## 六. 构建参数<a name="6"></a>
 
