@@ -134,3 +134,42 @@ Successfully built 44aa4490ce2c
 从命令的输出结果中，我们可以清晰的看到镜像的构建过程。在 `Step 2` 中，如同我们之前所说的那样，`RUN` 指令启动了一个容器 `9cdc27646c7b`，执行了所要求的命令，并最后提交了这一层 `44aa4490ce2c`，随后删除了所用到的这个容器 `9cdc27646c7b`。
 
 在这里我们指定了最终镜像的名称 `-t nginx:v3`，构建成功后，我们可以像之前运行 `nginx:v2` 那样来运行这个镜像，其结果会和 `nginx:v2` 一样。
+
+## 四. 构建镜像包含的每一层都是可运行的镜像
+
+Docker的UFS（联合文件系统）是Docker的基础，Dockerfile中每一个指令都会生成一个存储层，而这每一层实际上都是一个可以运行的镜像，当我们使用Dockerfile构建镜像出错时，可以运行出错前最后一个层镜像，从而进入容器排错。
+
+```shell
+$ docker build -t echotest .
+Sending build context to Docker daemon 2.048 kB 
+Step 0 : FROM busybox:latest 
+ ---> 4986bf8c1536 
+Step 1 : RUN echo "This should work" 
+ ---> Running in f63045cc086b #1
+This should work 
+ ---> 85b49a851fcc #2
+Removing intermediate container f63045cc086b #3
+Step 2 : RUN /bin/bash -c echo "This won't" 
+ ---> Running in e4b31d0550cd 
+/bin/sh: /bin/bash: not found 
+The command '/bin/sh -c /bin/bash -c echo"This won't"' returned a non-zero 
+code: 127
+```
+
+1. Docker 为了执行我们的指令而创建了一个临时容器，这是该容器的 ID。 
+
+2. 这是由该容器所建立的镜像的 ID。 
+
+3. 临时容器在这里被删除。 
+
+在这个例子中，虽然从错误信息已经可以明显看出问题所在，但是仍然可以利用最后成功 生成的镜像层创建一个镜像出来并执行它，用作调试指令之用。请注意，我们使用的 ID是最后的镜像的ID（85b49a851fcc），而不是最后容器的 ID（e4b31d0550cd）：
+
+```shell
+$ docker run -it --rm 85b49a851fcc
+$ /bin/bash -c "echo hmm"
+/bin/sh: /bin/bash: not found 
+$ /bin/sh -c "echo ahh!"
+ahh! 
+```
+
+现在就可以更清楚地看到问题的原因：busybox 镜像没有包含 bash shell。
