@@ -20,6 +20,8 @@
 
 [Dockerfile指令](./subfile/_10Dockerfile指令.md)
 
+[Docker缓存](./subfile/_18Docker缓存.md)
+
 ## Docker网络
 
 [容器的网络端口映射](./subfile/_6容器的网络端口映射.md)
