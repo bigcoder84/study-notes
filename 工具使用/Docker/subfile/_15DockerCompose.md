@@ -52,7 +52,7 @@ $ sudo pip uninstall docker-compose
 - 使用`docker-compose.yml`定义你的应用具有的服务； 
 - 通过`docker-compose up`命令创建并运行应用；
 
-新建文件夹，在该目录中引入`web-test.jar`，它是一个可执行的web程序。编写Dockerfile：
+新建文件夹，在该目录中引入`web-test.jar`，它是一个可执行的web程序（SpringBoot）。编写Dockerfile：
 
 ```shell
 FROM openjdk:8u111
@@ -114,14 +114,16 @@ blog-web_1  |   '  |____| .__|_| |_|_| |_\__, | / / / /
 blog-web_1  |  =========|_|==============|___/=/_/_/_/
 blog-web_1  |  :: Spring Boot ::                (v2.4.0)
 blog-web_1  | 
-blog-web_1  | 2020-12-08 14:08:11.644  INFO 1 --- [           main] cn.bigcoder.webtest.WebTestApplication   : Starting WebTestApplication v0.0.1-SNAPSHOT using Java 1.8.0_111 on c1418af89cdb with PID 1 (/opt/web-test.jar started by root in /opt)
-blog-web_1  | 2020-12-08 14:08:11.649  INFO 1 --- [           main] cn.bigcoder.webtest.WebTestApplication   : No active profile set, falling back to default profiles: default
-blog-web_1  | 2020-12-08 14:08:13.035  INFO 1 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port(s): 8080 (http)
-blog-web_1  | 2020-12-08 14:08:13.051  INFO 1 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-blog-web_1  | 2020-12-08 14:08:13.052  INFO 1 --- [           main] org.apache.catalina.core.StandardEngine  : Starting Servlet engine: [Apache Tomcat/9.0.39]
-blog-web_1  | 2020-12-08 14:08:13.119  INFO 1 --- [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
-blog-web_1  | 2020-12-08 14:08:13.119  INFO 1 --- [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1368 ms
-blog-web_1  | 2020-12-08 14:08:13.387  INFO 1 --- [           main] o.s.s.concurrent.ThreadPoolTaskExecutor  : Initializing ExecutorService 'applicationTaskExecutor'
-blog-web_1  | 2020-12-08 14:08:13.611  INFO 1 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port(s): 8080 (http) with context path ''
-blog-web_1  | 2020-12-08 14:08:13.630  INFO 1 --- [           main] cn.bigcoder.webtest.WebTestApplication   : Started WebTestApplication in 2.532 seconds (JVM running for 3.084)
+.......................
 ```
+
+需要注意的是，在首次执行`docker-compose up`时会自动构建项目中配置的镜像，但是后面如果我们再使用该命令默认就不会重新构建了，如果我们需要重新构建可以使用`docker build`命令重新构建：
+
+![](../images/27.png)
+
+`docker-compose up`命令启动后默认会创建一个网络，将项目中的所有服务都连接至这个网络中。我们在使用`docker-compose down`停止项目后，会默认删除创建的容器和网络。
+
+
+
+
+
