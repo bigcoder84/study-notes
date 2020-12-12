@@ -34,9 +34,11 @@
 
 ## DockerCompose
 
-[DockerCompose](./subfile/_15DockerCompose.md)
+[DockerCompose基本使用](./subfile/_15DockerCompose.md)
 
 [DockerCompose常用命令](./subfile/_19DockerCompose常用命令.md)
+
+[Compose中的环境变量](./subfile/_21Compose中的环境变量.md)
 
 ## 实战部署
 

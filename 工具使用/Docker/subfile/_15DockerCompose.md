@@ -121,9 +121,19 @@ blog-web_1  |
 
 ![](../images/27.png)
 
-`docker-compose up`命令启动后默认会创建一个网络，将项目中的所有服务都连接至这个网络中。我们在使用`docker-compose down`停止项目后，会默认删除创建的容器和网络。
+## 三. 默认命名规则
 
+### 网络
 
+`docker-compose up`命令启动后默认会创建一个网络（以`文件夹名称_default`格式命名），将项目中的所有服务都连接至这个网络中。我们在使用`docker-compose down`停止项目后，会默认删除创建的容器和网络。
+
+### 容器命名
+
+我们通过`docker ps`或者在`docker-compose.yml`文件所在目录下执行`docker-compose ps`命令，即可看到我们通过`docker-compose`启动的服务，值得注意的是启动的容器名称都是以`文件夹名_服务名_数字`格式命名的。其中文件名就是我们执行`docker-compose up`所在的文件夹名称，服务名就是`docker-compose.yml`文件中配置的服务名，而数字则是服务启动的数量（可以通过scala指定服务启动的数量）。
+
+### 镜像命名
+
+如果我们`docker-compose.yml`定义了镜像构建的动作的话，构建出来的镜像名称默认是`文件夹名_服务名`
 
 
 
