@@ -34,11 +34,13 @@
 
 ## DockerCompose
 
-[DockerCompose基本使用](./subfile/_15DockerCompose.md)
+[基本使用](./subfile/_15DockerCompose.md)
 
-[DockerCompose常用命令](./subfile/_19DockerCompose常用命令.md)
+[常用命令](./subfile/_19DockerCompose常用命令.md)
 
 [Compose中的环境变量](./subfile/_21Compose中的环境变量.md)
+
+[yml配置指令](./subfile/_22yml配置指令.md)
 
 ## 实战部署
 

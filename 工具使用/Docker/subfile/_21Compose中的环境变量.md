@@ -69,7 +69,7 @@ docker-compose run -e DEBUG=1 web python console.py
 docker-compose run -e DEBUG web python console.py
 ```
 
-### env文件
+## 三. env文件
 
 您可以在名为`.env`的环境文件中为Compose文件中引用的或用于配置Compose的任何环境变量**设置默认值**：
 
@@ -107,6 +107,8 @@ services:
     image: 'webapp:v2.0'
 ```
 
+### 3.1 优先级
+
 如果你在多个地方设置了相同的环境变量，那么Compose将按照下列优先级使用这些变量：
 
 1. Compose文件
@@ -141,3 +143,9 @@ $ docker-compose exec api node
 'production'
 ```
 
+### 3.2 语法规则
+
+- Compose期望env文件中的每一行都是向`VAR=VAL`形式的变量声明
+- 如果一行以`#`开头，那么它将被视为注释从而被忽略
+- 空白行会自动忽略
+- Compose对引号没有特殊处理，换句话说**引号将被视为Value的一部分**。
