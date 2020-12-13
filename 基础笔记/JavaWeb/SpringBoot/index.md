@@ -34,3 +34,4 @@
 
 [SpringBoot项目配置文件加密](./subfile/_17SpringBoot项目配置文件加密.md)
 
+[SpringBoot配置文件读取](./subfile/_18SpringBoot配置文件读取.md)
