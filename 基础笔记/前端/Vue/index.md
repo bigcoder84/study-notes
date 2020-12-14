@@ -18,3 +18,4 @@
 
 [使用$refs调用子组件undefined的问题](./subfile/_11使用$refs调用子组件undefined的问题.md)
 
+[watch监控对象内部变化](_12watch监控对象内部变化.md)
