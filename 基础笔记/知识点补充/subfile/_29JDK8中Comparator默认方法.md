@@ -58,3 +58,8 @@ comparing() //构建正序排序的Comparator
 persons.sort(Comparator.comparing(Person::getId).thenComparing(Comparator.comparing(Person::getAge).reversed()));
 ```
 
+在使用Stream中的sort进行排序时，如果对象内部待比较的字段为空就会抛NPE，我们可以这样解决：
+
+```java
+persons.sorted(Comparator.comparing(Person::getId,Comparator.nullsFirst(Integer::compareTo)).reversed())
+```

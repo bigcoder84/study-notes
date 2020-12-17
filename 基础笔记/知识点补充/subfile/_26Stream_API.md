@@ -373,7 +373,7 @@ personList.stream().sorted((o1, o2) -> o1.getAge()-o2.getAge()).forEach(System.o
 personList.stream().sorted(Comparator.comparing(Person::getAge)) //使用Comparator静态方法构造
 ```
 
-
+Comparator的更多用法参考：[JDK8中Comparator默认方法](./_29JDK8中Comparator默认方法.md)
 
 ## 四. 终止操作<a name="终止操作"></a>
 
