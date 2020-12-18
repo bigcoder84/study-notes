@@ -7,3 +7,5 @@
 [exec命令详解](./subfile/_3exec命令详解.md)
 
 [进程与端口号](./subfile/_4进程与端口号.md)
+
+[磁盘容量查看](./subfile/_5磁盘容量查看.md)
