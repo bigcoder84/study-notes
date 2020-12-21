@@ -22,6 +22,8 @@
 
 [Docker缓存](./subfile/_18Docker缓存.md)
 
+[多阶段构建](./subfile/_23多阶段构建.md)
+
 ## Docker网络
 
 [容器的网络端口映射](./subfile/_6容器的网络端口映射.md)
