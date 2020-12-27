@@ -1,18 +1,8 @@
 # Spring循环依赖
 
-> 本文转载至：https://juejin.cn/post/6844904122160775176
-
-## 前言
-
-**Spring**如何解决的循环依赖，是近两年流行起来的一道Java面试题。
-
-其实笔者本人对这类**框架源码题**还是持一定的怀疑态度的。
-
-如果笔者作为面试官，可能会问一些诸如“如果注入的属性为**null**，你会从哪几个方向去排查”这些**场景题**。
-
-那么既然写了这篇文章，闲话少说，发车看看**Spring是如何解决的循环依赖**，以及带大家看清循环依赖的本质是什么。
-
-## 正文
+> 本文参考转载至：https://juejin.cn/post/6844904122160775176
+>
+> https://mp.weixin.qq.com/s?__biz=MzI1NDQ3MjQxNA==&mid=2247494458&idx=1&sn=35d731fa75dcaf2f9ff1420deee1bbac&chksm=e9c6128bdeb19b9d351c27d8460e2c23791b2abf19ef5dabfe6cc7c60f4a63333384a9d4f7e0&mpshare=1&scene=23&srcid=1224kKi705YtNdDVH2gpwNRn&sharer_sharetime=1609058424108&sharer_shareid=e81601a95b901aeca142bbe3b957819a#rd
 
 通常来说，如果问Spring内部如何解决循环依赖，一定是单默认的**单例**Bean中，属性互相引用的场景。
 
@@ -42,39 +32,77 @@ Spring怕你不好猜，就先抛出了**BeanCurrentlyInCreationException**
 
 基于构造器的循环依赖，就更不用说了，[官方文档](https://docs.spring.io/spring/docs/current/spring-framework-reference/core.html#beans-dependency-resolution)都摊牌了，你想让构造器注入支持循环依赖，是不存在的，不如把代码改了。
 
-那么默认单例的属性注入场景，**Spring**是如何支持循环依赖的？
+下面是循环依赖的支持情况：
+
+| 循环依赖形式           | 注入形式                                           | 是否支持循环依赖 |
+| ---------------------- | -------------------------------------------------- | ---------------- |
+| AB相互依赖（循环依赖） | 均采用setter方法注入                               | 是               |
+| AB相互依赖（循环依赖） | 均采用属性自动注入                                 | 是               |
+| AB相互依赖（循环依赖） | 均采用构造器注入                                   | 否               |
+| AB相互依赖（循环依赖） | A中注入B的方式为setter方法，B中注入A的方式为构造器 | 否 |
 
 ## Spring解决循环依赖
 
-首先，Spring内部维护了三个**Map**，也就是我们通常说的**三级缓存**。
+Spring bean 的创建，其本质上还是一个对象的创建，既然是对象，一定要明白一点就是，一个完整的对象包含两部分：`当前对象实例化和对象属性的实例化`。在Spring中，对象的实例化是通过`反射`实现的，而对象的属性则是在对象实例化之后通过一定的方式设置的。这个过程可以按照如下方式进行理解：
 
-笔者翻阅Spring文档倒是没有找到三级缓存的概念，可能也是本土为了方便理解的词汇。
+![](../images/34.png)
 
-在Spring的`DefaultSingletonBeanRegistry`类中，你会赫然发现类上方挂着这三个Map：
 
-- *singletonObjects* 它是我们最熟悉的朋友，俗称“**单例池**”“**容器**”，缓存创建完成单例Bean的地方。
-- *singletonFactories* 映射创建Bean的原始工厂
-- *earlySingletonObjects* 映射Bean的**早期**引用，也就是说在这个Map里的Bean不是完整的，甚至还不能称之为“**Bean**”，只是一个**Instance**.
 
-后两个Map其实是“**垫脚石**”级别的，只是创建Bean的时候，用来借助了一下，创建完成就清掉了。
+大致绘制依赖流程图如下：
 
-所以笔者前文对“三级缓存”这个词有些迷惑，可能是因为注释都是以Cache of开头吧。
+![](../images/35.png)
 
-为什么成为后两个Map为**垫脚石**，假设最终放在**singletonObjects**的Bean是你想要的一杯“*凉白开*”。
+图中getBean()表示调用Spring的`ApplicationContext.getBean()`方法，而该方法中的参数，则表示我们要尝试获取的目标对象。图中的`黑色箭头`表示一开始的方法调用走向，走到最后，返回了Spring中缓存的A对象之后，表示递归调用返回了，此时使用`绿色箭头`表示。
 
-那么Spring准备了两个杯子，即*singletonFactories*和*earlySingletonObjects*来回“倒腾”几番，把热水晾成“*凉白开*”放到**singletonObjects**中。
+从图中我们可以很清楚的看到，B对象的a属性是在第三步中注入的半成品A对象，而A对象的b属性是在第二步中注入的成品B对象，此时半成品的A对象也就变成了成品的A对象，因为其属性已经设置完成了。
 
-闲话不说，都浓缩在图里：
+到这里，Spring整个解决循环依赖问题的实现思路已经比较清楚了。对于整体过程只要理解两点：
 
-![](../images/32.gif)
+- Spring是通过递归的方式获取目标bean及其所依赖的bean的；
+- Spring实例化一个bean的时候，是分两步进行的，首先实例化目标bean，然后为其注入属性。
 
-上面的是一张GIF，如果你没看到可能还没加载出来。*三秒一帧，不是你电脑卡*。
+结合这两点，也就是说，`Spring在实例化一个bean的时候，是首先递归的实例化其所依赖的所有bean，直到某个bean没有依赖其他bean，此时就会将该实例返回，然后反递归的将获取到的bean设置为各个上层bean的属性的`。
 
-笔者画了17张图**简化表述**了Spring的主要步骤，GIF上方即是刚才提到的三级缓存，下方展示是**主要**的几个方法。
+## Spring循环依赖进阶
 
-当然了，这个地步你肯定要结合[Spring源码](https://github.com/spring-projects/spring-framework)来看，要不肯定看不懂。
+一个对象一般创建过程有3部分组成：
 
-如果你只是想大概了解，或者面试，可以先记住笔者上文提到的“**三级缓存**”，以及下文即将要说的本质。
+1. 实例化：简单理解就是new了一个对象
+2. 属性注入：为实例化中new出来的对象填充属性
+3. 初始化：执行aware接口中的方法，初始化方法，完成AOP代理
+
+Spring是通过**「三级缓存」**来解决上述问题的：
+
+- `singletonObjects`：一级缓存 存储的是所有创建好了的单例Bean
+- `earlySingletonObjects`：完成实例化，但是还未进行属性注入及初始化的对象
+- `singletonFactories`：提前暴露的一个单例工厂，二级缓存中存储的就是从这个工厂中获取到的对象
+
+然后接下来说下普通循环依赖跟带AOP的循环依赖。
+
+### 普通循环依赖图
+
+![](../images/36.png)
+
+
+
+结论：没有进行AOP的Bean间的循环依赖 从上图分析可以看出，这种情况下**「三级缓存根本没用」**！所以不会存在什么提高了效率的说法。
+
+### 带AOP循环依赖
+
+带AOP的跟不带AOP的其实几乎一样，只是在三级缓存中存放的是函数式接口，在需要调用时直接返回代理对象。三级缓存存在的意义：
+
+只有真正发生循环依赖的时候，才去提前生成代理对象，否则只会创建一个工厂并将其放入到三级缓存中，但是不会去通过这个工厂去真正创建对象
+
+![](../images/37.png)
+
+
+
+是否可以用二级缓存而不用三级缓存？
+
+答案：不可以，违背Spring在结合AOP跟Bean的生命周期的设计！Spring结合AOP跟Bean的生命周期(看下图)本身就是通过`AnnotationAwareAspectJAutoProxyCreator`这个后置处理器来完成的，在这个后置处理的postProcessAfterInitialization方法中对初始化后的Bean完成AOP代理。如果出现了循环依赖，那没有办法，只有给Bean先创建代理，但是没有出现循环依赖的情况下，设计之初就是让Bean在生命周期的**「最后一步完成代理而不是在实例化后就立马完成代理」**。
+
+![](../images/38.png)
 
 ## 循环依赖的本质
 
@@ -190,7 +218,7 @@ class Solution {
             }
             map.put(nums[i], i);
         }
-        throw new IllegalArgumentException("No    two    sum    solution");
+        throw new IllegalArgumentException("No two sum solution");
     }
 
 ```
