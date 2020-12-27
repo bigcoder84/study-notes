@@ -18,3 +18,4 @@
 
 [Spring事务的回滚](./subfile/_8Spring事务回滚.md)
 
+[Spring循环依赖](./subfile/_20Spring循环依赖.md)
