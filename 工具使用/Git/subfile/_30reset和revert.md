@@ -62,6 +62,25 @@ develop将a分支合并后，想要不留痕迹的撤回合并。这个时候用
 4.  --merge 和--hard类似，只不过如果在执行reset命令之前你有改动一些文件并且未提交，merge会保留你的这些修改，hard则不会。【注：如果你的这些修改add过或commit过，merge和hard都将删除你的提交】
 5.  --keep 和--hard类似，执行reset之前改动文件如果是a分支修改了的，会提示你修改了相同的文件，不能合并。如果不是a分支修改的文件，会移除缓存区。git status还是可以看到
 
+### 2.2 巧用reset
+
+**提交完成后，撤销提交**
+
+```shell
+git reset HEAD^
+```
+
+- git reset 默认参数是--mixed
+- `HEAD^`表示回退到当前指针的上一个提交
+
+**撤销暂存区的所有修改**
+
+```shell
+git reset --hard HEAD
+```
+
+
+
 ## 三. git revert
 
 还是这个例子
