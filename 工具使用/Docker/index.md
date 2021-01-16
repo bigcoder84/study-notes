@@ -48,6 +48,12 @@
 
 [DockerSwarm简介](./subfile/_24DockerSwarm简介.md)
 
+[DockerSwarm架构分析](./subfile/_28DockerSwarm架构分析.md)
+
+[DockerSwarm创建集群](./subfile/_25DockerSwarm创建集群.md)
+
+[创建集群服务](./subfile/_26DockerSwarm创建集群服务.md)
+
 ## 实战部署
 
 [Docker实践-部署Nginx](./subfile/_11Docker实践-部署Nginx.md)
@@ -59,3 +65,4 @@
 ## 其他
 
 [详解Docker进程](./subfile/_17详解Docker进程.md)
+

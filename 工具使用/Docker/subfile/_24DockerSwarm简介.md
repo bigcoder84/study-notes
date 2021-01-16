@@ -1,16 +1,20 @@
 # Docker Swarm简介
 
 > 文章转载至：https://www.cnblogs.com/ityouknow/p/8903975.html
-
-实践中会发现，生产环境中使用单个 Docker 节点是远远不够的，搭建 Docker 集群势在必行。然而，面对 Kubernetes, Mesos 以及 Swarm 等众多容器集群系统，我们该如何选择呢？它们之中，Swarm 是 Docker 原生的，同时也是最简单，最易学，最节省资源的，比较适合中小型公司使用。
+>
+> https://zhoujinl.github.io/2018/10/19/docker-swarm-manager-ha/  作者：[Jalon Zhou](https://zhoujinl.github.io/)
 
 ## 一. Docker Swarm 介绍
 
-Swarm 在 Docker 1.12 版本之前属于一个独立的项目，在 Docker 1.12 版本发布之后，该项目合并到了 Docker 中，成为 Docker 的一个子命令。目前，Swarm 是 Docker 社区提供的唯一一个原生支持 Docker 集群管理的工具。它可以把多个 Docker 主机组成的系统转换为单一的虚拟 Docker 主机，使得容器可以组成跨主机的子网网络。
+`Docker Swarm` 是使用 [`SwarmKit`](https://github.com/docker/swarmkit/) 构建的原生集群管理和编排工具。其主要作用是把若干台Docker主机抽象为一个整体，并且通过一个入口统一管理这些Docker主机上的各种Docker资源。Swarm和Kubernetes比较类似，但是更加轻量，具有的功能也较kubernetes更少一些。
+
+Docker v1.12 是一个非常重要的版本，Docker 重新实现了集群的编排方式。在此之前，提供集群功能的 Docker Swarm 是一个单独的软件，而且依赖外部数据库（比如 Consul、etcd 或 Zookeeper）。从 v1.12 开始，Docker Swarm 的功能已经完全与 Docker Engine 集成，要管理集群，只需要启动 Swarm Mode。安装好 Docker，Swarm 就已经在那里了，服务发现也在那里了（不需要安装 Consul 等外部数据库）。
 
 Docker Swarm 是一个为 IT 运维团队提供集群和调度能力的编排工具。用户可以把集群中所有 Docker Engine 整合进一个「虚拟 Engine」的资源池，通过执行命令与单一的主 Swarm 进行沟通，而不必分别和每个 Docker Engine 沟通。在灵活的调度策略下，IT 团队可以更好地管理可用的主机资源，保证应用容器的高效运行。
 
 ![](../images/33.png)
+
+官方网站：https://docs.docker.com/engine/swarm/
 
 ## 二. Docker Swarm 优点
 
@@ -35,7 +39,7 @@ Swarm 对 Docker API 完全支持，这意味着它能为使用不同 Docker 工
 
 **综上所述，Docker Swarm 提供了一套高可用 Docker 集群管理的解决方案，完全支持标准的 Docker API，方便管理调度集群 Docker 容器，合理充分利用集群主机资源**。
 
-## 三. 相关概念
+## 三. Swarm 基本概念
 
 ### 3.1 节点
 
@@ -58,3 +62,12 @@ Swarm 对 Docker API 完全支持，这意味着它能为使用不同 Docker 工
 两种模式通过 docker service create 的 --mode 参数指定。下图展示了容器、任务、服务的关系。
 
 ![](../images/35.png)
+
+### 3.3 负载均衡
+
+`manager`集群管理器使用 **ingress load balancing（入口负载均衡）** 来对外公开群集提供的服务。`manager`可以自动为**PublishedPort** 分配服务，也可以手动配置。如果未指定端口，则swarm管理器会为服务分配30000-32767范围内的端口。
+
+外部组件（例如云负载平衡器）可以访问群集中任何节点的PublishedPort上的服务，无论该节点当前是否正在运行该服务的任务。群集中的所有节点都将入口连接到正在运行的任务实例。
+
+Swarm模式有一个内部DNS组件，可以自动为swarm中的每个服务分配一个DNS条目。群集管理器使用**内部负载平衡**来根据服务的DNS名称在群集内的服务之间分发请求。
+

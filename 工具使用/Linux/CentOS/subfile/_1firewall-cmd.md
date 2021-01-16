@@ -30,7 +30,7 @@ Linux上新用的防火墙软件，跟iptables差不多的工具
 
 - 禁止firewall开机启动
   
-`systemctl disable firewalld`
+  `systemctl disable firewalld`
   
 - 开放一段端口
   `firewall-cmd --zone=public --add-port=40000-45000/tcp --permanent`
