@@ -11,14 +11,14 @@
       - [dockerfile](#dockerfile)
       - [args](#args)
       - [cache_from](#cache_from)
-      - [labels](#labels)
+      - [labels](#ceontext_labels)
       - [network](#network)
     - [command](#command)
     - [container_name](#container_name)
     - [depends_on](#depends_on)
     - [deploy](#deploy)
       - [endpoint_mode](#endpoint_mode)
-      - [labels](#labels)
+      - [labels](#deploy_labels)
       - [mode](#mode)
       - [placement](#placement)
       - [max_replicas_per_node](#max_replicas_per_node)
@@ -30,6 +30,18 @@
     - [devices](#devices)
     - [dns](dns)
     - [dns_search](#dns_search)
+    - [entrypoint](#entrypoint)
+    - [env_file](#env_file)
+    - [environment](#environment)
+    - [expose](#expose)
+    - [external_links](#external_links)
+    - [extra_hosts](#extra_hosts)
+    - [healthcheck](#healthcheck)
+    - [image](#image)
+    - [init](#init)
+    - [isolation](#isolation)
+    - [labels](#labels)
+    - [network_mode](#network_mode)
 
 ## 一. 配置文件基本结构<a name="1"></a>
 
@@ -189,7 +201,7 @@ Compose会在./dir目录下构建一个名为webapp，标签为tag的镜像。
 
 > 使用docker stack deploy时的注意事项：在swarm mode下部署堆栈时，build配置项被忽略。因为docker stack命令不会在部署之前构建镜像。
 
-### context<a name="context"></a>
+#### context<a name="context"></a>
 
 指定包含Dockerfile的目录路径或git仓库url。该目录是发送给Docker守护进程（Daemon）的构建上下文（context）。当配置的值是相对路径时，它将被解释为相对于Compose配置文件的路径。例如：
 
@@ -261,7 +273,7 @@ build:
     - corp/web_app:3.14
 ```
 
-#### labels<a name="labels"></a>
+#### labels<a name="ceontext_labels"></a>
 
 > 在3.3版的配置文件格式中加入
 
@@ -402,7 +414,7 @@ services:
       endpoint_mode: vip
 ```
 
-#### labels<a name="labels"></a>
+#### labels<a name="deploy_labels"></a>
 
 指定服务的标签。这些标签仅在服务上设置，而不在服务的任何容器上设置。例如：
 
@@ -610,4 +622,246 @@ dns_search:
   - dc2.example.com
 ```
 
-### entrypoint
+### entrypoint<a name="entrypoint"></a>
+
+覆盖默认的入口命令。注意设置entrypoint会覆盖所有在服务镜像上使用Dockerfile的ENTRYPOINT指令设置的默认入口命令，并清除掉服务镜像上任何使用Dockerfile的CMD指令设置的启动容器时默认执行的命令。可以写成字符串形式，例如：
+
+```yaml
+entrypoint: /code/entrypoint.sh
+```
+
+也可以写成JSON数组形式，例如：
+
+```yaml
+entrypoint: ["php", "-d", "memory_limit=-1", "vendor/bin/phpunit"]
+```
+
+### env_file<a name="env_file"></a>
+
+从文件中获取环境变量。可以是一个值或一个列表。例如：
+
+```yaml
+env_file: .env
+env_file:
+  - ./common.env
+  - ./apps/web.env
+  - /opt/runtime_opts.env
+```
+
+如果指定了Compose配置文件，env_file路径为相对于该文件所在目录的路径。如果环境文件中设置有与environment选项同名的变量，将以后者为准，无论这些变量的值是空还是未定义。其中环境文件每行都以VAR=VAL格式声明环境变量，以#开头的行被解析为注释，和空行一样将被忽略。环境文件示例如下：
+
+```yaml
+# Set Rails/Rack environment
+RACK_ENV=development
+```
+
+如果变量的值被引号引起来（通常是shell变量），则引号也包含在传递给Compose的值中。如果以列表的形式同时指定了多个环境文件，列表中文件的顺序对于给多次出现的环境变量确定值十分重要，且列表中的文件是从上到下处理的。如果指定了多个环境文件且有至少两个文件声明了相同名称但不同值的环境变量，那么指定列表中顺序靠下的文件将覆盖顺序靠上的文件中的相同名称的环境变量的值。例如：
+
+```yaml
+services:
+  some-service:
+    env_file:
+      - a.env
+      - b.env
+```
+
+如果a.env中有VAR=1，b.env中有VAR=2，则最终$VAR=2。
+
+> 注意：这里所说的环境变量是针对宿主机的Compose而言的，如果在服务中指定了build配置项，那么这些变量并不会进入构建过程中，如果要定义构建时用的环境变量首选build的arg子选项。
+
+### environment<a name="environment"></a>
+
+设置环境变量。可以使用数组或字典两种格式。任何布尔类型的值都必须用引号引起来，以便解析器将它们解释为字符串。值设置了键没设置值的环境变量可以在运行Compose的主机环境中解析它们的值，这对于使用密钥和特定于主机的值用处很大。例如：
+
+```yaml
+environment:
+  RACK_ENV: development
+  SHOW: 'true'
+  SESSION_SECRET:
+environment:
+  - RACK_ENV=development
+  - SHOW=true
+  - SESSION_SECRET
+```
+
+> 注意：这里所说的环境变量是针对宿主机的Compose而言的，如果在服务中指定了build配置项，那么这些变量并不会进入构建过程中，如果要定义构建时用的环境变量首选build的arg子选项。
+
+### expose<a name="expose"></a>
+
+暴露指定端口，但不映射到宿主机，只被连接的服务访问。只能指定内部端口。例如：
+
+```yaml
+expose:
+  - "3000"
+  - "8000"
+```
+
+### external_links<a name="external_links"></a>
+
+链接到docker-compose.yml外部的容器，甚至并非Compose管理的外部容器，特别是对于提供共享或公共服务的容器。在同时指定容器名称和链接别名（CONTAINER:ALIAS）时，external_links与旧版本中的配置项links有类似的语义。例如：
+
+```yaml
+external_links:
+  - redis_1
+  - project_db_1:mysql
+  - project_db_1:postgresql
+```
+
+> 注意：Compose项目里面的容器连接到外部容器的前提条件是外部容器中必须至少有一个容器连接到与项目内的服务的同一个网络里面。建议使用networks代替旧版本中的配置项Links。
+
+> 使用docker stack deploy时的注意事项：在swarm mode下部署堆栈时，external_links配置项将被忽略。
+
+### extra_hosts<a name="extra_hosts"></a>
+
+添加主机名到IP的映射。使用和Docker客户端中的--add-host的参数一样的值。例如：
+
+```yaml
+extra_hosts:
+  - "somehost:162.242.195.82"
+  - "otherhost:50.31.209.229"
+```
+
+会在启动后的服务容器中的/etc/hosts文件中添加如下两条具有主机名和IP地址的条目：
+
+```yaml
+162.242.195.82  somehost
+50.31.209.229   otherhost
+```
+
+### healthcheck<a name="healthcheck"></a>
+
+配置运行检查以确定服务容器是否健康。支持以下配置选项：
+
+- test：指定健康检测的方法。
+- interval：启动容器到进行健康检查的间隔时间以及两次健康检查的间隔时间。
+- timeout：单次健康检查的超时时间，超过该时间该次健康检查失败。
+- retries：健康检查失败后的最大重试次数，重试了最大次数依然失败，容器将被视为unhealthy。
+- start_period：为需要时间引导的容器提供的初始化时间，在此期间检查失败将不计入最大重试次数，但是如果在启动期间健康检查成功，则会将容器视为已启动，并且所有连续失败将计入最大重试次数。
+
+其中interval、timeout和start_period都被指定为持续时间（durations）。start_period是在3.4版的配置文件格式中加入。test必须是字符串或JSON数组格式。如果是JSON数组格式，第一项必须是NONE、CMD或CMD-SHELL其中之一。如果是字符串格式，则等效于指定CMD-SHELL后跟该字符串的JSON数组格式。
+
+例如以下示例，指定检测方法为访问http://localhost，健康检查间隔时间为1m30s，健康检查超时时间为10s，重试次数为3，启动容器后等待健康检查的初始化时间为40s：
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost"]
+  interval: 1m30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+```
+
+例如以下示例，两种形式等效：
+
+```yamlyaml
+test: ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+test: curl -f https://localhost || exit 1
+```
+
+使用disable: true可以设置镜像禁用所有健康检查，相对于test: ["NONE"]。例如：
+
+```yaml
+healthcheck:
+  disable: true
+```
+
+### image<a name="image"></a>
+
+指定要从中启动容器的镜像。可以写仓库/标签（repository/tag）或镜像ID。示例如下：
+
+```yaml
+image: redis
+image: ubuntu:18.04
+image: tutum/influxdb
+image: example-registry.com:4000/postgresql
+image: a4bc65fd
+```
+
+如果镜像不存在，Compose会自动拉取镜像，除非指定了build，这种情况下会使用指定选项构建镜像并给镜像打上指定标签。
+
+### init<a name="init"></a>
+
+> 在3.7版的配置文件格式中加入
+
+在容器内运行一个初始化程序以转发信号并获取进程。设置为true即可为服务启动此功能。例如：
+
+```yaml
+version: "3.8"
+services:
+  web:
+    image: alpine:latest
+    init: true
+```
+
+> 注意：默认使用的初始化二进制文件是Tini，并安装在主机守护进程的/usr/libexec/docker-init。可以通过Daemon configuration file中的init-path将守护进程配置为使用自定义的初始化二进制文件 。
+
+### isolation<a name="isolation"></a>
+
+指定容器的隔离技术。Linux上只支持default值。Windows上支持default、process和hyperv这三个值。
+
+### labels<a name="labels"></a>
+
+将元数据以标签的形式添加到容器中。可以使用数组或字典两种格式。例如：
+
+```yaml
+labels:
+  com.example.description: "Accounting webapp"
+  com.example.department: "Finance"
+  com.example.label-with-empty-value: ""
+labels:
+  - "com.example.description=Accounting webapp"
+  - "com.example.department=Finance"
+  - "com.example.label-with-empty-value"
+```
+
+### logging<a name="logging"></a>
+
+服务的日志配置。例如：
+
+```yaml
+logging:
+  driver: syslog
+  options:
+    syslog-address: "tcp://192.168.0.42:123"
+```
+
+driver配置项指定服务容器的日志驱动，与docker run中的--log-driver选项一样。默认值为json-file，这里列举三种日志驱动类型：
+
+```yaml
+driver: "json-file"
+driver: "syslog"
+driver: "none"
+```
+
+使用options配置项为日志驱动指定日志记录选项，与docker run中的--log-opt选项一样。例如：
+
+```yaml
+driver: "syslog"
+options:
+  syslog-address: "tcp://192.168.0.42:123"
+```
+
+默认日志驱动json-file具有限制日志存储量的选项。例如以下示例，max-size设置最大存储大小为200k，max-file设置存储的最大文件数为10，随着日志超过最大限制，将删除较旧的日志文件以允许存储新日志：
+
+```yaml
+options:
+  max-size: "200k"
+  max-file: "10"
+```
+
+### network_mode<a name="network_mode"></a>
+
+设置网络模式。使用和Docker客户端中的--network的参数一样的值，格式为service:[service name]。可以指定使用服务或者容器的网络。示例如下：
+
+```yaml
+network_mode: "bridge"
+network_mode: "host"
+network_mode: "none"
+network_mode: "service:[service name]"
+network_mode: "container:[container name/id]"
+```
+
+注意事项：
+
+- 在swarm mode下部署堆栈时，该选项将被忽略。
+- network_mode: "host"不能与links配置项混用。
