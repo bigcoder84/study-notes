@@ -42,7 +42,7 @@
 
 [Compose中的环境变量](./subfile/_21Compose中的环境变量.md)
 
-[yml配置指令](./subfile/_22yml配置指令.md)
+[DockerCompose配置指令](./subfile/_22DockerCompose配置指令.md)
 
 ## Docker Swarm
 

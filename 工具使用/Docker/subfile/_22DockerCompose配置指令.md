@@ -42,6 +42,10 @@
     - [isolation](#isolation)
     - [labels](#labels)
     - [network_mode](#network_mode)
+    - [pid](#pid)
+    - [ports](#ports)
+    - [restart](#restart)
+    - [secrets](#secrets)
 
 ## 一. 配置文件基本结构<a name="1"></a>
 
@@ -530,8 +534,8 @@ services:
 
 - condition：重启策略。值可以为none、on-failure或any，默认为any。
 - delay：尝试重启的等待时间。指定为持续时间（durations）。默认值为0。
-- max_attempts：重启最多尝试的次数，超过该次数将放弃。默认为永不放弃。如果在window配置的时间之内未成功重启，则此次尝试不计入max_attempts的值。
-- window：在决定重启是否成功之前的等待时间。指定为持续时间（durations）。默认值为立即决定。
+- max_attempts：**重启最多尝试的次数**，超过该次数将放弃。默认为永不放弃。如果在window配置的时间之内未成功重启，则此次尝试不计入max_attempts的值。
+- window：设置容器重启超时时间（默认值：0）。
 
 例如，指定重启策略为失败时重启，等待5s，重启最多尝试3次，决定重启是否成功前的等待时间为120s：
 
@@ -865,3 +869,68 @@ network_mode: "container:[container name/id]"
 
 - 在swarm mode下部署堆栈时，该选项将被忽略。
 - network_mode: "host"不能与links配置项混用。
+
+### pid<a name="pid"></a>
+
+跟主机系统共享进程命名空间。
+
+```yaml
+pid: "host"
+```
+
+将PID模式设置为主机PID模式，打开该选项的容器之间，以及容器和宿主机操作系统之间可以通过进程ID来相互访问和操作。
+
+### ports<a name="ports"></a>
+
+暴露端口。注意端口映射与network_mode: host不兼容。支持short和long两种格式的语法。short语法可以使用HOST:CONTAINER的格式指定端口映射，也可以指定容器端口，宿主机会随机选择临时端口进行映射。例如：
+
+```yaml
+ports:
+  - "3000"
+  - "3000-3005"
+  - "8000:8000"
+  - "9090-9091:8080-8081"
+  - "49100:22"
+  - "127.0.0.1:8001:8001"
+  - "127.0.0.1:5000-5010:5000-5010"
+  - "6060:6060/udp"
+  - "12400-12500:1240"
+```
+
+> 注意：当使用HOST:CONTAINE格式来映射端口时，如果使用的容器端口小于60可能会得到错误得结果，因为YAML将会解析xx:yy这种数字格式为60进制，因此建议始终采用字符串格式来指定端口映射。
+
+long语法支持配置short语法中不支持的附加字段。这些附加字段如下：
+
+- target：指定容器内的端口。
+- published：指定公开的端口。
+- protocol：指定端口协议（tcp或udp）。
+- mode：使用host在每个节点公开一个主机端口，或使用ingress对swarm mode端口进行负载均衡。
+
+示例如下：
+
+```yaml
+ports:
+  - target: 80
+    published: 8080
+    protocol: tcp
+    mode: host
+```
+
+> long语法在3.2版的配置文件格式中加入
+
+### restart<a name="restart"></a>
+
+指定重启策略。例如想要在容器退出时总是会重启容器，指定以下重启策略：
+
+```yaml
+restart: always
+```
+
+一共支持以下重启策略：
+
+- no：在任何情况下都不会重启容器。默认的重启策略。
+- always：在容器退出时总是重启容器。
+- on-failure：在容器以非0状态码退出时才会重启。
+- unless-stopped：在容器退出时总是重启容器，但是不考虑在Docker守护进程启动时就已经停止了的容器。
+
+> 使用docker stack deploy时的注意事项：在swarm mode下部署堆栈时，restart配置项将被忽略。
