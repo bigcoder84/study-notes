@@ -50,7 +50,7 @@
 
 [DockerSwarm架构分析](./subfile/_28DockerSwarm架构分析.md)
 
-[DockerSwarm创建集群](./subfile/_25DockerSwarm创建集群.md)
+[DockerSwarm集群创建与管理](./subfile/_25DockerSwarm集群创建与管理.md)
 
 [创建集群服务](./subfile/_26DockerSwarm创建集群服务.md)
 
