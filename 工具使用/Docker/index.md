@@ -54,6 +54,8 @@
 
 [创建集群服务](./subfile/_26DockerSwarm创建集群服务.md)
 
+[使用stack命令部署服务](./subfile/_29stack命令.md)
+
 ## 实战部署
 
 [Docker实践-部署Nginx](./subfile/_11Docker实践-部署Nginx.md)
