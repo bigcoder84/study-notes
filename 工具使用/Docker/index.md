@@ -54,6 +54,8 @@
 
 [创建集群服务](./subfile/_26DockerSwarm创建集群服务.md)
 
+[弹性伸缩](./subfile/_27弹性伸缩.md)
+
 [使用stack命令部署服务](./subfile/_29stack命令.md)
 
 ## 实战部署
