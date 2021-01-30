@@ -26,6 +26,18 @@
 
 [辅助工具](./基础笔记/JavaWeb/辅助工具/index.md)
 
+## 分布式与微服务
+
+[分布式思想](./分布式与微服务/分布式思想/index.md)
+
+[Zookeeper](./分布式与微服务/Zookeeper/index.md)
+
+[Dubbo](./分布式与微服务/Dubbo/index.md)
+
+[Kafka](./分布式与微服务/Kafka/index.md)
+
+[Redisson](./分布式与微服务/Redisson/index.md)
+
 ## 数据库
 
 [MySQL数据库](./基础笔记/数据库/MySQL/index.md)
@@ -48,8 +60,6 @@
 
 [深入Java虚拟机](./基础笔记/深入Java虚拟机/index.md)
 
-[分布式与微服务技术体系](./分布式与微服务/index.md)
-
 ## 工具
 
 [Git](./工具使用/Git/index.md)
@@ -70,9 +80,9 @@
 
 [IDEA](./工具使用/IDEA/index.md)
 
-[VMware系统安装](./工具使用/VMware系统安装笔记/index.md)
+[VMware](./工具使用/VMware系统安装笔记/index.md)
 
-[Hexo博客系统搭建详细教程](./工具使用/Hexo博客搭建/index.md)
+[Hexo](./工具使用/Hexo博客搭建/index.md)
 
 [其它工具](./工具使用/其它工具/index.md)
 
