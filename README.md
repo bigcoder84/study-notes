@@ -82,7 +82,7 @@
 
 [VMware](./工具使用/VMware系统安装笔记/index.md)
 
-[Hexo](./工具使用/Hexo博客搭建/index.md)
+[Hexo](./工具使用/Hexo/index.md)
 
 [其它工具](./工具使用/其它工具/index.md)
 
