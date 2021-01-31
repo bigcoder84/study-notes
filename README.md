@@ -24,6 +24,8 @@
 
 [MyBatis](./基础笔记/JavaWeb/MyBatis/index.md)
 
+[WEB安全](./基础笔记/JavaWeb/WEB安全/index.md)
+
 [辅助工具](./基础笔记/JavaWeb/辅助工具/index.md)
 
 ## 分布式与微服务
