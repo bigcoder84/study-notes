@@ -1,4 +1,6 @@
-## IDEA使用笔记
+# IDEA使用笔记
+
+## 一. IDEA使用
 
 #### 常规使用
 
@@ -46,8 +48,12 @@
 
 [IDEA酷炫插件推荐](./subfile/_12IDEA酷炫插件推荐.md)
 
-
-
 ### IDEA使用问题
 
 [解决IDEA抽风报错](./subfile/_15解决IDEA抽风报错.md)
+
+
+
+## 二. 插件开发
+
+[IDEA导入插件项目](./subfile/_21IDEA导入插件项目.md)

@@ -26,7 +26,7 @@
 
 [SpringBoot聚合项目创建时，父工程不再是spring-boot-starter-parent如何解决](./subfile/_13SpringBoot聚合项目创建时，父工程不再是spring-boot-starter-parent如何解决.md)
 
-[SpringBoot解决跨域问题](./subfile/_14SpringBoot解决跨域问题.md)
+[SpringBoot使用CORS解决跨域问题](./subfile/_14SpringBoot使用CORS解决跨域问题.md)
 
 [SpringBoot手动回滚事务](./subfile/_15SpringBoot手动回滚事务.md)
 

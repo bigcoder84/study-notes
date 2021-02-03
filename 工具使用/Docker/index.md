@@ -42,7 +42,7 @@
 
 [Compose中的环境变量](./subfile/_21Compose中的环境变量.md)
 
-[yml配置指令](./subfile/_22yml配置指令.md)
+[DockerCompose配置指令](./subfile/_22DockerCompose配置指令.md)
 
 ## Docker Swarm
 
@@ -50,9 +50,13 @@
 
 [DockerSwarm架构分析](./subfile/_28DockerSwarm架构分析.md)
 
-[DockerSwarm创建集群](./subfile/_25DockerSwarm创建集群.md)
+[DockerSwarm集群创建与管理](./subfile/_25DockerSwarm集群创建与管理.md)
 
 [创建集群服务](./subfile/_26DockerSwarm创建集群服务.md)
+
+[弹性伸缩](./subfile/_27弹性伸缩.md)
+
+[使用stack命令部署服务](./subfile/_29stack命令.md)
 
 ## 实战部署
 
