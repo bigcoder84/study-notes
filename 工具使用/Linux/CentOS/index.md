@@ -11,3 +11,5 @@
 [磁盘容量查看](./subfile/_5磁盘容量查看.md)
 
 [vim查找与替换](./subfile/_6vim查找与替换)
+
+[find命令查找文件](./subfile/_7find命令查找文件.md)
