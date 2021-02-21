@@ -21,3 +21,5 @@
 [watch监控对象内部变化](_12watch监控对象内部变化.md)
 
 [自定义组件实现v-model绑定值](./subfile/_13自定义组件实现v-model绑定值.md)
+
+[Vue+ElementUI实现表单动态渲染](./subfile/_14Vue+ElementUI实现表单动态渲染.md)
