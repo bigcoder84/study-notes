@@ -1,8 +1,8 @@
 # SkyWalking安装
 
-
-
 ## 一. 安装Elasticsearch7
+
+由于SkyWalking默认采用H2数据库，它是一个用[Java](https://en.wikipedia.org/wiki/Java_(programming_language))编写[的关系数据库管理系统](https://en.wikipedia.org/wiki/Relational_database_management_system)，而在生产环境中更推荐使用Elasticsearch对Skywalking进行持久化支持。当然，如果你只是单纯测试一下Skywalking那完全没有必要搭建ES环境，直接跳过此节，进行“Skywalking安装“中的第1,3,4,5步即可。
 
 ### 第一步：下载
 
@@ -80,6 +80,8 @@ curl http://localhost:9200
 
 https://archive.apache.org/dist/skywalking/
 
+![](../images/9.png)
+
 下载解压后，目录结构如下：
 
 ![](../images/7.png)
@@ -132,7 +134,11 @@ server:
 
 ![](../images/8.png)
 
+本文所需要涉及的安装包：
 
+>链接：https://pan.baidu.com/s/1jFwjoJ9X5LcvOHe4Buo4Aw 
+>提取码：x7u1 
+>复制这段内容后打开百度网盘手机App，操作更方便哦
 
 
 
