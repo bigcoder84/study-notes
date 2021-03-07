@@ -1,5 +1,7 @@
 ### 数据库
 
+[CentOS8安装MySQL](./subfile/_12CentOS8安装MySQL.md)
+
 [使用MySQL数据库时为什么永远不要UTF-8编码](./subfile/_1使用MySQL数据库时为什么永远不要UTF-8编码.md)
 
 [事务并发带来的问题](./subfile/_2事务的并发问题.md)
