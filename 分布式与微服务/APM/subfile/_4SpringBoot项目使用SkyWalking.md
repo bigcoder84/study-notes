@@ -1,5 +1,7 @@
 # SpringBoot项目使用Skywalking
 
+## 一. 基本配置
+
 ### 第一步：将agent探针拷贝至Springboot项目部署的机器
 
 Skywalking安装目录下的agent目录就是内置的agent探针
@@ -21,10 +23,12 @@ agent.service_name=${SW_AGENT_NAME:user-dl}
 
 其中`${A:B}`的意思是，优先读取系统环境变量中A的值，如果为空则使用值B
 
+实际上这一步可以使用下一节 [覆盖配置](./_5覆盖配置.md) 代替修改配置文件的操作
+
 ### 第三步：修改SpringBoot启动命令
 
 ```java
 java -javaagent:/opt/projects/user-dl/agent/skywalking-agent.jar -jar user-dl.jar
 ```
 
-需要在启动时使用`-javaagent`参数指定探针文件位置。	
+需要在启动时使用`-javaagent`参数指定探针文件位置。
