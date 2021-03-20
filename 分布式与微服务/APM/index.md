@@ -17,3 +17,5 @@
 [SpringBoot项目使用SkyWalking](./subfile/_4SpringBoot项目使用SkyWalking.md)
 
 [覆盖配置](./subfile/_5覆盖配置.md)
+
+[项目中获取TraceID](./subfile/_6项目中获取TraceID.md)
