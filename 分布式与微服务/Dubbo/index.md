@@ -13,3 +13,5 @@
 [Dubbo异步调用与执行](./subfile/_6Dubbo异步调用与执行.md)
 
 [Dubbo消费者无法捕获自定义异常](./subfile/_7Dubbo消费者无法捕获自定义异常.md)
+
+[Dubbo使用Nacos做注册中心](./subfile/_9Dubbo使用Nacos做注册中心.md)
