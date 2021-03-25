@@ -4,3 +4,4 @@
 
 [wsl使用zsh与终端美化](./subfile/_2wsl使用zsh与终端美化.md)
 
+[wsl配置类似于Mac的命令](./subfile/_3wsl配置类似于Mac的命令.md)
