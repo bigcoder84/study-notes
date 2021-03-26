@@ -13,3 +13,5 @@
 [vim查找与替换](./subfile/_6vim查找与替换)
 
 [find命令查找文件](./subfile/_7find命令查找文件.md)
+
+[运行中的Tomcat日志删除无法释放空间](./subfile/_8运行中的Tomcat日志删除无法释放空间.md)
