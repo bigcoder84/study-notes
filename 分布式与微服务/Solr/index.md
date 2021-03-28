@@ -6,3 +6,4 @@
 
 [Solr查询字段为空的数据](./subfile/_2Solr查询字段为空的数据.md)
 
+[Query和FilterQuery](./subfile/_4Query和FilterQuery.md)
