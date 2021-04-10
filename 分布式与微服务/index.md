@@ -10,3 +10,4 @@
 
 [Redisson](./Redisson/index.md)
 
+[Solr](./Solr/index.md)
