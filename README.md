@@ -40,6 +40,8 @@
 
 [Redisson](./分布式与微服务/Redisson/index.md)
 
+[Solr](./分布式与微服务/Solr/index.md)
+
 ## 数据库
 
 [MySQL数据库](./基础笔记/数据库/MySQL/index.md)
