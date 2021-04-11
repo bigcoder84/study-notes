@@ -9,3 +9,5 @@
 [Query和FilterQuery](./subfile/_4Query和FilterQuery.md)
 
 [Facet查询](./subfile/_5Facet查询.md)
+
+[高亮查询](./subfile/_6高亮查询.md)
