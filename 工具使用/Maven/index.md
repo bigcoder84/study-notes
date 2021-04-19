@@ -13,3 +13,5 @@
 [更改项目编译版本号](./subfile/_6更改项目编译版本号.md)
 
 [Maven中optional关键字](./subfile/_7Maven中optional关键字.md)
+
+[Maven在持续集成环境下版本管理](./subfile/_8Maven在持续集成环境下版本管理.md)
