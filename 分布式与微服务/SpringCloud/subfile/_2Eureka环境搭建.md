@@ -134,3 +134,54 @@ eureka:
 ```
 
 ![](../images/3.png)
+
+## 六. Eureka的保护机制
+
+Eureka Server 在运行期间会去统计心跳失败比例在 15 分钟之内是否低于 85%，如果低于 85%，Eureka Server 会将这些实例保护起来，让这些实例不会过期，但是在保护期内如果服务刚好这个服务提供者非正常下线了，此时服务消费者就会拿到一个无效的服务实例，此时会调用失败，对于这个问题需要服务消费者端要有一些容错机制，如重试，断路器等。
+
+我们在单机测试的时候很容易满足心跳失败比例在 15 分钟之内低于 85%，这个时候就会触发 Eureka 的保护机制，一旦开启了保护机制，则服务注册中心维护的服务实例就不是那么准确了，此时我们可以使用`eureka.server.enable-self-preservation=false`来关闭保护机制，这样可以确保注册中心中不可用的实例被及时的剔除（**不推荐**）。
+
+自我保护模式被激活的条件是：在 1 分钟后，`Renews (last min) < Renews threshold`。
+
+这两个参数的意思：
+
+- `Renews threshold`：**Eureka Server 期望每分钟收到客户端实例续约的总数**。
+- `Renews (last min)`：**Eureka Server 最后 1 分钟收到客户端实例续约的总数**。
+
+具体的值，我们可以在 Eureka Server 界面可以看到：
+
+![](../images/5.png)
+
+可以看到，我们部署了 3 个 Eureka Server（自注册模式），另外，又部署 7 个服务，注册到 Eureka Server 集群，参数值分别为：
+
+- `Renews threshold`：17
+- `Renews (last min)`：20
+
+下面说下`Renews threshold`和`Renews threshold`具体计算方式。
+
+Renews threshold 计算代码：
+
+```java
+this.expectedNumberOfRenewsPerMin = count * 2;
+this.numberOfRenewsPerMinThreshold = (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
+```
+
+`count`表示服务的数量，如果 Eureka Server 开启自注册模式，也算一个服务，比如我们上面的示例，`count`的值就是 10（3 个自注册服务 + 7 个独立服务），`serverConfig.getRenewalPercentThreshold()`默认是 0.85（可以通过`eureka.server.renewal-percent-threshold`配置）。
+
+所以，根据上面的分析，我们可以计算出`Renews threshold`的值：`(int)(10 * 2 * 0.85) = (int)17 = 17`。
+
+`Renews (last min)`计算方式：`count * 2`，数值 2 表示每 30 秒 1 个心跳，每分钟 2 个心跳的固定频率因子，所以具体值为：`10 * 2 = 20`。
+
+如果在 1 分钟后，`Renews (last min) < Renews threshold`，默认需等待 5 分钟（可以通过`eureka.server.wait-time-in-ms-when-sync-empty`配置），即 5 分钟后你会看到下面的提示信息：
+
+![](../images/4.png)
+
+解决方式有三种：
+
+- 关闭自我保护模式（`eureka.server.enable-self-preservation`设为`false`），**不推荐**。
+- 降低`renewalPercentThreshold`的比例（`eureka.server.renewal-percent-threshold`设置为`0.5`以下，比如`0.49`），**不推荐**。
+- 部署多个 Eureka Server 并开启其客户端行为（`eureka.client.register-with-eureka`不要设为`false`，默认为`true`），**推荐**。
+
+Eureka 的自我保护模式是有意义的，该模式被激活后，它不会从注册列表中剔除因长时间没收到心跳导致租期过期的服务，而是等待修复，直到心跳恢复正常之后，它自动退出自我保护模式。这种模式旨在避免因网络分区故障导致服务不可用的问题。例如，两个客户端实例 C1 和 C2 的连通性是良好的，但是由于网络故障，C2 未能及时向 Eureka 发送心跳续约，这时候 Eureka 不能简单的将 C2 从注册表中剔除。因为如果剔除了，C1 就无法从 Eureka 服务器中获取 C2 注册的服务，但是这时候 C2 服务是可用的。
+
+所以，Eureka 的自我保护模式最好还是开启它。
