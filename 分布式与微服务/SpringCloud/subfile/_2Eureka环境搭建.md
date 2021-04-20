@@ -116,7 +116,7 @@ public class AdminDlApplication {
 ```yml
 spring:
   application:
-    #spring的应用名称，这里需要指定，不然在Eureka管理页面，Application name 则会显示“UNKNOW”
+    #spring的应用名称，这里需要指定，不然在Eureka管理页面，Application name 则会显示“UNKNOW”，注意与eureka.instance.instance-id区分，
     name: admin-dl
 eureka:
   instance:
@@ -126,12 +126,14 @@ eureka:
     lease-expiration-duration-in-seconds: 10
     #告诉服务端，服务实例以IP作为链接，而不是取机器名
     prefer-ip-address: true
-    #告诉服务端，服务实例的名字
+    #告诉服务端，服务实例的ID，实例ID必须保证全局唯一，同一服务的多个实例之间也需要保证ID唯一。
     instance-id: admin-dl
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka
 ```
+
+需要注意的是，`eureka.instance.instance-id`必须全局唯一，这样服务在启动多个实例的情况下才能在status中才能看到多个实例。
 
 ![](../images/3.png)
 
