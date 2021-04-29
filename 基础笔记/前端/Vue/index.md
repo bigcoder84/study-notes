@@ -23,3 +23,5 @@
 [自定义组件实现v-model绑定值](./subfile/_13自定义组件实现v-model绑定值.md)
 
 [Vue+ElementUI实现表单动态渲染](./subfile/_14Vue+ElementUI实现表单动态渲染.md)
+
+[Vue子组件修改父组件的prop值](./subfile/_15Vue子组件修改父组件的prop值.md)
