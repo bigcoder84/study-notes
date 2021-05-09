@@ -63,3 +63,5 @@
 [HTTP的Get和Post请求到底有什么区别](./subfile/_23HTTP的Get和Post请求到底有什么区别.md)
 
 [DNS协议](./subfile/_23DNS协议.md)
+
+[HTTP请求传参方式](./subfile/_25HTTP请求传参方式.md)
