@@ -97,9 +97,33 @@ WSL配置字体其实就是配置终端的字体，点击设置会自动跳转�
 
 ![](../images/3.png)
 
-解决方案：
+这是因为Git在克隆后自动将换行符换成本地配置的换行符了，此时我们进入刚刚克隆的插件路径下，执行下列命令还原即可：
+
+```shell
+git reset --hard HEAD
+```
+
+参考解决方案：
 
 https://github.com/zsh-users/zsh-autosuggestions/issues/557
+
+## 安装命令高亮提示插件
+
+执行下列命令安装插件：
+
+```shell
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+```
+
+配置`~/.zshrc`文件，在plugins加入刚刚下载的插件名称：
+
+```shell
+plugins=([其它插件名称...] zsh-syntax-highlighting)
+```
+
+安装效果：
+
+![](../images/4.png)
 
 ## wsl的ls文件夹为绿色的问题
 
