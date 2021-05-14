@@ -25,3 +25,6 @@
 [MySQL用户及权限](./subfile/_11MySQL用户及权限.md)
 
 [MySQL查看数据库磁盘占用大小](./subfile/_13MySQL查看数据库磁盘占用大小.md)
+
+[如何定位慢SQL](./subfile/_14如何定位慢SQL.md)
+
