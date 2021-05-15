@@ -10,4 +10,7 @@
 
 [Spring Cloud Feign](./subfile/_4Spring_Cloud_Feign.md)
 
+[Spring_Cloud_Hystrix](./subfile/_5Spring_Cloud_Hystrix.md)
+
 ## SpringCloud Alibaba
+
