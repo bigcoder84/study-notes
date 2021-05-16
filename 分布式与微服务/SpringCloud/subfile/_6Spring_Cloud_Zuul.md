@@ -176,3 +176,188 @@ Zuul 中的过滤器跟我们之前使用的 javax.servlet.Filter 不一样，ja
 
 通过上面的图可以清楚地知道整个执行的顺序，请求发过来首先到 pre 过滤器，再到 routing 过滤器，最后到 post 过滤器，任何一个过滤器有异常都会进入 error 过滤器。
 
+- 一般来讲，正常的流程是pre-->route-->post
+
+- 在pre过滤器阶段抛出异常，pre--> error -->post
+
+- 在route过滤器阶段抛出异常，pre-->route-->error -->post
+
+- 在post过滤器阶段抛出异常，pre-->route-->post--> err
+
+### 3.3 自定义过滤器
+
+实现ZuulFilter即可完成过滤器的编写，然后使用`@Component`将过滤器注册进Spring容器中即可。
+
+```java
+@Component
+public class LogFilter extends ZuulFilter {
+
+    private static final Logger logger = LoggerFactory.getLogger(ZuulFilter.class);
+
+    @Override
+    public String filterType() {
+        return FilterConstants.ROUTE_TYPE;
+    }
+
+    /**
+     * 指定过滤器的顺序，数字小的先执行
+     *
+     * @return
+     */
+    @Override
+    public int filterOrder() {
+        return FilterConstants.SEND_ERROR_FILTER_ORDER;
+    }
+
+    /**
+     * 是否使用过滤器
+     *
+     * @return
+     */
+    @Override
+    public boolean shouldFilter() {
+        return true;
+    }
+
+    /**
+     * filter过滤方法
+     *
+     * @return
+     * @throws ZuulException
+     */
+    @Override
+    public Object run() throws ZuulException {
+        RequestContext currentContext = RequestContext.getCurrentContext();
+        HttpServletRequest request = currentContext.getRequest();
+        String servletPath = request.getServletPath();
+        logger.info("zuul filter：" + servletPath);
+        return null;
+    }
+}
+```
+
+### 3.4 异常处理
+
+Spring Cloud Zuul 对异常的处理是非常方便的，但是由于 Spring Cloud 处于迅速发展中，各个版本之间有所差异，本案例是以 Finchley.RELEASE 版本为例， 来说明 Spring Cloud Zuul 中的异常处理问题。 
+
+**第一步：禁用 zuul 默认的异常处理 SendErrorFilter 过滤器，然后自定义我们自己的Errorfilter 过滤器** 
+
+```properties
+zuul.SendErrorFilter.error.disable=true 
+```
+
+**第二步：编写自定义异常过滤器**
+
+```java
+@Component
+public class ErrorFilter extends ZuulFilter {
+
+    private static final Logger logger = LoggerFactory.getLogger(ErrorFilter.class);
+
+    @Override
+    public String filterType() {
+        return FilterConstants.ERROR_TYPE;
+    }
+
+    @Override
+    public int filterOrder() {
+        return -1;
+    }
+
+    @Override
+    public boolean shouldFilter() {
+        return true;
+    }
+
+    @Override
+    public Object run() throws ZuulException {
+        try {
+            RequestContext context = RequestContext.getCurrentContext();
+            ZuulException exception = (ZuulException) context.getThrowable();
+            logger.error("进入系统异常拦截{}", exception.getMessage());
+            HttpServletResponse response = context.getResponse();
+            response.setContentType("application/json; charset=utf8");
+            response.setStatus(exception.nStatusCode);
+            PrintWriter writer = null;
+            try {
+                writer = response.getWriter();
+                writer.print("{code:" + exception.nStatusCode + ",message:\"" +
+                        exception.getMessage() + "\"}");
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                if (writer != null) {
+                    writer.close();
+                }
+            }
+        } catch (Exception e) {
+            ReflectionUtils.rethrowRuntimeException(e);
+        }
+        return null;
+    }
+}
+```
+
+### 3.5 过滤器的禁用
+
+Spring Cloud默认为Zuul编写并启用了一些过滤器，例如DebugFilter、 FormBodyWrapperFilter等，这些过滤器都存放在spring-cloud-netflix-zuul这个jar包里，一些场景下，想要禁用掉部分过滤器，该怎么办呢？ 只需在application.properties里设置`zuul.xxx.disable=true` 例如，要禁用上面我们写的过滤器，这样配置就行了： 
+
+```properties
+zuul.LogFilter.route.disable=true
+```
+
+### 3.6 熔断降级
+
+zuul是一个代理服务，但如果被代理的服务突然断了，这个时候zuul上面会有出错信息，例如，停止了被调用的微服务；一般服务方自己会进行服务的熔断降级，但对于zuul本身，也应该进行zuul的降级处理；
+
+```java
+@Component
+public class ZuulFallback implements FallbackProvider {
+    @Override
+    public String getRoute() {
+        return "*";
+    }
+
+    @Override
+    public ClientHttpResponse fallbackResponse(String route, Throwable cause) {
+        return new ClientHttpResponse() {
+            @Override
+            public HttpStatus getStatusCode() throws IOException {
+                return HttpStatus.BAD_REQUEST;
+            }
+
+            @Override
+            public int getRawStatusCode() throws IOException {
+                return HttpStatus.BAD_REQUEST.value();
+            }
+
+            @Override
+            public String getStatusText() throws IOException {
+                return HttpStatus.BAD_REQUEST.getReasonPhrase();
+            }
+
+            @Override
+            public void close() {
+
+            }
+
+            @Override
+            public InputStream getBody() throws IOException {
+                return new ByteArrayInputStream("服务正在维护，请稍后再试.".getBytes());
+            }
+
+            @Override
+            public HttpHeaders getHeaders() {
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Content-Type", "text/html; charset=UTF-8");
+                return headers;
+            }
+        };
+    }
+}
+```
+
+例如，zuul代理的`admin-web`宕机后，访问`/portal/**`这个路径下时由于调用不到`admin-web`服务，就会触发服务降级：
+
+![](../images/14.png)
+

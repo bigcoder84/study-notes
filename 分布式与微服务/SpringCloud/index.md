@@ -12,5 +12,7 @@
 
 [Spring_Cloud_Hystrix](./subfile/_5Spring_Cloud_Hystrix.md)
 
+[Spring_Cloud_Zuul](./subfile/_6Spring_Cloud_Zuul.md)
+
 ## SpringCloud Alibaba
 
