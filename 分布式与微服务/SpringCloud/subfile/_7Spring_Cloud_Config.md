@@ -66,6 +66,8 @@ spring:
         git:
           #配置文件所在仓库
           uri: git@github.com:bigcoder84/spring-cloud-config-qa.git
+          username: bigcoder84
+          password: *********
           #配置文件分支
           default-label: master
           #配置文件所在根目录
