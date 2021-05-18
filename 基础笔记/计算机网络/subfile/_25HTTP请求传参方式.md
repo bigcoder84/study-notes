@@ -23,6 +23,10 @@ Chrome浏览器的显示效果：
 
 ![](../images/100.png)
 
+**需要注意的是**，Form Data数据也位于Http的Body上，但是Java EE的ServletRequest对于`Query`和`Form Data`两种形式的传参获取的API是一模一样的，都可以通过`javax.servlet.ServletRequest#getParameterMap`获取到值，虽然这两者请求参数在HTTP报文中的位置并不相同。这也是为什么你对Java程序员说body传参，他们会默认认为采用`application/json`传参，而不是`Form Data`传参。
+
+对应到SpringMVC框架，如果你使用`Query`或`Form Data`传参后端处理方式相同，而如果你采用`application/json`传参，后端需要加上`@RequestBody`注解获取参数值。
+
 ## 三. Request Payload
 
 当 `Content-type` 为 `application/json;charset=utf-8` 时，参数会以 `Request Payload` 的形式（数据为 json 格式）传递给接口，并且不会显示在接口 url 上。
