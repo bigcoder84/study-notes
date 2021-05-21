@@ -18,3 +18,5 @@
 
 [HttpRequest对不同传参形式获取请求参数的操作差异](./subfile/_10HttpRequest对不同传参形式获取请求参数的操作差异.md)
 
+[解决ServletInputStream输入流只能使用一次的问题](./subfile/_11解决ServletInputStream输入流只能使用一次的问题.md)
+
