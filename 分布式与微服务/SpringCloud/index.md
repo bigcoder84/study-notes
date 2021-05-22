@@ -14,5 +14,7 @@
 
 [Spring_Cloud_Zuul](./subfile/_6Spring_Cloud_Zuul.md)
 
+[Spring_Cloud_Config](./subfile/_7Spring_Cloud_Config.md)
+
 ## SpringCloud Alibaba
 
