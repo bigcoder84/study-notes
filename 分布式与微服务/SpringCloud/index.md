@@ -16,5 +16,7 @@
 
 [Spring_Cloud_Config](./subfile/_7Spring_Cloud_Config.md)
 
+[Spring_Cloud_Sleuth + Zipkin](./subfile/_8Spring_Cloud_Sleuth+Zipkin.md)
+
 ## SpringCloud Alibaba
 
