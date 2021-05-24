@@ -38,7 +38,7 @@
 
 [Zookeeper](./分布式与微服务/Zookeeper/index.md)
 
-[Kafka](./分布式与微服务/Kafka/index.md)
+[MessageQueue](./分布式与微服务/MessageQueue/index.md)
 
 [Redisson](./分布式与微服务/Redisson/index.md)
 

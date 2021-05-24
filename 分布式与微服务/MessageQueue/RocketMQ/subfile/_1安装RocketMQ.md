@@ -181,3 +181,15 @@ autoCreateTopicEnable=true
 namesrvAddr=localhost:9876
 ```
 
+### 2.2.3 配置broker监听IP
+
+编辑`conf/broker.conf`在末尾加上如下配置：
+
+```xml
+brokerIP1=192.168.0.10
+```
+
+不显示指定IP可能会出现客户端连接不上的情况：
+`Caused by: org.apache.rocketmq.remoting.exception.RemotingConnectException: connect to <172.17.42.1:10911> failed`
+
+这可能是因为Broker将docker0的虚拟网卡的IP作为了默认的IP监听，而在局域网中机器是无法访问这个虚拟网络的。
