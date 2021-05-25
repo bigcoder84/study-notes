@@ -70,7 +70,9 @@
 
 [Git](./工具使用/Git/index.md)
 
-[Linux](./工具使用/Linux/CentOS/index.md)
+[Linux](./工具使用/操作系统/Linux/CentOS/index.md)
+
+[Windows](./工具使用/操作系统/Windows/index.md)
 
 [Mockito](./工具使用/Mockito/index.md)
 
