@@ -36,9 +36,15 @@
 
 
 
-## 三. 搭建
+## 三. 环境
 
-### 3.1 生成证书
+VPN服务器：CentOS 8（需要带有公网IP地址，或使用内网穿透）
+
+VPN客户端：Windows 10
+
+## 四. 搭建
+
+### 4.1 生成证书
 
 在生成证书之前我们需要下载`EasyRSA`工具：[Releases · OpenVPN/easy-rsa-old (github.com)](https://github.com/OpenVPN/easy-rsa-old/releases)
 
@@ -164,9 +170,7 @@ This is going to take a long time
 
 该命令会生成一个名为`dh2048.pem`的文件
 
-
-
-### 3.2 配置OpenVPN服务端
+### 4.2 配置OpenVPN服务端
 
 **第一步：安装OpenVPN**
 
@@ -254,4 +258,55 @@ netstat -lntup | grep 1194
 ```
 
 ![](../images/115.png)
+
+启动成功后，我们通过`ip addr`命令可以看到，VPN服务器生成了一个虚拟网卡，并分配了`10.0.0.0/24`网段的IP地址：
+
+![](../images/116.png)
+
+### 4.3 配置OpenVPN客户端
+
+**第一步：准备客户端证书**
+
+- 客户端证书：`client.key`、`client.crt`、`ca.crt`、`/etc/openvpn/keys/ta.key`
+- 客户端配置文件：`/usr/share/doc/openvpn/sample/sample-config-files/client.conf`
+
+将上述文件下载到Windows机器上。
+
+**第二步：修改客户端配置文件**
+
+修改刚刚从服务器上复制下来的`client.conf`文件
+
+1. 修改加密模式
+
+```properties
+cipher AES-256-CBC -> cipher AES-256-GCM
+```
+
+2. 设置OpenVPN服务器地址
+
+![](../images/117.png)
+
+**第三步：修改`client.conf`文件后缀**
+
+将`client.conf`修改为`client.ovpn`
+
+![](../images/118.png)
+
+**第四步：安装OpenVPN客户端**
+
+[OpenVPN Client Connect For Windows | OpenVPN](https://openvpn.net/client-connect-vpn-for-windows/)
+
+直接下一步就行，不需要任何额外操作（3.2.3.1851版本）
+
+**第五步：导入`client.ovpn`**
+
+![](../images/119.png)
+
+需要注意的是，刚刚导出的文件需要在同一文件夹中，因为`client.ovpn`配置的证书的位置都是当前文件夹，导入`client.ovpn`后会自动导入依赖的证书文件。
+
+导入完成后点击连接，成功连接后就表明VPN已经完成搭建，可以看到OpenVPN Server给当前机器分配了一个`10.0.0.6`的虚拟地址：
+
+![](../images/120.png)
+
+如果连接不上，请查看IP地址和端口是否配置正确，以及OpenVPN Server防火墙（UDP）端口是否打开。
 
