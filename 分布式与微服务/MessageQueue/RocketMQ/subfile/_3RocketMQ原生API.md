@@ -350,3 +350,118 @@ consumer.start();
 
 ## 六. 事务消息
 
+[The Design Of Transactional Message - Apache RocketMQ](http://rocketmq.apache.org/rocketmq/the-design-of-transactional-message/)
+
+### 6.1 相关概念
+
+**Half Message**
+
+指的是暂不能投递的消息，发送方已经将消息成功发送到了 MQ 服务端，但是服务端未收到生产者对该消息的二次确认，此时该消息被标记成“暂不能投递”状态，处于该种状态下的消息即半消息。
+
+**Message Status Check**
+
+由于网络闪断、生产者应用重启等原因，导致某条事务消息的二次确认丢失，MQ 服务端通过扫描发现某条消息长期处于“半消息”时，需要主动向消息生产者询问该消息的最终状态（Commit 或是 Rollback），该过程即消息回查。
+
+### 6.2 执行流程
+
+![](../images/13.png)
+
+1. 发送方向 MQ 服务端发送消息。
+2. MQ Server 将消息持久化成功之后，向发送方 ACK 确认消息已经发送成功，此时消息为半消息。
+3. 发送方开始执行本地事务逻辑。
+4. 发送方根据本地事务执行结果向 MQ Server 提交二次确认（Commit 或是 Rollback），MQ Server 收到 Commit 状态则将半消息标记为可投递，订阅方最终将收到该消息；MQ Server 收到 Rollback 状态则删除半消息，订阅方将不会接受该消息。
+5. 在断网或者是应用重启的特殊情况下，上述步骤4提交的二次确认最终未到达 MQ Server，经过固定时间后 MQ Server 将对该消息发起消息回查。
+6. 发送方收到消息回查后，需要检查对应消息的本地事务执行的最终结果。
+7. 发送方根据检查得到的本地事务的最终状态再次提交二次确认，MQ Server 仍按照步骤4对半消息进行操作。
+
+### 6.3 生产者事务消息
+
+生产者：
+
+```java
+private static final String GROUP = "group";
+private static final String HOST = "192.168.0.10:9876";
+private static final String TOPIC = "TransactionTopic";
+
+public static void main(String[] args) throws MQClientException, InterruptedException {
+    TransactionListener transactionListener = new TransactionListenerImpl();
+    TransactionMQProducer producer = new TransactionMQProducer(GROUP);
+    producer.setNamesrvAddr(HOST);
+    ExecutorService executorService = new ThreadPoolExecutor(2, 5, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(2000), new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread thread = new Thread(r);
+            thread.setName("client-transaction-msg-check-thread");
+            return thread;
+        }
+    });
+
+    producer.setExecutorService(executorService);
+    producer.setTransactionListener(transactionListener);
+    producer.start();
+
+    String[] tags = new String[] {"TagA", "TagB", "TagC", "TagD", "TagE"};
+    for (int i = 0; i < 10; i++) {
+        try {
+            Message msg = new Message(TOPIC, tags[i % tags.length], "KEY" + i, ("Hello RocketMQ " + i).getBytes(RemotingHelper.DEFAULT_CHARSET));
+            SendResult sendResult = producer.sendMessageInTransaction(msg, null);
+            System.out.printf("%s%n", sendResult);
+
+            Thread.sleep(10);
+        } catch (MQClientException | UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+    }
+
+    for (int i = 0; i < 100000; i++) {
+        Thread.sleep(1000);
+    }
+    producer.shutdown();
+}
+```
+
+事务监听：
+
+```java
+public class TransactionListenerImpl implements TransactionListener {
+    private AtomicInteger transactionIndex = new AtomicInteger(0);
+
+    private ConcurrentHashMap<String, Integer> localTrans = new ConcurrentHashMap<>();
+
+    /**
+     * 执行本地事务，并返回给MQ事务状态
+     * @param msg
+     * @param arg
+     * @return
+     */
+    @Override
+    public LocalTransactionState executeLocalTransaction(Message msg, Object arg) {
+        int value = transactionIndex.getAndIncrement();
+        int status = value % 3;
+        localTrans.put(msg.getTransactionId(), status);
+        return LocalTransactionState.UNKNOW;
+    }
+
+    /**
+     * 若长时间未提交事务状态，会进行事务回查
+     * @param msg
+     * @return
+     */
+    @Override
+    public LocalTransactionState checkLocalTransaction(MessageExt msg) {
+        Integer status = localTrans.get(msg.getTransactionId());
+        if (null != status) {
+            switch (status) {
+                case 0:
+                    return LocalTransactionState.UNKNOW;
+                case 1:
+                    return LocalTransactionState.COMMIT_MESSAGE;
+                case 2:
+                    return LocalTransactionState.ROLLBACK_MESSAGE;
+            }
+        }
+        return LocalTransactionState.COMMIT_MESSAGE;
+    }
+}
+```
+
