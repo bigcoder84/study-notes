@@ -15,3 +15,6 @@
 [Dubbo消费者无法捕获自定义异常](./subfile/_7Dubbo消费者无法捕获自定义异常.md)
 
 [Dubbo使用Nacos做注册中心](./subfile/_9Dubbo使用Nacos做注册中心.md)
+
+[Dubbo重试机制](./subfile/_10Dubbo失败重试机制.md)
+
