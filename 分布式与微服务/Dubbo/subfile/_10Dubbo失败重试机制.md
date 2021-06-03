@@ -79,7 +79,7 @@ XML配置
 
 Dubbo默认使用的是`Failover Cluster`机制，如果不清楚这一机制那么写出的代码会有很多隐患。
 
-因为服务的超时是开发人员不好控制的，如果某些时候因为机器负载波动导致一个写操作服务发生超时重试，那么就会出现重复写的问题，导致脏数据的产生。
+服务的超时是开发人员不好控制的，如果某些时候因为机器负载波动导致一个写操作服务发生超时重试，那么就会出现重复写的问题，导致脏数据的产生。
 
 Failover Cluster官方建议在读环境下使用，但是奈何很多同学都没有注意到这一点。
 
@@ -87,7 +87,7 @@ Failover Cluster官方建议在读环境下使用，但是奈何很多同学都�
 
 
 
-Failover Cluster的实现全在`org.apache.dubbo.rpc.cluster.support.FailoverClusterInvoker`:
+Failover Cluster的实现在`org.apache.dubbo.rpc.cluster.support.FailoverClusterInvoker`:
 
 ```java
 public class FailoverClusterInvoker<T> extends AbstractClusterInvoker<T> {
