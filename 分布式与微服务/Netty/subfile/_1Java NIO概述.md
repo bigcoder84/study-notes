@@ -24,7 +24,7 @@ Java NIO 由以下几个核心部分组成：
 
 虽然Java NIO 中除此之外还有很多类和组件，但在我看来，Channel，Buffer 和 Selector 构成了核心的API。其它组件，如Pipe和FileLock，只不过是与三个核心组件共同使用的工具类。因此，在概述中我将集中在这三个组件上。其它组件会在单独的章节中讲到。
 
-## Channel 和 Buffer
+## 一. Channel 和 Buffer
 
 基本上，所有的 IO 在NIO 中都从一个Channel 开始。Channel 有点象流。 数据可以从Channel读到Buffer中，也可以从Buffer 写到Channel中。这里有个图示：
 
@@ -32,10 +32,10 @@ Java NIO 由以下几个核心部分组成：
 
 Channel和Buffer有好几种类型。下面是JAVA NIO中的一些主要Channel的实现：
 
-- FileChannel
-- DatagramChannel
-- SocketChannel
-- ServerSocketChannel
+- FileChannel：从文件中读写数据
+- DatagramChannel：能通过UDP读写网络中的数据
+- SocketChannel：能通过TCP读写网络中的数据
+- ServerSocketChannel：可以监听新进来的TCP连接，像Web服务器那样。对每一个新进来的连接都会创建一个SocketChannel
 
 正如你所看到的，这些通道涵盖了UDP 和 TCP 网络IO，以及文件IO。
 
@@ -55,12 +55,59 @@ Channel和Buffer有好几种类型。下面是JAVA NIO中的一些主要Channel�
 
 Java NIO 还有个 MappedByteBuffer，用于表示内存映射文件， 我也不打算在概述中说明。
 
-## Selector
+## 二. Selector
 
-Selector允许单线程处理多个 Channel。如果你的应用打开了多个连接（通道），但每个连接的流量都很低，使用Selector就会很方便。例如，在一个聊天服务器中。
+selector 单从字面意思不好理解，需要结合服务器的设计演化来理解它的用途
 
-这是在一个单线程中使用一个Selector处理3个Channel的图示：
+### 2.1 多线程版设计
 
-![](../images/2.png)
+```mermaid
+graph TD
+subgraph 多线程版
+t1(thread) --> s1(socket1)
+t2(thread) --> s2(socket2)
+t3(thread) --> s3(socket3)
+end
+```
 
-要使用Selector，得向Selector注册Channel，然后调用它的select()方法。这个方法会一直阻塞到某个注册的通道有事件就绪。一旦这个方法返回，线程就可以处理这些事件，事件的例子有如新连接进来，数据接收等。
+**缺点**
+
+* 内存占用高
+* 线程上下文切换成本高
+* 只适合连接数少的场景
+
+### 2.2 线程池版设计
+
+```mermaid
+graph TD
+subgraph 线程池版
+t4(thread) --> s4(socket1)
+t5(thread) --> s5(socket2)
+t4(thread) -.-> s6(socket3)
+t5(thread) -.-> s7(socket4)
+end
+```
+
+**缺点**
+
+* 阻塞模式下，线程仅能处理一个 socket 连接
+* 仅适合短连接场景
+
+### 2.3 selector 版设计
+
+selector 的作用就是配合一个线程来管理多个 channel，获取这些 channel 上发生的事件，这些 channel 工作在非阻塞模式下，不会让线程吊死在一个 channel 上。**适合连接数特别多，但流量低的场景**（low traffic）
+
+```mermaid
+graph TD
+subgraph selector 版
+thread --> selector
+selector --> c1(channel)
+selector --> c2(channel)
+selector --> c3(channel)
+end
+```
+
+
+
+调用 selector 的 select() 会阻塞直到 channel 发生了读写就绪事件，这些事件发生，select 方法就会返回这些事件交给 thread 来处理
+
