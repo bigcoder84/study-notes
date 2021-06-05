@@ -40,6 +40,8 @@
 
 [TCP keepalive机制](./subfile/_24TCP keepalive机制.md)
 
+[为什么 TCP 协议有粘包问题](./subfile/_28为什么 TCP 协议有粘包问题.md)
+
 ## 应用层协议
 
 ### HTTP协议
