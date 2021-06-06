@@ -61,14 +61,7 @@ selector 单从字面意思不好理解，需要结合服务器的设计演化�
 
 ### 2.1 多线程版设计
 
-```mermaid
-graph TD
-subgraph 多线程版
-t1(thread) --> s1(socket1)
-t2(thread) --> s2(socket2)
-t3(thread) --> s3(socket3)
-end
-```
+![](../images/7.png)
 
 **缺点**
 
@@ -78,15 +71,7 @@ end
 
 ### 2.2 线程池版设计
 
-```mermaid
-graph TD
-subgraph 线程池版
-t4(thread) --> s4(socket1)
-t5(thread) --> s5(socket2)
-t4(thread) -.-> s6(socket3)
-t5(thread) -.-> s7(socket4)
-end
-```
+![](../images/8.png)
 
 **缺点**
 
@@ -97,17 +82,7 @@ end
 
 selector 的作用就是配合一个线程来管理多个 channel，获取这些 channel 上发生的事件，这些 channel 工作在非阻塞模式下，不会让线程吊死在一个 channel 上。**适合连接数特别多，但流量低的场景**（low traffic）
 
-```mermaid
-graph TD
-subgraph selector 版
-thread --> selector
-selector --> c1(channel)
-selector --> c2(channel)
-selector --> c3(channel)
-end
-```
-
-
+![](../images/9.png)
 
 调用 selector 的 select() 会阻塞直到 channel 发生了读写就绪事件，这些事件发生，select 方法就会返回这些事件交给 thread 来处理
 
