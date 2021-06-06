@@ -38,9 +38,9 @@
 
 [TCP协议与IP协议之间的关系](./subfile/_20TCP协议和IP协议之间的关系.md)
 
-[TCP keepalive机制](./subfile/_24TCP keepalive机制.md)
+[TCP keepalive机制](./subfile/_24TCP_keepalive机制.md)
 
-[为什么 TCP 协议有粘包问题](./subfile/_28为什么 TCP 协议有粘包问题.md)
+[为什么 TCP 协议有粘包问题](./subfile/_28为什么TCP协议有粘包问题.md)
 
 [为什么TCP_IP协议会拆分数据包](./subfile/_29为什么TCP_IP协议会拆分数据包.md)
 
