@@ -1,6 +1,4 @@
-# StudyNotes
-
-## Java知识点补充
+# study-notes
 
 [知识点补充](./基础笔记/知识点补充/index.md)
 
@@ -44,6 +42,16 @@
 
 [Solr](./分布式与微服务/Solr/index.md)
 
+[Netty](./分布式与微服务/Netty/index.md)
+
+## 技术进阶
+
+[设计模式](./基础笔记/设计模式/index.md)
+
+[并发编程](./基础笔记/并发编程/index.md)
+
+[深入Java虚拟机](./基础笔记/深入Java虚拟机/index.md)
+
 ## 数据库
 
 [MySQL数据库](./基础笔记/数据库/MySQL/index.md)
@@ -57,14 +65,6 @@
 [项目方案](./基础笔记/项目方案/index.md)
 
 [项目踩坑](./基础笔记/项目踩坑/index.md)
-
-## 技术进阶
-
-[设计模式](./基础笔记/设计模式/index.md)
-
-[并发编程](./基础笔记/并发编程/index.md)
-
-[深入Java虚拟机](./基础笔记/深入Java虚拟机/index.md)
 
 ## 工具
 
