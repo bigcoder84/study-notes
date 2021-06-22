@@ -22,3 +22,5 @@
 
 [从虚拟机的角度看i++和++i](./subfile/_11从虚拟机的角度看i++和++i.md)
 
+[JVM_MinorGC和FullGC触发机制](./subfile/_13JVM_MinorGC和FullGC触发机制.md)
+
