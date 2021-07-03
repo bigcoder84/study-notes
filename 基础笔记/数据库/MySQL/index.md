@@ -32,3 +32,5 @@
 
 [查看表的统计数据](./subfile/_16查看表的统计数据.md)
 
+[Explain查看执行计划](./subfile/_17Explain查看执行计划.md)
+
