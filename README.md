@@ -54,9 +54,9 @@
 
 ## 数据库
 
-[MySQL数据库](./基础笔记/数据库/MySQL/index.md)
+[MySQL](./基础笔记/数据库/MySQL/index.md)
 
-[SQLServer数据库](./基础笔记/数据库/SQLServer/index.md)
+[SQLServer](./基础笔记/数据库/SQLServer/index.md)
 
 [Redis](./基础笔记/数据库/Redis/index.md)
 
