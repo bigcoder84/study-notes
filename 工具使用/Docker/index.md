@@ -16,6 +16,8 @@
 
 [commit创建镜像](./subfile/_7commit创建镜像.md)
 
+[Push镜像到DockerHub和阿里云](./subfile/_30Push镜像到DockerHub和阿里云.md)
+
 [使用Dockerfile构建镜像](./subfile/_9Dockerfile.md)
 
 [Dockerfile指令](./subfile/_10Dockerfile指令.md)
