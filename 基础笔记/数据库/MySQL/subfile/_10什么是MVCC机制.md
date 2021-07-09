@@ -48,7 +48,7 @@
 
 - **DB_ROW_ID**
 
-行标识（隐藏单调自增  `ID` ），大小为  `6`  字节，如果表没有主键， `InnoDB`  会自动生成一个隐藏主键，因此会出现这个列。另外，每条记录的头信息（ `record header` ）里都有一个专门的  `bit` （ `deleted_flag` ）来表示当前记录是否已经被删除。
+行标识（隐藏单调自增  `ID` ），大小为  `6`  字节，如果表没有主键， `InnoDB`  会自动生成一个隐藏主键，因此会出现这个列（如果已经有了主键则不会存在ROW_ID）。另外，每条记录的头信息（ `record header` ）里都有一个专门的  `bit` （ `deleted_flag` ）来表示当前记录是否已经被删除。
 
 假如数据库中现在拥有这么一条数据：
 
@@ -75,11 +75,20 @@ update xxx set name = '小明1' where id = 1
 
 说了版本链我们再来看看ReadView。**已提交读和可重复读的区别就在于它们生成ReadView的策略不同**。
 
-ReadView中主要就是有个列表来**存储我们系统中当前活跃着的读写事务**，也就是begin了还未提交的事务。通过这个列表来判断记录的某个版本是否对当前事务可见。假设当前列表里的事务id为[80,100]。
+ReadView主要包含4个比较重要的内容：
 
-- 如果你要访问的记录版本的事务id为50，比当前列表最小的id80小，那说明这个事务在之前就提交了，所以对当前活动的事务来说是可访问的。
-- 如果你要访问的记录版本的事务id为70,发现此事务在列表id最大值和最小值之间，那就再判断一下是否在列表内，如果在那就说明此事务还未提交，所以版本不能被访问。如果不在那说明事务已经提交，所以版本可以被访问。
-- 如果你要访问的记录版本的事务id为110，那比事务列表最大id100都大，那说明这个版本是在ReadView生成之后才发生的，所以不能被访问。
+- m_ids：在生成ReadView时，当前系统中活跃的读写事务ID的列表。
+- min_trx_id：在生成ReadView时，当前系统中活跃的读写事务中最小的ID；也就是m_ids中的最小值。
+- max_trx_id：在生成ReadView时，系统应该分配给下一个事务的事务ID；**注意max_trx_id不一定是m_ids中的最大值**。事务ID是递增分配的。比如现在有事务ID分别是1、2、3的这3个事务，之后事务ID为3的事务提交了，那么一个新的读事务在生成ReadView时，m_ids就包括1和2，min_trx_id的值为1，max_trx_id就为4。
+- creator_trx_id：生成ReadView的事务的事务ID。需要注意的是，只有对表中记录进行改动时（INSERT、UPDATE、DELETE）才会为事务分配唯一的事务ID，否则一个事务的事务ID都默认值为0；
+
+有了这个ReadView后，在访问某条记录时，只需要按照下面步骤来判断记录版本是否可见。
+
+- 如果被访问版本的trx_id属性值与ReadView中的creator_trx_id值相同，意味着当前事务在访问它自己修改过的记录，所以该版本可以被当前事务访问。
+
+- 如果被访问版本的trx_id属性值小于ReadView中min_trx_id，那说明生成该版本的事务在当前事务生成ReadView时就已经提交了，所以该版本可以被当前事务访问。
+- 如果被访问版本的trx_id属性值大于或等于ReadView中max_trx_id，表明生成该版本的事务在当前事务生成ReadView后才开启，所以该版本不能被当前事务访问。
+- 如果被访问版本的trx_id属性值在min_trx_id和max_trx_id之间，则需要判断trx_id属性值是否在m_ids列表中。如果在，说明创建ReadView时生成该版本的事务还是活跃的，该版本不可访问；如果不在，说明创建ReadView时生成该版本的事务已经被提交，该版本可以被访问。
 
 这些记录都是去版本链里面找的，先找最近记录，如果最近这一条记录事务id不符合条件，不可见的话，再去找上一个版本再比较当前事务的id和这个版本事务id看能不能访问，以此类推直到返回可见的版本或者结束。
 
@@ -119,4 +128,38 @@ update table set name = '小明3' where id = 1
 
 ## 四. MVCC为何无法解决幻读的问题
 
-todo
+在REPEATABLE READ隔离级别下，可以解决大部分幻读现象，就比如下面这个情况：
+
+| T1事务（trx_id=200）           | T2事务（trx_id=300）               |
+| ------------------------------ | ---------------------------------- |
+| begin transaction;             |                                    |
+| select * from hero where id=30 |                                    |
+|                                | begin transaction;                 |
+|                                | INSERT INTO hero (id) values (30); |
+|                                | commit;                            |
+| select * from hero where id=30 |                                    |
+| commit;                        |                                    |
+
+在T1事务开启时会生成如下ReadView信息：
+
+- m_ids：[200]
+- min_trx_id：200
+- max_trx_id：201
+- creator_trx_id：200
+
+由于第一次读取时确实没有ID=30的数据，所以读取不到，在第二次读取时由于ID=30的trx_id=300，比T1事务开始时生成ReadView中的max_trx_id要大，自然读取不到。
+
+但是有一个特殊情况，还是会产生幻读现象：
+
+| T1事务（trx_id=200）                   | T2事务（trx_id=300）                          |
+| -------------------------------------- | --------------------------------------------- |
+| begin transaction;                     |                                               |
+| select * from hero where id=30         |                                               |
+|                                        | begin transaction;                            |
+|                                        | INSERT INTO hero (id，name) values (30,张三); |
+|                                        | commit;                                       |
+| update hero set name=李四 where id=30; |                                               |
+| select * from hero where id=30;        |                                               |
+| commit;                                |                                               |
+
+ReadView并不能阻止T1执行UPDATE或者DELETE语句来改动新插入的记录（由于T2已经阻塞，因此改动该记录并不会造成阻塞），但是这样一来，这条新纪录的trx_id的值就变成T1的事务ID了，那么这条数据就能够被读取出来了。这也是为什么REPEATABLE READ不能完成解决幻读问题的原因。
