@@ -506,3 +506,197 @@ spec:
 
 为了简化测试，事先规定好mysql`(192.168.5.4)`和redis`(192.168.5.5)`服务器的地址
 
+创建pod-initcontainer.yaml，内容如下：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-initcontainer
+  namespace: dev
+spec:
+  containers:
+  - name: main-container
+    image: nginx:1.17.1
+    ports: 
+    - name: nginx-port
+      containerPort: 80
+  initContainers:
+  - name: test-mysql
+    image: busybox:1.30
+    command: ['sh', '-c', 'until ping 192.168.5.14 -c 1 ; do echo waiting for mysql...; sleep 2; done;']
+  - name: test-redis
+    image: busybox:1.30
+    command: ['sh', '-c', 'until ping 192.168.5.15 -c 1 ; do echo waiting for reids...; sleep 2; done;']
+```
+
+测试：
+
+```shell
+# 创建pod
+[root@k8s-master01 ~]# kubectl create -f pod-initcontainer.yaml
+pod/pod-initcontainer created
+
+# 查看pod状态
+# 发现pod卡在启动第一个初始化容器过程中，后面的容器不会运行
+root@k8s-master01 ~]# kubectl describe pod  pod-initcontainer -n dev
+........
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  49s   default-scheduler  Successfully assigned dev/pod-initcontainer to node1
+  Normal  Pulled     48s   kubelet, node1     Container image "busybox:1.30" already present on machine
+  Normal  Created    48s   kubelet, node1     Created container test-mysql
+  Normal  Started    48s   kubelet, node1     Started container test-mysql
+
+# 动态查看pod
+[root@k8s-master01 ~]# kubectl get pods pod-initcontainer -n dev -w
+NAME                             READY   STATUS     RESTARTS   AGE
+pod-initcontainer                0/1     Init:0/2   0          15s
+pod-initcontainer                0/1     Init:1/2   0          52s
+pod-initcontainer                0/1     Init:1/2   0          53s
+pod-initcontainer                0/1     PodInitializing   0          89s
+pod-initcontainer                1/1     Running           0          90s
+
+# 接下来新开一个shell，为当前服务器新增两个ip，观察pod的变化
+[root@k8s-master01 ~]# ifconfig ens33:1 192.168.5.14 netmask 255.255.255.0 up
+[root@k8s-master01 ~]# ifconfig ens33:2 192.168.5.15 netmask 255.255.255.0 up
+```
+
+### 3.3 钩子函数
+
+钩子函数能够感知自身生命周期中的事件，并在相应的时刻到来时运行用户指定的程序代码。
+
+kubernetes在**主容器的启动之后**和**停止之前**提供了两个钩子函数：
+
+- post start：容器创建之后执行，如果失败了会重启容器
+- pre stop ：容器终止之前执行，执行完成之后容器将成功终止，在其完成之前会阻塞删除容器的操作
+
+钩子处理器支持使用下面三种方式定义动作：
+
+- Exec命令：在容器内执行一次命令
+
+  ```yaml
+  ……
+    lifecycle:
+      postStart: 
+        exec:
+          command:
+          - cat
+          - /tmp/healthy
+  ……
+  ```
+
+- TCPSocket：在当前容器尝试访问指定的socket
+
+  ```yaml
+  ……      
+    lifecycle:
+      postStart:
+        tcpSocket:
+          port: 8080
+  ……
+  ```
+
+- HTTPGet：在当前容器中向某url发起http请求
+
+  ```yaml
+  ……
+    lifecycle:
+      postStart:
+        httpGet:
+          path: / #URI地址
+          port: 80 #端口号
+          host: 192.168.5.3 #主机地址
+          scheme: HTTP #支持的协议，http或者https
+  ……
+  ```
+
+接下来，以exec方式为例，演示下钩子函数的使用，创建pod-hook-exec.yaml文件，内容如下：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-hook-exec
+  namespace: dev
+spec:
+  containers:
+  - name: main-container
+    image: nginx:1.17.1
+    ports:
+    - name: nginx-port
+      containerPort: 80
+    lifecycle:
+      postStart: 
+        exec: # 在容器启动的时候执行一个命令，修改掉nginx的默认首页内容
+          command: ["/bin/sh", "-c", "echo postStart... > /usr/share/nginx/html/index.html"]
+      preStop:
+        exec: # 在容器停止之前停止nginx服务
+          command: ["/usr/sbin/nginx","-s","quit"]
+```
+
+测试：
+
+```shell
+# 创建pod
+[root@k8s-master01 ~]# kubectl create -f pod-hook-exec.yaml
+pod/pod-hook-exec created
+
+# 查看pod
+[root@k8s-master01 ~]# kubectl get pods  pod-hook-exec -n dev -o wide
+NAME           READY   STATUS     RESTARTS   AGE    IP            NODE    
+pod-hook-exec  1/1     Running    0          29s    10.244.2.48   node2   
+
+# 访问pod
+[root@k8s-master01 ~]# curl 10.244.2.48
+postStart...
+```
+
+### 3.4 容器探测
+
+容器探测用于检测容器中的应用实例是否正常工作，是保障业务可用性的一种传统机制。如果经过探测，实例的状态不符合预期，那么kubernetes就会把该问题实例" 摘除 "，不承担业务流量。kubernetes提供了两种探针来实现容器探测，分别是：
+
+- liveness probes：存活性探针，用于检测应用实例当前是否处于正常运行状态，如果不是，k8s会重启容器
+- readiness probes：就绪性探针，用于检测应用实例当前是否可以接收请求，如果不能，k8s不会转发流量
+
+livenessProbe 决定是否重启容器，readinessProbe 决定是否将请求转发给容器。
+
+上面两种探针目前均支持三种探测方式：
+
+- Exec命令：在容器内执行一次命令，如果命令执行的退出码为0，则认为程序正常，否则不正常
+
+  ```yaml
+  ……
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+  ……
+  ```
+
+- TCPSocket：将会尝试访问一个用户容器的端口，如果能够建立这条连接，则认为程序正常，否则不正常
+
+  ```yaml
+  ……      
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+  ……
+  ```
+
+- HTTPGet：调用容器内Web应用的URL，如果返回的状态码在200和399之间，则认为程序正常，否则不正常
+
+  ```yaml
+  ……
+    livenessProbe:
+      httpGet:
+        path: / #URI地址
+        port: 80 #端口号
+        host: 127.0.0.1 #主机地址
+        scheme: HTTP #支持的协议，http或者https
+  ……
+  ```
+
+下面以liveness probes为例，做几个演示：
