@@ -18,10 +18,19 @@
   - [3.2 初始化容器](#3.2)
   - [3.3 钩子函数](#3.3)
   - [3.4 容器探测](#3.4)
+    - [3.4.1 Exec](#3.4.1)
+    - [3.4.2 TCPSocket](#3.4.2)
+    - [3.4.3 HTTPGet](#3.4.3)
   - [3.5 重启策略](#3.5)
 - [四. Pod调度](#4)
   - [4.1 定向调度](#4.1)
   - [4.2 亲和性调度](#4.2)
+    - [4.2.1 NodeAffinity（Node亲和性）](#4.2.1)
+    - [4.2.2 PodAffinity（Pod亲和性）](#4.2.2)
+    - [4.2.3 PodAntiAffinity（Pod非亲和性）](#4.2.3)
+  - [4.3 污点和容忍](#4.3)
+    - [4.3.1 污点（Taints）](#4.3.1)
+    - [4.3.2 容忍（Toleration）](#4.3.2)
 
 ## 一. Pod介绍<a name="1"></a>
 
@@ -722,7 +731,7 @@ livenessProbe 决定是否重启容器，readinessProbe 决定是否将请求转
 
 下面以liveness probes为例，做几个演示：
 
-#### **方式一：Exec**
+#### 3.4.1 Exec<a name="3.4.1"></a>
 
 创建pod-liveness-exec.yaml
 
@@ -769,7 +778,7 @@ pod-liveness-exec   0/1     CrashLoopBackOff   2          3m19s
 # 当然接下来，可以修改成一个存在的文件，比如/tmp/hello.txt，再试，结果就正常了......
 ```
 
-#### **方式二：TCPSocket**
+#### 3.4.2 TCPSocket<a name="3.4.2"></a>
 
 创建pod-liveness-tcpsocket.yaml
 
@@ -816,7 +825,7 @@ pod-liveness-tcpsocket   0/1     CrashLoopBackOff   2          3m19s
 # 当然接下来，可以修改成一个可以访问的端口，比如80，再试，结果就正常了......
 ```
 
-#### **方式三：HTTPGet**
+#### 3.4.3 HTTPGet<a name="3.4.3"></a>
 
 创建pod-liveness-httpget.yaml
 
@@ -986,7 +995,7 @@ spec:
   containers:
   - name: nginx
     image: nginx:1.17.1
-  nodeName: node1 # 指定调度到node1节点上
+  nodeName: node01 # 指定调度到node01节点上
 ```
 
 测试：
@@ -996,22 +1005,22 @@ spec:
 [root@k8s-master01 ~]# kubectl create -f pod-nodename.yaml
 pod/pod-nodename created
 
-#查看Pod调度到NODE属性，确实是调度到了node1节点上
+#查看Pod调度到NODE属性，确实是调度到了node01节点上
 [root@k8s-master01 ~]# kubectl get pods pod-nodename -n dev -o wide
 NAME           READY   STATUS    RESTARTS   AGE   IP            NODE      ......
-pod-nodename   1/1     Running   0          56s   10.244.1.87   node1     ......   
+pod-nodename   1/1     Running   0          56s   10.244.1.87   node04     ......   
 
-# 接下来，删除pod，修改nodeName的值为node3（并没有node3节点）
+# 接下来，删除pod，修改nodeName的值为node04（并没有node04节点）
 [root@k8s-master01 ~]# kubectl delete -f pod-nodename.yaml
 pod "pod-nodename" deleted
-[root@k8s-master01 ~]# vim pod-nodename.yaml #将nodeName修改为node3
+[root@k8s-master01 ~]# vim pod-nodename.yaml #将nodeName修改为node04
 [root@k8s-master01 ~]# kubectl create -f pod-nodename.yaml
 pod/pod-nodename created
 
-#再次查看，发现已经向Node3节点调度，但是由于不存在node3节点，所以pod无法正常运行
+#再次查看，发现已经向node04节点调度，但是由于不存在node04节点，所以pod无法正常运行
 [root@k8s-master01 ~]# kubectl get pods pod-nodename -n dev -o wide
 NAME           READY   STATUS    RESTARTS   AGE   IP       NODE    ......
-pod-nodename   0/1     Pending   0          6s    <none>   node3   ......           
+pod-nodename   0/1     Pending   0          6s    <none>   node04   ......           
 ```
 
 #### NodeSelector
@@ -1023,9 +1032,9 @@ NodeSelector用于将pod调度到添加了指定标签的node节点上。它是�
 第一步：首先分别为node节点添加标签
 
 ```shell
-[root@k8s-master01 ~]# kubectl label nodes node1 nodeenv=pro
+[root@k8s-master01 ~]# kubectl label nodes node01 nodeenv=pro
 node/node2 labeled
-[root@k8s-master01 ~]# kubectl label nodes node2 nodeenv=test
+[root@k8s-master01 ~]# kubectl label nodes node02 nodeenv=test
 node/node2 labeled
 ```
 
@@ -1096,11 +1105,11 @@ Affinity主要分为三类：
 >
 > **反亲和性**：当应用的采用多副本部署时，有必要采用反亲和性让各个应用实例打散分布在各个node上，这样可以提高服务的高可用性。
 
-#### NodeAffinity
+#### 4.2.1 NodeAffinity（Node亲和性）<a name="4.2.1"></a>
 
 首先来看一下`NodeAffinity`的可配置项：
 
-```txt
+```markdown
 pod.spec.affinity.nodeAffinity
   requiredDuringSchedulingIgnoredDuringExecution  Node节点必须满足指定的所有规则才可以，相当于硬限制
     nodeSelectorTerms  节点选择列表
@@ -1117,5 +1126,446 @@ pod.spec.affinity.nodeAffinity
         values 值
         operator 关系符 支持In, NotIn, Exists, DoesNotExist, Gt, Lt
 	weight 倾向权重，在范围1-100。
+```
+
+关系符使用说明：
+
+```markdown
+- matchExpressions:
+  - key: nodeenv              # 匹配存在标签的key为nodeenv的节点
+    operator: Exists
+  - key: nodeenv              # 匹配标签的key为nodeenv,且value是"xxx"或"yyy"的节点
+    operator: In
+    values: ["xxx","yyy"]
+  - key: nodeenv              # 匹配标签的key为nodeenv,且value大于"xxx"的节点
+    operator: Gt
+    values: "xxx"
+```
+
+接下来首先演示一下`requiredDuringSchedulingIgnoredDuringExecution` ，创建pod-nodeaffinity-required.yaml：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nodeaffinity-required
+  namespace: dev
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.17.1
+  affinity:  #亲和性设置
+    nodeAffinity: #设置node亲和性
+      requiredDuringSchedulingIgnoredDuringExecution: # 硬限制
+        nodeSelectorTerms:
+        - matchExpressions: # 匹配env的值在["xxx","yyy"]中的标签
+          - key: nodeenv
+            operator: In
+            values: ["xxx","yyy"]
+```
+
+测试：
+
+```shell
+# 创建pod
+[root@k8s-master01 ~]# kubectl create -f pod-nodeaffinity-required.yaml
+pod/pod-nodeaffinity-required created
+
+# 查看pod状态 （运行失败，因为没有打上xxx或yyy的Node）
+[root@k8s-master01 ~]# kubectl get pods pod-nodeaffinity-required -n dev -o wide
+NAME                        READY   STATUS    RESTARTS   AGE   IP       NODE    ...... 
+pod-nodeaffinity-required   0/1     Pending   0          16s   <none>   <none>  ......
+
+# 查看Pod的详情
+# 发现调度失败，提示node选择失败
+[root@k8s-master01 ~]# kubectl describe pod pod-nodeaffinity-required -n dev
+......
+  Warning  FailedScheduling  <unknown>  default-scheduler  0/3 nodes are available: 3 node(s) didn't match node selector.
+  Warning  FailedScheduling  <unknown>  default-scheduler  0/3 nodes are available: 3 node(s) didn't match node selector.
+
+#接下来，停止pod
+[root@k8s-master01 ~]# kubectl delete -f pod-nodeaffinity-required.yaml
+pod "pod-nodeaffinity-required" deleted
+
+# 修改文件，将values: ["xxx","yyy"]------> ["pro","yyy"]
+[root@k8s-master01 ~]# vim pod-nodeaffinity-required.yaml
+
+# 再次启动
+[root@k8s-master01 ~]# kubectl create -f pod-nodeaffinity-required.yaml
+pod/pod-nodeaffinity-required created
+
+# 此时查看，发现调度成功，已经将pod调度到了node1上
+[root@k8s-master01 ~]# kubectl get pods pod-nodeaffinity-required -n dev -o wide
+NAME                        READY   STATUS    RESTARTS   AGE   IP            NODE  ...... 
+pod-nodeaffinity-required   1/1     Running   0          11s   10.244.1.89   node1 ......
+```
+
+接下来再演示一下`requiredDuringSchedulingIgnoredDuringExecution` ，创建pod-nodeaffinity-preferred.yaml：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nodeaffinity-preferred
+  namespace: dev
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.17.1
+  affinity:  #亲和性设置
+    nodeAffinity: #设置node亲和性
+      preferredDuringSchedulingIgnoredDuringExecution: # 软限制
+      - weight: 1
+        preference:
+          matchExpressions: # 匹配env的值在["xxx","yyy"]中的标签(当前环境没有)
+          - key: nodeenv
+            operator: In
+            values: ["xxx","yyy"]
+```
+
+测试：
+
+```shell
+# 创建pod
+[root@k8s-master01 ~]# kubectl create -f pod-nodeaffinity-preferred.yaml
+pod/pod-nodeaffinity-preferred created
+
+# 查看pod状态 （运行成功）
+[root@k8s-master01 ~]# kubectl get pod pod-nodeaffinity-preferred -n dev
+NAME                         READY   STATUS    RESTARTS   AGE
+pod-nodeaffinity-preferred   1/1     Running   0          40s
+```
+
+**NodeAffinity规则设置的注意事项**：
+
+    1. 如果同时定义了nodeSelector和nodeAffinity，那么必须两个条件都得到满足，Pod才能运行在指定的Node上
+       2. 如果nodeAffinity指定了多个nodeSelectorTerms，那么只需要其中一个能够匹配成功即可
+       3. 如果一个nodeSelectorTerms中有多个matchExpressions ，则一个节点必须满足所有的才能匹配成功
+       4. 如果一个pod所在的Node在Pod运行期间其标签发生了改变，不再符合该Pod的节点亲和性需求，则系统将忽略此变化
+
+#### 4.2.2 PodAffinity（Pod亲和性）<a name="4.2.2"></a>
+
+PodAffinity主要实现以运行的Pod为参照，实现让新创建的Pod跟参照pod在一个区域的功能。
+
+首先来看一下`PodAffinity`的可配置项：
+
+```markdown
+pod.spec.affinity.podAffinity
+  requiredDuringSchedulingIgnoredDuringExecution  硬限制
+    namespaces       指定参照pod的namespace
+    topologyKey      指定调度作用域
+    labelSelector    标签选择器
+      matchExpressions  按节点标签列出的节点选择器要求列表(推荐)
+        key    键
+        values 值
+        operator 关系符 支持In, NotIn, Exists, DoesNotExist.
+      matchLabels    指多个matchExpressions映射的内容
+  preferredDuringSchedulingIgnoredDuringExecution 软限制
+    podAffinityTerm  选项
+      namespaces      
+      topologyKey
+      labelSelector
+        matchExpressions  
+          key    键
+          values 值
+          operator
+        matchLabels 
+    weight 倾向权重，在范围1-100
+```
+
+topologyKey用于指定调度时作用域，例如:
+
+- 如果指定为kubernetes.io/hostname，那就是以Node节点为区分范围
+- 如果指定为beta.kubernetes.io/os,则以Node节点的操作系统类型来区分
+
+接下来，演示下`requiredDuringSchedulingIgnoredDuringExecution`，
+
+1）首先创建一个参照Pod，pod-podaffinity-target.yaml：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-podaffinity-target
+  namespace: dev
+  labels:
+    podenv: pro #设置标签
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.17.1
+  nodeName: node1 # 将目标pod名确指定到node1上
+```
+
+```shell
+# 启动目标pod
+[root@k8s-master01 ~]# kubectl create -f pod-podaffinity-target.yaml
+pod/pod-podaffinity-target created
+
+# 查看pod状况
+[root@k8s-master01 ~]# kubectl get pods  pod-podaffinity-target -n dev
+NAME                     READY   STATUS    RESTARTS   AGE
+pod-podaffinity-target   1/1     Running   0          4s
+```
+
+2）创建pod-podaffinity-required.yaml，内容如下：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-podaffinity-required
+  namespace: dev
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.17.1
+  affinity:  #亲和性设置
+    podAffinity: #设置pod亲和性
+      requiredDuringSchedulingIgnoredDuringExecution: # 硬限制
+      - labelSelector:
+          matchExpressions: # 匹配env的值在["xxx","yyy"]中的标签
+          - key: podenv
+            operator: In
+            values: ["xxx","yyy"]
+        topologyKey: kubernetes.io/hostname
+```
+
+上面配置表达的意思是：新Pod必须要与拥有标签nodeenv=xxx或者nodeenv=yyy的pod在同一Node上，显然现在没有这样pod，接下来，运行测试一下：
+
+```shell
+# 启动pod
+[root@k8s-master01 ~]# kubectl create -f pod-podaffinity-required.yaml
+pod/pod-podaffinity-required created
+
+# 查看pod状态，发现未运行
+[root@k8s-master01 ~]# kubectl get pods pod-podaffinity-required -n dev
+NAME                       READY   STATUS    RESTARTS   AGE
+pod-podaffinity-required   0/1     Pending   0          9s
+
+# 查看详细信息，错误信息显示：集群有3个节点，但是有0个节点符合调度需求。其中两个节点（工作节点）没有匹配到指定亲和的Pod，而主节点有污点，无法容忍
+[root@k8s-master01 ~]# kubectl describe pods pod-podaffinity-required  -n dev
+......
+Events:
+  Type     Reason            Age        From               Message
+  ----     ------            ----       ----               -------
+  Warning  FailedScheduling  <unknown>  default-scheduler  0/3 nodes are available: 2 node(s) didn't match pod affinity rules, 1 node(s) had taints that the pod didn't tolerate.
+
+# 接下来修改  values: ["xxx","yyy"]----->values:["pro","yyy"]
+# 意思是：新Pod必须要与拥有标签nodeenv=xxx或者nodeenv=yyy的pod在同一Node上
+[root@k8s-master01 ~]# vim pod-podaffinity-required.yaml
+
+# 然后重新创建pod，查看效果
+[root@k8s-master01 ~]# kubectl delete -f  pod-podaffinity-required.yaml
+pod "pod-podaffinity-required" deleted
+[root@k8s-master01 ~]# kubectl create -f pod-podaffinity-required.yaml
+pod/pod-podaffinity-required created
+
+# 发现此时Pod运行正常
+[root@k8s-master01 ~]# kubectl get pods pod-podaffinity-required -n dev
+NAME                       READY   STATUS    RESTARTS   AGE   LABELS
+pod-podaffinity-required   1/1     Running   0          6s    <none>
+```
+
+关于`PodAffinity`的 `preferredDuringSchedulingIgnoredDuringExecution`，这里不再演示。
+
+#### 4.2.3 PodAntiAffinity（Pod非亲和性）<a name="4.2.3"></a>
+
+PodAntiAffinity主要实现以运行的Pod为参照，让新创建的Pod与参照Pod不在一个区域中的功能。
+
+它的配置方式和选项跟PodAffinty是一样的，这里不再做详细解释，直接做一个测试案例。
+
+```shell
+[root@k8s-master01 ~]# kubectl get pods -n dev -o wide --show-labels
+NAME                     READY   STATUS    RESTARTS   AGE     IP            NODE    LABELS
+pod-podaffinity-required 1/1     Running   0          3m29s   10.244.1.38   node1   <none>     
+pod-podaffinity-target   1/1     Running   0          9m25s   10.244.1.37   node1   podenv=pro
+```
+
+2）创建pod-podantiaffinity-required.yaml，内容如下：
+
+```shell
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-podantiaffinity-required
+  namespace: dev
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.17.1
+  affinity:  #亲和性设置
+    podAntiAffinity: #设置pod亲和性
+      requiredDuringSchedulingIgnoredDuringExecution: # 硬限制
+      - labelSelector:
+          matchExpressions: # 匹配podenv的值在["pro"]中的标签
+          - key: podenv
+            operator: In
+            values: ["pro"]
+        topologyKey: kubernetes.io/hostname
+```
+
+上面配置表达的意思是：新Pod必须要与拥有标签nodeenv=pro的pod不在同一Node上，运行测试一下：
+
+```shell
+# 创建pod
+[root@k8s-master01 ~]# kubectl create -f pod-podantiaffinity-required.yaml
+pod/pod-podantiaffinity-required created
+
+# 查看pod
+# 发现调度到了node2上
+[root@k8s-master01 ~]# kubectl get pods pod-podantiaffinity-required -n dev -o wide
+NAME                           READY   STATUS    RESTARTS   AGE   IP            NODE   .. 
+pod-podantiaffinity-required   1/1     Running   0          30s   10.244.1.96   node2  ..
+```
+
+### 4.3 污点和容忍<a name="4.3"></a>
+
+#### 4.3.1 污点（Taints）<a name="4.3.1"></a>
+
+前面的调度方式都是站在Pod的角度上，通过在Pod上添加属性，来确定Pod是否要调度到指定的Node上，其实我们也可以站在Node的角度上，通过在Node上添加**污点**属性，来决定是否允许Pod调度过来。
+
+Node被设置上污点之后就和Pod之间存在了一种相斥的关系，进而拒绝Pod调度进来，甚至可以将已经存在的Pod驱逐出去。
+
+污点的格式为：`key=value:effect`, key和value是污点的标签，effect描述污点的作用，支持如下三个选项：
+
+- PreferNoSchedule：kubernetes将尽量避免把Pod调度到具有该污点的Node上，除非没有其他节点可调度
+- NoSchedule：kubernetes将不会把Pod调度到具有该污点的Node上，但不会影响当前Node上已存在的Pod
+- NoExecute：kubernetes将不会把Pod调度到具有该污点的Node上，同时也会将Node上已存在的Pod驱离
+
+![](../images/21.png)
+
+使用kubectl设置和去除污点的命令示例如下：
+
+```shell
+# 设置污点
+kubectl taint nodes node1 key=value:effect
+
+# 去除污点
+kubectl taint nodes node1 key:effect-
+
+# 去除所有污点
+kubectl taint nodes node1 key-
+```
+
+接下来，演示下污点的效果：
+
+1. 准备节点node1（为了演示效果更加明显，暂时停止node2节点）
+2. 为node1节点设置一个污点: `tag=heima:PreferNoSchedule`；然后创建pod1( pod1 可以 )
+3. 修改为node1节点设置一个污点: `tag=heima:NoSchedule`；然后创建pod2( pod1 正常 pod2 失败 )
+4. 修改为node1节点设置一个污点: `tag=heima:NoExecute`；然后创建pod3 ( 3个pod都失败 )
+
+```shell
+# 为node1设置污点(PreferNoSchedule)
+[root@k8s-master01 ~]# kubectl taint nodes node1 tag=heima:PreferNoSchedule
+
+# 创建pod1
+[root@k8s-master01 ~]# kubectl run taint1 --image=nginx:1.17.1 -n dev
+[root@k8s-master01 ~]# kubectl get pods -n dev -o wide
+NAME                      READY   STATUS    RESTARTS   AGE     IP           NODE   
+taint1-7665f7fd85-574h4   1/1     Running   0          2m24s   10.244.1.59   node1    
+
+# 为node1设置污点(取消PreferNoSchedule，设置NoSchedule)
+[root@k8s-master01 ~]# kubectl taint nodes node1 tag:PreferNoSchedule-
+[root@k8s-master01 ~]# kubectl taint nodes node1 tag=heima:NoSchedule
+
+# 创建pod2
+[root@k8s-master01 ~]# kubectl run taint2 --image=nginx:1.17.1 -n dev
+[root@k8s-master01 ~]# kubectl get pods taint2 -n dev -o wide
+NAME                      READY   STATUS    RESTARTS   AGE     IP            NODE
+taint1-7665f7fd85-574h4   1/1     Running   0          2m24s   10.244.1.59   node1 
+taint2-544694789-6zmlf    0/1     Pending   0          21s     <none>        <none>   
+
+# 为node1设置污点(取消NoSchedule，设置NoExecute)
+[root@k8s-master01 ~]# kubectl taint nodes node1 tag:NoSchedule-
+[root@k8s-master01 ~]# kubectl taint nodes node1 tag=heima:NoExecute
+
+# 创建pod3
+[root@k8s-master01 ~]# kubectl run taint3 --image=nginx:1.17.1 -n dev
+[root@k8s-master01 ~]# kubectl get pods -n dev -o wide
+NAME                      READY   STATUS    RESTARTS   AGE   IP       NODE     NOMINATED 
+taint1-7665f7fd85-htkmp   0/1     Pending   0          35s   <none>   <none>   <none>    
+taint2-544694789-bn7wb    0/1     Pending   0          35s   <none>   <none>   <none>     
+taint3-6d78dbd749-tktkq   0/1     Pending   0          6s    <none>   <none>   <none>     
+```
+
+**使用kubeadm搭建的集群，默认就会给master节点添加一个污点标记，所以pod就不会调度到master节点上**。
+
+```shell
+[root@node01 ~]# kubectl describe node node01
+Name:               node01
+Roles:              master
+Labels:             beta.kubernetes.io/arch=amd64
+                    beta.kubernetes.io/os=linux
+                    kubernetes.io/arch=amd64
+                    kubernetes.io/hostname=node01
+                    kubernetes.io/os=linux
+                    node-role.kubernetes.io/master=
+Annotations:        flannel.alpha.coreos.com/backend-data: {"VtepMAC":"4a:c3:0f:21:2d:28"}
+                    flannel.alpha.coreos.com/backend-type: vxlan
+                    flannel.alpha.coreos.com/kube-subnet-manager: true
+                    flannel.alpha.coreos.com/public-ip: 192.168.0.101
+                    kubeadm.alpha.kubernetes.io/cri-socket: /var/run/dockershim.sock
+                    node.alpha.kubernetes.io/ttl: 0
+                    volumes.kubernetes.io/controller-managed-attach-detach: true
+CreationTimestamp:  Sat, 03 Jul 2021 22:46:07 +0800
+Taints:             node-role.kubernetes.io/master:NoSchedule #kubeadm搭建的集群，默认在Master节点上加上了NoSchedule污点
+```
+
+#### 4.3.2 容忍（Toleration）<a name="4.3.2"></a>
+
+上面介绍了污点的作用，我们可以在node上添加污点用于拒绝pod调度上来，但是如果就是想将一个pod调度到一个有污点的node上去，这时候应该怎么做呢？这就要使用到**容忍**。
+
+![](../images/22.png)
+
+> 污点就是拒绝，容忍就是忽略，Node通过污点拒绝pod调度上去，Pod通过容忍忽略拒绝
+
+下面先通过一个案例看下效果：
+
+1. 上一小节，已经在node1节点上打上了`NoExecute`的污点，此时pod是调度不上去的
+2. 本小节，可以通过给pod添加容忍，然后将其调度上去
+
+创建pod-toleration.yaml，内容如下：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-toleration
+  namespace: dev
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.17.1
+  tolerations:      # 添加容忍
+  - key: "tag"        # 要容忍的污点的key
+    operator: "Equal" # 操作符
+    value: "heima"    # 容忍的污点的value
+    effect: "NoExecute"   # 添加容忍的规则，这里必须和标记的污点规则相同
+```
+
+```shell
+# 添加容忍之前的pod
+[root@k8s-master01 ~]# kubectl get pods -n dev -o wide
+NAME             READY   STATUS    RESTARTS   AGE   IP       NODE     NOMINATED 
+pod-toleration   0/1     Pending   0          3s    <none>   <none>   <none>           
+
+# 添加容忍之后的pod
+[root@k8s-master01 ~]# kubectl get pods -n dev -o wide
+NAME             READY   STATUS    RESTARTS   AGE   IP            NODE    NOMINATED
+pod-toleration   1/1     Running   0          3s    10.244.1.62   node1   <none>        
+```
+
+下面看一下容忍的详细配置：
+
+```shell
+[root@k8s-master01 ~]# kubectl explain pod.spec.tolerations
+......
+FIELDS:
+   key       # 对应着要容忍的污点的键，空意味着匹配所有的键
+   value     # 对应着要容忍的污点的值
+   operator  # key-value的运算符，支持Equal和Exists（默认）
+   effect    # 对应污点的effect，空意味着匹配所有影响
+   tolerationSeconds   # 容忍时间, 当effect为NoExecute时生效，表示pod在Node上的停留时间
 ```
 
