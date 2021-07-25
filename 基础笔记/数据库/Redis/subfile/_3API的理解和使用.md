@@ -1,24 +1,12 @@
 # API的理解和使用
 
-## 一. 全局命令
+[TOC]
 
-### 1.1 查看所有键
 
-```shell
-keys *
-```
 
-`keys`命令会遍历所有的键，所以它的时间复杂度是O(n)，线上环境禁止使用该命令。
+## 一. 键管理<a name="1"></a>
 
-### 1.2 键总数
-
-```shell
-dbsize
-```
-
-dbsize命令会返回当前数据库中键的总数。该命令不会遍历所有键，而是直接获取Redis内置的键总数遍历，所以dbsize的时间复杂度是O(1)。
-
-### 1.3 检查键是否存在
+### 1.1 检查键是否存在<a name="1.1"></a>
 
 ```shell
 exists key
@@ -26,7 +14,7 @@ exists key
 
 如果键存在则返回1，如果不存在则返回0。
 
-### 1.4 删除键
+### 1.2 删除键<a name="1.2"></a>
 
 ```shell
 #删除单个键
@@ -39,25 +27,56 @@ del是一个通用命令，不管是什么数据类型，del都能将其删除�
 
 返回结果为成功删除的键的个数，如果删除一个不存在的键，就会返回0。
 
-### 1.5 键过期
-
-#### 1.5.1 设置键过期时间
+### 1.3 键重命名<a name="1.3"></a>
 
 ```shell
-expire key seconds
+rename key newkey
+renamenx key newkey
 ```
 
-例如为hello键设置了10s的过期时间
+如果在rename之前，键”newkey“已经存在，那么它的值也将被覆盖。为了防止被强行rename，Redis提供了renamenx命令，确保只有在newkey不存在时才会被重命名。
+
+由于重命名期间会执行del命令删除旧的键，如果键对应的值比较大，会存在阻塞Redis的可能性，这点不要忽视。
+
+**随机返回一个键**
 
 ```shell
-set hello world
-expire hello 10
+randomkey
 ```
 
-#### 1.5.2 查看键的过期时间
+### 1.4 键总数<a name="1.4"></a>
 
 ```shell
-ttl key
+dbsize
+```
+
+dbsize命令会返回当前数据库中键的总数。该命令不会遍历所有键，而是直接获取Redis内置的键总数遍历，所以dbsize的时间复杂度是O(1)。
+
+### 1.5 键过期<a name="1.5"></a>
+
+#### 1.5.1 设置键过期时间<a name="1.5.1"></a>
+
+```shell
+expire key seconds #键在seconds秒后过期
+expireat key timestamp #键在秒级时间戳timestamp后过期
+pexpire key milliseconds #键在milliseconds毫秒后过期
+pexpireat key milliseconds-timestamp #键在毫秒级时间戳timestamp后过期 
+
+persist key #将键的过期时间清除
+```
+
+使用键过期命令时需要注意以下几点：
+
+- 无论使用过期时间还是时间戳，秒级还是毫秒级，在Redis内部最终使用的都是pexpireat
+- 对于字符串类型键，执行set命令会去掉过期时间
+- Redis不支持二级数据结构内部元素的过期功能
+- setex命令作为set+expire的组合，不但是原子执行，同时减少了一次网络通讯时间。
+
+#### 1.5.2 查看键过期时间<a name="1.5.2"></a>
+
+```shell
+ttl key #查看秒级剩余过期时间
+pttl key #查看毫秒级剩余过期时间
 ```
 
 ttl命令会返回键的剩余过期时间，它会有三种返回值：
@@ -66,7 +85,94 @@ ttl命令会返回键的剩余过期时间，它会有三种返回值：
 - -1：键没设置过期时间
 - -2：键不存在
 
-### 1.6 键的数据结构
+### 1.6 遍历键<a name="1.6"></a>
+
+#### 1.6.1 全量遍历键<a name="1.6.1"></a>
+
+```shell
+keys pattern
+```
+
+pattern可以使用通配符进行匹配：
+
+- `*`代表匹配N个任意字符
+- `?`代表匹配一个任意字符
+- `[]`代表匹配部分字符，例如：[1,3]代表匹配1、3；[1-10]代表匹配1到10的任意数字。
+- `\x`用来做转义，例如要匹配`*`、`?`需要进行转义
+
+例如，如果我们要匹配j、r开头，紧跟edis字符串的所有键：
+
+```shell
+keys [j,r]edis
+```
+
+当需要遍历所有键时（例如检测过期或闲置时间、寻找大对象等），keys是一个很有帮助的命令，例如想删除所有以video字符串开头的键，可以执行一下操作：
+
+```shell
+redis-cli keys video* | xargs redis-cli del
+```
+
+但是如果考虑到Redis是单线程架构就不那么美妙了，如果Redis包含了大量的键，执行keys命令很可能会造成Redis阻塞，所以一般建议不要在生产环境下使用keys命令。
+
+#### 1.6.2 渐进式遍历<a name="1.6.2"></a>
+
+keys不建议在生产环境上使用，那如果我们真的有遍历所有键的需求该如何解决呢？
+
+Redis从2.8版本后，提供了一个新命令scan，它能有效的解决keys命令存在的问题。和keys命令执行时会遍历所有键不同的是，scan采用渐进式遍历的方式来解决keys命令可能带来的阻塞问题，每次scan命令的时间复杂度是O(1)，但是要真正实现keys功能，需要执行多次scan。每次执行scan，可以想象成只扫描一个字典中的一部分键，直到将字典中的所有键遍历完毕。
+
+```shell
+scan cursor [match pattern] [count number]
+```
+
+- cursor是必需参数，实际上cursor是一个游标，第一次遍历从0开始，每次scan遍历完都会返回当前游标的值，直到游标值为0，表示遍历结束。
+- match pattern是可选参数，它的作用是做模式匹配，这点和keys的模式匹配很像。
+- count number是可选参数，它的作用是表明每次要遍历的键个数，默认值是10，此参数可以适当增大。
+
+现在有14个键，我们使用scan命令遍历所有键：
+
+```shell
+127.0.0.1:7002> keys *
+ 1) "set_1_2"
+ 2) "nxkey"
+ 3) "redis"
+ 4) "zset:2"
+ 5) "user:ranking"
+ 6) "list"
+ 7) "views"
+ 8) "user:1"
+ 9) "key"
+10) "zset_inter_1_2"
+11) "set1"
+12) "zset:1"
+13) "put"
+14) "set2"
+127.0.0.1:7002> scan 0 count 5
+1) "10"
+2) 1) "set_1_2"
+   2) "nxkey"
+   3) "views"
+   4) "user:1"
+   5) "redis"
+127.0.0.1:7002> scan 10 count 5
+1) "3"
+2) 1) "user:ranking"
+   2) "zset:1"
+   3) "put"
+   4) "zset:2"
+   5) "zset_inter_1_2"
+   6) "set1"
+127.0.0.1:7002> scan 3 count 5
+1) "0"
+2) 1) "key"
+   2) "list"
+   3) "set2"
+```
+
+除了scan以外，Redis提供了面向hash类型、集合类型、有序集合的扫描遍历命令，解决诸如hgetall、smembers、zrange可能产生的阻塞问题，对应的命令分别是hscan、sscan、zscan，它们的用法和scan基本类似。
+
+渐进式遍历可以有效解决keys命令可能产生阻塞的问题，但是scan并非完美无瑕，如果scan的过程中如果有键的变化（增加、删除、重命名），那么遍历就会出现如下问题：新增的键没有被遍历到，遍历出现重复元素的情况，也就是说**scan并不能保证完整的遍历出来所有的键**，这些是我们在开发时需要考虑的。
+
+### 1.7 键的数据结构<a name="1.7"></a>
 
 ```shell
 type key
@@ -82,7 +188,7 @@ type命令的返回值有：
 - set（集合）
 - zset（有序集合）
 
-## 二. 数据结构和内部编码
+## 二. 数据结构和内部编码<a name="2"></a>
 
 type命令可以查看Key的数据结构，但是这些都是Redis对外的数据结构，实际上每种数据结构都有自己底层的内部编码实现，而且是多种实现，这样Redis会在合适的场景选择合适的内部编码。
 
@@ -100,9 +206,9 @@ Redis这样设计有两个好处：
 
 第二，多种内部编码实现可以在不同场景下发挥各自的优势，例如ziplist比较节省内存，但是在列表元素比较多的情况下，性能会有所下降，这时候Redis会根据配置选项将列表类型的内部实现由ziplist转换为linkedlist。
 
-## 三. 字符串
+## 三. 字符串<a name="3"></a>
 
-### 3.1 设置值
+### 3.1 设置值<a name="3.1"></a>
 
 ```shell
 set key value [ex seconds] [px milliseconds] [nx|xx]
@@ -128,25 +234,25 @@ nx插入模式可以作为分布式锁的一种实现方案，Redis还提供了s
 (integer) 0 #设置不成功
 ```
 
-### 3.2 获取值
+### 3.2 获取值<a name="3.2"></a>
 
 ```shell
 get key
 ```
 
-### 3.3 批量设置值
+### 3.3 批量设置值<a name="3.3"></a>
 
 ```shell
 mset key value [key value ...]
 ```
 
-### 3.4 批量获取值
+### 3.4 批量获取值<a name="3.4"></a>
 
 ```shell
 mget key [key ...]
 ```
 
-### 3.5 计数
+### 3.5 计数<a name="3.5"></a>
 
 ```shell
 incr key	
@@ -169,7 +275,7 @@ incrbyfloat key increment
 
 很多存储系统和编程语言内部使用CAS机制实现计数器功能，会有一定的CPU开销，但在Redis中完全不存在这个问题，因为Redis是单线程架构，任何命令到了Redis服务端都要顺序执行。
 
-### 3.6 追加值
+### 3.6 追加值<a name="3.6"></a>
 
 ```shell
 append key value
@@ -186,7 +292,7 @@ append可以向字符串尾部追加值，例如：
 "test123"
 ```
 
-### 3.7 字符串长度
+### 3.7 字符串长度<a name="3.7"></a>
 
 ```shell
 strlen key
@@ -194,7 +300,7 @@ strlen key
 
 注意该命令返回的是字节数，如果是中文，则每个字符占3个字节。
 
-### 3.8 设置并返回原值
+### 3.8 设置并返回原值<a name="3.8"></a>
 
 ```shell
 getset key value
@@ -209,7 +315,7 @@ getset命令和set一样会设置值，但是不同的是，它同时会返回�
 "world"
 ```
 
-### 3.9 设置指定位置的字符串
+### 3.9 设置指定位置的字符串<a name="3.9"></a>
 
 ```shell
 setrange key offeset value
@@ -230,7 +336,7 @@ OK
 "qwet"
 ```
 
-### 3.10 获取部分字符串
+### 3.10 获取部分字符串<a name="3.10"></a>
 
 ```shell
 getrange key start end
@@ -809,29 +915,5 @@ zunionstore和zinterstore参数保持一致
 - ziplist（压缩列表）：当有序集合元素个数小于zset-max-ziplist-entries配置（默认是128个），同时每个元素的值都小于zset-max-ziplist-value配置（默认64字节）时，Redis会使用ziplist来作为有序集合的内部实现，ziplist可以有效减少内存的使用。
 - skiplist（跳跃表）：当ziplist条件不满足时，有序集合会使用skiplist作为内部实现，因为此时ziplist的读写效率会下降。
 
-## 八. 键管理
 
-### 8.1 单个键管理
-
-**键重命名**
-
-```shell
-rename key newkey
-renamenx key newkey
-```
-
-如果在rename之前，键”newkey“已经存在，那么它的值也将被覆盖。为了防止被强行rename，Redis提供了renamenx命令，确保只有在newkey不存在时才会被重命名。
-
-由于重命名期间会执行del命令删除旧的键，如果键对应的值比较大，会存在阻塞Redis的可能性，这点不要忽视。
-
-**随机返回一个键**
-
-```shell
-randomkey
-```
-
-**键过期**
-
-```shell
-```
 
