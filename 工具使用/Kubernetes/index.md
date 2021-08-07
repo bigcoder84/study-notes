@@ -10,3 +10,5 @@
 
 [Pod详解](./subfile/_5Pod详解.md)
 
+[Pod控制器](./subfile/_6Pod控制器.md)
+

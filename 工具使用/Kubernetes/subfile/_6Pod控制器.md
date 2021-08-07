@@ -1,5 +1,27 @@
 # Pod控制器
-
+- [Pod控制器](#pod控制器)
+  - [一. Pod控制器介绍](#一-pod控制器介绍)
+  - [二. ReplicaSet(rs)](#二-replicasetrs)
+    - [2.1 创建ReplicaSet](#21-创建replicaset)
+    - [2.2 扩缩容](#22-扩缩容)
+    - [2.3 镜像升级](#23-镜像升级)
+    - [2.4 删除ReplicaSet](#24-删除replicaset)
+  - [三. Deployment(deploy)](#三-deploymentdeploy)
+    - [3.1 创建deployment](#31-创建deployment)
+    - [3.2 扩缩容](#32-扩缩容)
+    - [3.3 镜像更新](#33-镜像更新)
+      - [3.3.1 重建更新](#331-重建更新)
+      - [3.3.2 滚动更新](#332-滚动更新)
+      - [3.3.3 版本回退](#333-版本回退)
+      - [3.3.4 金丝雀发布](#334-金丝雀发布)
+  - [四. Horizontal Pod Autoscaler(hpa)](#四-horizontal-pod-autoscalerhpa)
+    - [4.1 安装metrics-server](#41-安装metrics-server)
+    - [4.2 准备Deployment和Service](#42-准备deployment和service)
+    - [4.3 部署HPA](#43-部署hpa)
+    - [4.4 测试](#44-测试)
+  - [五. DaemonSet(DS)](#五-daemonsetds)
+  - [六. Job](#六-job)
+  - [七. CronJob（cj）](#七-cronjobcj)
 ## 一. Pod控制器介绍
 
 Pod控制器是管理pod的中间层，使用Pod控制器之后，只需要告诉Pod控制器，想要多少个什么样的Pod就可以了，它会创建出满足条件的Pod并确保每一个Pod资源处于用户期望的目标状态。如果Pod资源在运行中出现故障，它会基于指定策略重新编排Pod。
@@ -1050,7 +1072,7 @@ pc-job-5vg2j   0/1     Completed           0          12s
 job.batch "pc-job" deleted
 ```
 
-## 七. CronJob
+## 七. CronJob（cj）
 
 CronJob控制器以Job控制器资源为其管控对象，并借助它管理pod资源对象，Job控制器定义的作业任务在其控制器资源创建之后便会立即执行，但CronJob可以以类似于Linux操作系统的周期性任务作业计划的方式控制其运行**时间点**及**重复运行**的方式。也就是说，**CronJob可以在特定的时间点(反复的)去运行job任务**。
 
