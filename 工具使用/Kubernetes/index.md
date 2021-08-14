@@ -16,3 +16,5 @@
 
 [Ingress详解](./subfile/_8Ingress详解.md)
 
+[数据存储](./subfile/_9数据存储.md)
+
