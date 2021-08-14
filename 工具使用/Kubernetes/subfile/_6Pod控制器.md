@@ -1190,3 +1190,5 @@ pc-cronjob-1592587920-9dxxq   1/1     Running     0          24s
 cronjob.batch "pc-cronjob" deleted
 ```
 
+## 八. StatefulSet
+
