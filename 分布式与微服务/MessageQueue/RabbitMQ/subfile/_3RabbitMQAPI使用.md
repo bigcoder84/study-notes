@@ -241,3 +241,8 @@ Basic.RecoverOk basicRecover(boolean requeue) throws IOException;
 
 创建交换机、队列以及两者的绑定过程甚至可以交给运维去完成，开发者只需要在代码中向Exchange发消息，以及订阅Queue中的消息即可，然后在代码上线之前保证Exchange、Queue、Binding都已经准备完毕（运维）即可。
 
+## 四. 特殊的Exchange
+
+默认交换机（default exchange）实际上是一个由RabbitMQ预先声明好的名字为空字符串的直连交换机（direct exchange）。它有一个特殊的属性使得它对于简单应用特别有用处：那就是每个新建队列（queue）都会自动绑定到默认交换机上，绑定的路由键（routing key）名称与队列名称相同。如：当你声明了一个名为”hello”的队列，RabbitMQ会自动将其绑定到默认交换机上，绑定（binding）的路由键名称也是为”hello”。因此，当携带着名为”hello”的路由键的消息被发送到默认交换机的时候，此消息会被默认交换机路由至名为”hello”的队列中。
+
+![](../images/8.png)
