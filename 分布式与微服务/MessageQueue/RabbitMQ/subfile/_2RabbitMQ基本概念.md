@@ -76,5 +76,17 @@ headers类型的交换器不依赖于路由键的匹配规则来路由信息，�
 
 ## 五. Connection和Channel的关系
 
+生产者和消费者，需要与RabbitMQ Broker 建立TCP连接，也就是Connection 。一旦TCP 连接建立起来，客户端紧接着创建一个AMQP 信道（Channel），每个信道都会被指派一个唯一的ID。信道是建立在Connection 之上的虚拟连接， RabbitMQ 处理的每条AMQP 指令都是通过信道完成的。
 
+![](../images/7.png)
+
+为什么不直接使用TCP连接，而是使用信道？
+
+RabbitMQ 采用类似NIO的做法，复用TCP 连接，减少性能开销，便于管理。
+
+当每个信道的流量不是很大时，复用单一的Connection 可以在产生性能瓶颈的情况下有效地节省TCP 连接资源。
+
+当信道本身的流量很大时，一个Connection 就会产生性能瓶颈，流量被限制。需要建立多个Connection，分摊信道。具体的调优看业务需要。信道在AMQP 中是一个很重要的概念，大多数操作都是在信道这个层面进行的。
+
+RabbitMQ相关的API与AMQP紧密相连，比如channel.basicPublish对应AMQP的Basic.Publish命令。
 
