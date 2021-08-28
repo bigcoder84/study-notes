@@ -225,7 +225,7 @@ void basicNack(long deliveryTag, boolean multiple, boolean requeue)
 
 #### 2.3.3 重新发送未确认的消息
 
-对于requeue, AMQP中还有一个命令Basic. Recover具备可重入队列的特性。其对应的客户端方法为:
+对于requeue，AMQP中还有一个命令Basic.Recover具备可重入队列的特性。其对应的客户端方法为:
 
 ```java
 Basic.RecoverOk basicRecover() throws IOException;
@@ -233,7 +233,7 @@ Basic.RecoverOk basicRecover() throws IOException;
 Basic.RecoverOk basicRecover(boolean requeue) throws IOException;
 ```
 
-这个`channel.basicRecover`方法用来请求RabbitMQ重新发送还未被确认的消息。如果requeue参数设置为true,则未被确认的消息会被重新加入到队列中，这样对于同一条消息来说，可能会被分配给与之前不同的消费者。如果requeue参数设置为false,那么同一条消息会被分配给与之前相同的消费者。默认情况下，如果不设置requeue这个参数，相当于channel . basicRecover (true)，即requeue默认为true。
+这个`channel.basicRecover`方法用来请求RabbitMQ重新发送还未被确认的消息。如果requeue参数设置为true，则未被确认的消息会被重新加入到队列中，这样对于同一条消息来说，可能会被分配给与之前不同的消费者。如果requeue参数设置为false，那么同一条消息会被分配给与之前相同的消费者。默认情况下，如果不设置requeue这个参数，相当于channel.basicRecover(true)，即requeue默认为true。
 
 ## 三. 交换机、队列、绑定三者声明的时机
 
@@ -241,8 +241,41 @@ Basic.RecoverOk basicRecover(boolean requeue) throws IOException;
 
 创建交换机、队列以及两者的绑定过程甚至可以交给运维去完成，开发者只需要在代码中向Exchange发消息，以及订阅Queue中的消息即可，然后在代码上线之前保证Exchange、Queue、Binding都已经准备完毕（运维）即可。
 
-## 四. 特殊的Exchange
+在日常开发中上游服务产生的消息往往只会发送到Exchange中，如果消费者需要用到这些消息，就需要自己创建一个队列，并按照规则绑定到上游服务创建的Exchange中，至于哪些数据会由Exchange转发到队列中，是由绑定时指定的routingKey（通常称之为bindingKey）决定的。
 
-默认交换机（default exchange）实际上是一个由RabbitMQ预先声明好的名字为空字符串的直连交换机（direct exchange）。它有一个特殊的属性使得它对于简单应用特别有用处：那就是每个新建队列（queue）都会自动绑定到默认交换机上，绑定的路由键（routing key）名称与队列名称相同。如：当你声明了一个名为”hello”的队列，RabbitMQ会自动将其绑定到默认交换机上，绑定（binding）的路由键名称也是为”hello”。因此，当携带着名为”hello”的路由键的消息被发送到默认交换机的时候，此消息会被默认交换机路由至名为”hello”的队列中。
+## 四. Exchange类型
+
+### 4.1 Fanout
+
+Fanout Exchange不处理路由键，它会把所有发送到该交换器的消息路由到所有与该交换器绑定的队列中，虽然在声明Exchange时仍能够指定bindingKey，但是这个参数对这个模式是无效的，因为它压根不会处理生产者发送消息时指定的routingKey。
+
+### 4.2 Direct
+
+Direct类型的交换器路由规则很简单，它会把消息路由到那些BindingKey和RoutingKey完全匹配的队列中。
+
+### 4.3 Topic
+
+topic类型的交换器在direct匹配规则上进行了扩展，也是将消息路由到BindingKey和RoutingKey相匹配的队列中，这里的匹配规则稍微不同，它约定：
+
+BindingKey和RoutingKey一样都是由"."分隔的多个单词（最多不超过256个字节）；BindingKey中可以存在两种特殊字符`*`和`#`，用于模糊匹配，其中`*`用于匹配一个单词，`#`用于匹配多个单词（可以是0个）。如果不使用这两类符号，则Exchange的表现与类型Driect一致。单独使用`#`时，会接收所有的消息，这与类型Fanout一致。
+
+### 4.4 Headers
+
+headers类型的交换器不依赖于路由键的匹配规则来路由信息，而是根据发送的消息内容中的headers属性进行匹配。在绑定队列和交换器时指定一组键值对，当发送的消息到交换器时，RabbitMQ会获取到该消息的headers，对比其中的键值对是否完全匹配队列和交换器绑定时指定的键值对，如果匹配，消息就会路由到该队列。headers类型的交换器性能很差，不实用。
+
+### 4.5 小结
+
+由于Topic更像是Direct超集，所以在日常开发中Topic类型、Fanout类型会使用多一些。
+
+交换机只是决定消息采用何种规则转发到与交换机绑定的队列中，所以使不同类型交换机开发方式完全一致:
+
+1. 声明交换机
+2. 声明队列
+3. 绑定交换机和队列并指定bindingKey
+4. 生产者发送消息给Exchange，消费者消费队列中的消息
+
+## 五. 特殊的Exchange
+
+默认交换机（default exchange）实际上是一个由RabbitMQ预先声明好的名字为空字符串的直连交换机（direct exchange）。它有一个特殊的属性使得它对于简单应用特别有用处：那就是**每个新建队列（queue）都会自动绑定到默认交换机上，绑定的路由键（routing key）名称与队列名称相同**。如：当你声明了一个名为”hello”的队列，RabbitMQ会自动将其绑定到默认交换机上，绑定（binding）的路由键名称也是为”hello”。因此，当携带着名为”hello”的路由键的消息被发送到默认交换机的时候，此消息会被默认交换机路由至名为”hello”的队列中。
 
 ![](../images/8.png)
