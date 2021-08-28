@@ -6,3 +6,5 @@
 
 [API使用](./subfile/_3RabbitMQAPI使用.md)
 
+[RabbitMQ整合Spring](./subfile/_4RabbitMQ整合Spring.md)
+
