@@ -8,3 +8,5 @@
 
 [RabbitMQ整合Spring](./subfile/_4RabbitMQ整合Spring.md)
 
+[RabbitMQ高级特性](./subfile/_5RabbitMQ高级特性.md)
+
