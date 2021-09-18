@@ -8,5 +8,5 @@
 
 [API的理解和使用](./subfile/_3API的理解和使用.md)
 
-[Lua脚本的随机写入问题](./subfile/_5Lua脚本的随机写入问题)
+[Lua脚本的随机写入问题](./subfile/_5Lua脚本的随机写入问题.md)
 
