@@ -10,3 +10,4 @@
 
 [Lua脚本的随机写入问题](./subfile/_5Lua脚本的随机写入问题.md)
 
+[Redis底层数据结构](./subfile/_6Redis底层数据结构.md)
