@@ -21,3 +21,6 @@
 [Redis底层数据结构-跳跃表](./subfile/_8Redis底层数据结构-跳跃表.md)
 
 [Redis底层数据结构-字典](./subfile/_9Redis底层数据结构-字典.md)
+
+[Redis源码调试](./subfile/_10Redis源码调试.md)
+
