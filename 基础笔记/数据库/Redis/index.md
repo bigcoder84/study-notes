@@ -20,3 +20,4 @@
 
 [Redis底层数据结构-跳跃表](./subfile/_8Redis底层数据结构-跳跃表.md)
 
+[Redis底层数据结构-字典](./subfile/_9Redis底层数据结构-字典.md)
