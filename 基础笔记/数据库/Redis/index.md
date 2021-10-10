@@ -14,6 +14,8 @@
 
 ## 二. 底层原理
 
+### 2.1 底层数据结构
+
 [Redis底层数据结构](./subfile/_6Redis底层数据结构.md)
 
 [Redis底层数据结构-SDS](./subfile/_7Redis底层数据结构-SDS.md)
@@ -21,6 +23,10 @@
 [Redis底层数据结构-跳跃表](./subfile/_8Redis底层数据结构-跳跃表.md)
 
 [Redis底层数据结构-字典](./subfile/_9Redis底层数据结构-字典.md)
+
+[Redis底层数据结构-整数集合](./subfile/_11Redis底层数据结构-整数集合.md)
+
+### 2.2 源码解析
 
 [Redis源码调试](./subfile/_10Redis源码调试.md)
 
