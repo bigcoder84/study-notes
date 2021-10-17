@@ -26,6 +26,8 @@
 
 [Redis底层数据结构-整数集合](./subfile/_11Redis底层数据结构-整数集合.md)
 
+[Redis底层数据结构-Ziplist](./subfile/_12Redis底层数据结构-ziplist.md)
+
 ### 2.2 源码解析
 
 [Redis源码调试](./subfile/_10Redis源码调试.md)
