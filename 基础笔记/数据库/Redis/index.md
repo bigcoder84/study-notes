@@ -12,6 +12,10 @@
 
 [Lua脚本的随机写入问题](./subfile/_5Lua脚本的随机写入问题.md)
 
+[Redis缓存淘汰策略](./subfile/_13Redis缓存淘汰策略.md)
+
+[查看Redis配置](./subfile/_14查看Redis配置信息.md)
+
 ## 二. 底层原理
 
 ### 2.1 底层数据结构
