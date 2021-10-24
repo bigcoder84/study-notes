@@ -18,6 +18,8 @@
 
 [Redis持久化](./subfile/_15Redis持久化.md)
 
+[Redis事务](./subfile/_16Redis事务.md)
+
 ## 二. 底层原理
 
 ### 2.1 底层数据结构
