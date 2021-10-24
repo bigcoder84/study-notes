@@ -185,5 +185,120 @@ AOF重写过程可以手动触发也可以自动触发：
 
   自动触发的时机：aof_current_size > auto-aof-rewrite-min-size && (aof_current_size - aof_base_size) / aof_base_size >= auto-aof-rewrite-percentage。
 
+当触发AOF重写时，内部做了哪些事情呢？
+
+![](../images/52.png)
+
   
 
+1.）执行 aof 重写请求
+如果当前进程正在执行 aof 重写，请求不执行并返回如下响应
+`ERR Background append only file rewriting already in process`
+如果当前正在执行 `bgsave`，重写命令等待 `bgsave` 完成后执行 ，返回如下响应
+`Background append only file rewriting shceduled`
+
+2.）父进程执行 `fork` 创建子进程，开销等同于`bgsave`过程
+
+3.1） 父进程 fork 操作完毕之后，依然响应其他命令，所有修改命令依然写入 aof 缓冲区，并根据 `appendfsync`策略同步到硬盘，保证原有 aof 机制的有效性。
+
+3.2） 由于 fork 操作采用写时复制技术，子进程只能共享fork 操作时的内存数据，由于父进程依然响应命令，Redis 使用“aof 重写缓冲区” 保存这部分新数据，防止aof文件生成期间这部分数据的丢失。
+
+4.）子进程根据内存快照，按照命令合并规则写入到新的 aof 文件。每次批量写入硬盘数据量由配置`aof-rewrite-incremental-fsync`控制，默认为32MB，防止单次刷盘数据过多造成磁盘阻塞。
+
+5.1） 新 aof 文件 写入完成之后，子进程通知 父进程，父进程更新统计信息
+
+5.2）父进程把 aof 重写缓冲区的数据写入 新的 aof 文件
+
+5.3）使用 新 aof 文件替换 旧的 aof 文件
+
+## 三. 重启加载
+
+AOF和RDB文件都可以用于重启时的数据恢复，下图是Redis持久化文件加载过程。
+
+![](../images/53.png)
+
+流程说明：
+
+1. AOF持久化开启且存在AOF文件时，优先加载AOF文件。打印如下日志：
+
+```shell
+* DB loaded from append only file: 5.611 seconds
+```
+
+2. AOF关闭或者AOF文件不存在时，加载RDB文件。
+
+```shell
+* DB loaded from disk: 5.586 seconds
+```
+
+3. 加载AOF/RDB文件成功后，Redis启动成功。
+
+4. AOF/RDB文件存在错误时，Redis启动失败并打印错误信息。
+
+## 四. 问题定位与优化
+
+Redis 持久化是影响 Redis 性能的高发地，也是面试中常问的问题。
+
+### 4.1 fork操作
+
+当 Redis 做 RDB 或者 AOF 重写时，必然要进行 fork 操作，对于 OS 来说，fork 都是一个重量级操作。而且，fork 还会拷贝一些数据，虽然不会拷贝主进程所有的物理空间，但会复制主进程的空间内存页表。对于 10GB 的 Redis 进程，需要复制大约 20MB 的内存页表，因此 fork 操作耗时跟进程总内存量息息相关，再加上，如果使用虚拟化技术，例如 Xen 虚拟机，fork 会更加耗时。
+
+一个正常的 fork 耗时大概在 20毫秒左右。为什么呢，假设一个 Redis 实例的 OPS 在 5 万以上，如果 fork 操作耗时在秒级，那么僵拖慢几万条命令的执行，对生产环境影响明显。
+
+我们可以在 Info stats 统计中查询 latest_fork_usec 指标获取最近一次 fork 操作耗时，单位微秒。
+
+如何优化：
+
+1. 优先使用物理机或者高效支持 fork 的虚拟化技术，避免使用 Xen。 
+
+2. 控制 redis 实例最大可用内存，fork耗时跟内存量成正比，线上建议每个Redis实例内存控制在 10GB 以内。 
+3. 合理配置 Linux 内存分配策略，避免物理内存不足导致 fork 失败。 
+4. 降低 fork 的频率，如适度放宽 AOF 自动触发时机，避免不必要的全量复制。
+
+### 4.2 子进程开销
+
+fork 完毕之后，会创建子进程，子进程负责 RDB 或者 AOF 重写，这部分过程主要涉及到 CPU，内存，硬盘三个地方的优化。
+
+1. CPU：子进程负责把进程内的数据分批写入文件，这个过程属于是 CPU 密集操作，通常子进程对单核 CPU 利用率接近 90%。 **如何优化呢？**既然Redis是 CPU 密集型操作，就不要绑定单核 CPU，因为这样会和父 CPU 进行竞争。同时，不要和其他 CPU 密集型服务部署在一个机器上。如果部署了多个 Redis 实例，尽力保证统一时刻只有一个子进程执行重写工作。
+
+2. 内存：子进程通过 fork 操作产生，占用内存大小等同于父进程，理论上需要两倍的内存完成持久化操作，但 Linux 有 copy on write 机制，父子进程会共享相同的物理内存页，当父进程处理写操作时，会把要修改的页创建对应的副本，而子进程在 fork 操作过程中，共享整个父进程内存快照。 即——**如果重写过程中存在内存修改操作，父进程负责创建所修改内存页的副本。这里就是内存消耗的地方。** 如何优化呢？尽量保证同一时刻只有一个子进程在工作；避免大量写入时做重写操作。
+
+3. 硬盘 硬盘开销分析：子进程主要职责是将 RDB 或者 AOF 文件写入硬盘进行持久化，势必对硬盘造成压力，可通过工具例如 iostat，iotop 等，分析硬盘负载情况。
+
+**如何优化：**
+
+1. 不要和其他高硬盘负载的服务放在一台机器上，例如 MQ，存储。 
+2. AOF 重写时会消耗大量硬盘 IO，可以开启配置 no-appendfsync-on-rewrite，默认关闭。表示在 AOF 重写期间不做 fsync 操作。 
+3. 当开启 AOF 的 Redis 在高并发场景下，如果使用普通机械硬盘，每秒的写速率是 100MB左右，这时，Redis 的性能瓶颈在硬盘上，建议使用 SSD。 
+4. 对于单机配置多个 Redis 实例的情况，可以配置不同实例分盘存储 AOF 文件，分摊硬盘压力。
+
+### 4.3 AOF追加阻塞
+
+当开启 AOF 持久化时，常用的同步硬盘的策略是“每秒同步” everysec，用于平衡性能和[数据安全](https://cloud.tencent.com/solution/data_protection?from=10680)性，对于这种方式，redis 使用另一条线程每秒执行 fsync 同步硬盘，当系统资源繁忙时，将造成 Redis 主线程阻塞。
+
+![](../images/54.png)
+
+阻塞流程分析：
+
+1) 主线程负责写入AOF缓冲区
+2) AOF线程负责每秒执行一次同步磁盘的操作，并记录最后一次同步时间
+3) 主线程负责对比上次AOF同步时间：
+   - 如果距离上次同步成功在2s内，主线程直接返回
+   - 如果距离上次同步成功超过2s，主线程将会阻塞，直到同步操作完成。
+
+通过上图可以发现：
+
+1. everysec 配置最多可能丢失2秒数据，不是 1 秒；
+2. 如果系统 fsync 缓慢，将会导致 Redis 主线程阻塞影响效率。
+
+问题定位：
+
+1. 发生 AOF 阻塞时，会输入日志。用于记录 AOF fsync 阻塞导致拖慢 Redis 服务的行为。
+
+```shell
+Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Redis.
+```
+
+2. 当 AOF 追加阻塞事件发生时，在 info Persistence 统计中，aof_delayed_fsync 指标会累加，查看这个指标方便定位 AOF 阻塞问题。
+
+3. AOF 同步最多运行 2 秒的延迟，当延迟发生时说明硬盘存在性能问题，可通过监控工具 iotop 查看，定位消耗 IO 的进程。
