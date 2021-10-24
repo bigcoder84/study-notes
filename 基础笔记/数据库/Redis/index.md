@@ -20,6 +20,8 @@
 
 [Redis事务](./subfile/_16Redis事务.md)
 
+[Redis慢查询日志](./subfile/_17Redis慢查询日志.md)
+
 ## 二. 底层原理
 
 ### 2.1 底层数据结构
