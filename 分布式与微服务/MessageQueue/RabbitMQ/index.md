@@ -10,3 +10,5 @@
 
 [RabbitMQ高级特性](./subfile/_5RabbitMQ高级特性.md)
 
+[Spring_RabbitMQ重试机制](./subfile/_6Spring_RabbitMQ重试机制.md)
+

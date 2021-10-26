@@ -410,7 +410,7 @@ public class MyMessageListener {
      * com.rabbitmq.client.Channel channel对象
      * org.springframework.amqp.core.Message message对象 可以直接操作原生的AMQP消息
      * org.springframework.messaging.Message to use the messaging abstraction counterpart
-     * @Payload 注解方法参数，改参数的值就是消息体
+     * @Payload 注解方法参数，该参数的值就是消息体
      * @Header 注解方法参数，访问指定的消息头字段的值
      * @Headers 该注解的方法参数获取该消息的消息头的所有字段，参数类型对应于map集合。
      * MessageHeaders 参数类型，访问所有消息头字段
@@ -446,12 +446,25 @@ public class MyMessageListener {
 ### 3.2 连接配置
 
 ```properties
-spring.application.name=springboot_rabbitmq 
-spring.rabbitmq.host=node1 
-spring.rabbitmq.virtual-host=/ 
-spring.rabbitmq.username=root 
-spring.rabbitmq.password=123456 
-spring.rabbitmq.port=5672
+server:
+  port: 8021
+spring:
+  #给项目来个名字
+  application:
+    name: rabbitmq-consumer
+  #配置rabbitMq 服务器
+  rabbitmq:
+    listener:
+      simple:
+        acknowledge-mode: auto  # 消息确认方式，其有三种配置方式，分别是none、manual(手动ack) 和auto(自动ack) 默认auto
+        retry:
+          enabled: false  #开启重试监听机制，如果不开启，如果消费者发生异常会无限重试下去
+          max-attempts: 5   #最大重试次数 默认为3
+          initial-interval: 2000  # 传递消息的时间间隔 默认1s
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
 ```
 
 ### 3.2 RabbitConfig.java
