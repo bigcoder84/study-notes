@@ -255,48 +255,81 @@ public class RejectAndDontRequeueRecoverer implements MessageRecoverer {
 
 而`RejectAndDontRequeueRecoverer`的功能已经看到过了，毕竟是默认的。那还有另外两个实现类，分别是`RepublishMessageRecoverer`和`ImmediateRequeueMessageRecoverer`，意思大意分别是**重新发布消息和立即重新返回原队列**，下面我们分别测试一下这两个实现类的效果。
 
-## 三. RepublishMessageRecoverer
+### 2.1 RepublishMessageRecoverer
 
 将消息重新发送到指定队列。先创建一个队列，然后与交换机绑定进行绑定,绑定之后设置 `MessageRecoverer`。在 `RabbitConfig`类中增加代码。跟**死信队列**看起来差不多。
 
 ```java
-@Autowired
-private RabbitTemplate rabbitTemplate;
-
-
-private static String errorTopicExchange = "error-topic-exchange";
-private static String errorQueue = "error-queue";
-private static String errorRoutingKey = "error-routing-key";
-
-//创建异常交换机
 @Bean
 public TopicExchange errorTopicExchange(){
-    return new TopicExchange(errorTopicExchange,true,false);
+    return new TopicExchange("errorTopicExchange", true, false);
 }
 
 //创建异常队列
 @Bean
 public Queue errorQueue(){
-    return new Queue(errorQueue,true);
+    return new Queue("testConsumerErrorQueue", true);
 }
 //队列与交换机进行绑定
 @Bean
 public Binding BindingErrorQueueAndExchange(Queue errorQueue,TopicExchange errorTopicExchange){
-    return BindingBuilder.bind(errorQueue).to(errorTopicExchange).with(errorRoutingKey);
+    return BindingBuilder.bind(errorQueue).to(errorTopicExchange).with("rabbit-mq-consumer");
 }
 
 
 //设置MessageRecoverer
 @Bean
-public MessageRecoverer messageRecoverer(){
+public MessageRecoverer messageRecoverer(RabbitTemplate rabbitTemplate){
     //AmqpTemplate和RabbitTemplate都可以
-    return new RepublishMessageRecoverer(rabbitTemplate,errorTopicExchange,errorRoutingKey);
+    return new RepublishMessageRecoverer(rabbitTemplate, "errorTopicExchange", "rabbit-mq-consumer");
 }
 ```
 
-使用了我们所配置的`RepublishMessageRecoverer`，并且消息重试 5 次以后直接以新的 `routingKey`发送到了配置的交换机中，此时再查看监控页面，可以看原始队列中已经没有消息了，但是配置的异常队列中存在了一条消息。
+启动服务，重新调用接口，查看结果：
 
-## 四. ImmediateRequeueMessageRecoverer
+![](../images/27.png)
+
+通过控制台可以看到，使用了我们所配置的`RepublishMessageRecoverer`，并且消息重试 5 次以后直接以新的 `routingKey`发送到了指定的交换机中，此时再查看监控页面，可以看原始队列中已经没有消息了，但是配置的异常队列中存在了一条消息。
+
+![](../images/25.png)
+
+可以看到`RepublishMessageRecoverer`在转发消息时，会把异常堆栈放入`Messgae Header`中：
+
+![](../images/26.png)
+
+源码如下：
+
+```java
+public class RepublishMessageRecoverer implements MessageRecoverer {
+  @Override
+	public void recover(Message message, Throwable cause) {
+		MessageProperties messageProperties = message.getMessageProperties();
+		Map<String, Object> headers = messageProperties.getHeaders();
+		String exceptionMessage = cause.getCause() != null ? cause.getCause().getMessage() : cause.getMessage();
+		String[] processed = processStackTrace(cause, exceptionMessage);//生成堆栈信息
+		String stackTraceAsString = processed[0];
+		String truncatedExceptionMessage = processed[1];
+		if (truncatedExceptionMessage != null) {
+			exceptionMessage = truncatedExceptionMessage;
+		}
+		headers.put(X_EXCEPTION_STACKTRACE, stackTraceAsString);//放入消息头中
+		headers.put(X_EXCEPTION_MESSAGE, exceptionMessage);
+		headers.put(X_ORIGINAL_EXCHANGE, messageProperties.getReceivedExchange());
+		headers.put(X_ORIGINAL_ROUTING_KEY, messageProperties.getReceivedRoutingKey());
+		Map<? extends String, ?> additionalHeaders = additionalHeaders(message, cause);
+		if (additionalHeaders != null) {
+			headers.putAll(additionalHeaders);
+		}
+
+		if (messageProperties.getDeliveryMode() == null) {
+			messageProperties.setDeliveryMode(this.deliveryMode);
+		}
+
+```
+
+
+
+### 2.2 ImmediateRequeueMessageRecoverer
 
 使用`ImmediateRequeueMessageRecoverer`，重试失败的消息会立马回到原队列中。 修改`messageRecoverer`方法
 
