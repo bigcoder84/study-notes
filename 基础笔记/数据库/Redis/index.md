@@ -22,6 +22,8 @@
 
 [Redis慢查询日志](./subfile/_17Redis慢查询日志.md)
 
+[Redis主从复制](./subfile/_18Redis主从复制.md)
+
 ## 二. 底层原理
 
 ### 2.1 底层数据结构
