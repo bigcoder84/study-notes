@@ -1,0 +1,9 @@
+# RabbitMQ异常重启，部分消费队列不消费问题
+
+## 一. 问题
+
+最近线上RabbitMQ集群意外重启，大量核心功能异常，排查是因为消息积压导致。按理说消息中间件重启后，消费者应该重新连接中间件开始消费才对，为啥部分消费者并没有重新连接消费呢。
+
+初步猜测是Spring中RabbitMQ消费者线程错误恢复异常导致，消费者线程没有启动。遂分析重启消费者线程源码源码：
+
+RabbitMQ的RabbitListner监听队列是通过SimpleMessageListenerContainer实现的，当线程执行出现异常时会重新启动具体工作线程AsyncMessageProcessingConsumer，当执行到异常时会执行

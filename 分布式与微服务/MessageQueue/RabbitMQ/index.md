@@ -12,3 +12,5 @@
 
 [Spring_RabbitMQ重试机制](./subfile/_6Spring_RabbitMQ重试机制.md)
 
+[RabbitMQ死信队列](./subfile/_9RabbitMQ死信队列.md)
+
