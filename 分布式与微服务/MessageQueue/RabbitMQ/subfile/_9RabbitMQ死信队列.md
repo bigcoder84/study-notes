@@ -56,15 +56,6 @@ import java.util.Map;
 @Configuration
 public class RabbitConfig {
 
-    //  @Bean
-//  public MessageRecoverer messageRecoverer(RabbitTemplate rabbitTemplate){
-//    return new RepublishMessageRecoverer(rabbitTemplate, "errorTopicExchange", "rabbit-mq-consumer");
-//  }
-    @Bean
-    public MessageRecoverer messageRecoverer() {
-        return new ImmediateRequeueMessageRecoverer();
-    }
-
     /**
      * 声明业务队列，其中业务队列绑定死信交换机
      * @return

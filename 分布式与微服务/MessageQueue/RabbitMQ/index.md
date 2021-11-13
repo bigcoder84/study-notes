@@ -14,3 +14,5 @@
 
 [RabbitMQ死信队列](./subfile/_9RabbitMQ死信队列.md)
 
+[SpringAMQP配置详解](./subfile/_10SpringAMQP配置详解.md)
+
