@@ -15,3 +15,6 @@
 [find命令查找文件](./subfile/_7find命令查找文件.md)
 
 [运行中的Tomcat日志删除无法释放空间](./subfile/_8运行中的Tomcat日志删除无法释放空间.md)
+
+[less命令](./subfile/_9less命令.md)
+
