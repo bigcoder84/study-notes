@@ -10,6 +10,8 @@
 
 [RocketMQ原生API](./subfile/_3RocketMQ原生API.md)
 
+[SpringBoot整合RocketMQ](./subfile/_7SpringBoot整合RocketMQ.md)
+
 ## 源码分析
 
 [RocketMQ消息发送流程](./subfile/_4RocketMQ消息发送流程.md)
