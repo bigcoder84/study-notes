@@ -12,6 +12,8 @@
 
 [SpringBoot整合RocketMQ](./subfile/_7SpringBoot整合RocketMQ.md)
 
+[RocketMQ重试机制](./subfile/_8RocketMQ重试机制.md)
+
 ## 源码分析
 
 [RocketMQ消息发送流程](./subfile/_4RocketMQ消息发送流程.md)
