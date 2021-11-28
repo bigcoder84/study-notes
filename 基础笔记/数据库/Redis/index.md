@@ -24,6 +24,8 @@
 
 [Redis主从复制](./subfile/_18Redis主从复制.md)
 
+[Redis哨兵](./subfile/_19Redis哨兵.md)
+
 ## 二. 底层原理
 
 ### 2.1 底层数据结构
