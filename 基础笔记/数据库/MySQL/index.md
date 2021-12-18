@@ -36,3 +36,4 @@
 
 [RedoLog和UndoLog到底是什么](./subfile/_18RedoLog和UndoLog到底是什么.md)
 
+[创建索引会锁表吗](./subfile/_19创建索引会锁表吗.md)
