@@ -1,6 +1,10 @@
 # 什么是TCC事务
 
-> 本文转载至：[终于有人把“TCC分布式事务”实现原理讲明白了！ - JaJian - 博客园 (cnblogs.com)](https://www.cnblogs.com/jajian/p/10014145.html)
+> 本文参考至：
+>
+> [终于有人把“TCC分布式事务”实现原理讲明白了！ - JaJian - 博客园 (cnblogs.com)](https://www.cnblogs.com/jajian/p/10014145.html)
+>
+> [分布式事务(4)---最终一致性方案之TCC - 白露非霜 - 博客园 (cnblogs.com)](https://www.cnblogs.com/nijunyang/p/15652632.html)
 
 之前网上看到很多写分布式事务的文章，不过大多都是将分布式事务各种技术方案简单介绍一下。很多朋友看了还是不知道分布式事务到底怎么回事，在项目里到底如何使用。
 
