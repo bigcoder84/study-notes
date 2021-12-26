@@ -1743,6 +1743,32 @@ private void recoverErrorTransaction(TransactionRepository transactionRepository
 - 当事务处于 TransactionStatus.CONFIRMING 状态时，提交事务，逻辑和 `TransactionManager#commit()` 类似。
 - 当事务处于 TransactionStatus.CONFIRMING 状态，或者**事务类型为根事务**，回滚事务，逻辑和 `TransactionManager#rollback()` 类似。这里加判断的**事务类型为根事务**，用于处理延迟回滚异常的事务的回滚。
 
+## 八. DubboTransactionContextEditor
+
+[5.3 资源协调者拦截器] 在切面方法调用之前会尝试创建事务参与者，此时DubboTransactionContextEditor会通过Dubbo隐式传参的方式，将事务信息传递给下游服务：
+
+```java
+public class DubboTransactionContextEditor implements TransactionContextEditor {
+    @Override
+    public TransactionContext get(Object target, Method method, Object[] args) {
+
+        String context = RpcContext.getContext().getAttachment(TransactionContextConstants.TRANSACTION_CONTEXT);
+
+        if (StringUtils.isNotEmpty(context)) {
+            return JSON.parseObject(context, TransactionContext.class);
+        }
+
+        return null;
+    }
+
+    @Override
+    public void set(TransactionContext transactionContext, Object target, Method method, Object[] args) {
+
+        RpcContext.getContext().setAttachment(TransactionContextConstants.TRANSACTION_CONTEXT, JSON.toJSONString(transactionContext));
+    }
+}
+```
+
 ## 八. 整体流程图
 
 ![](../images/10.png)
@@ -1755,3 +1781,5 @@ private void recoverErrorTransaction(TransactionRepository transactionRepository
 > [分布式事务中间件 TCC-Transaction 源码解析合集 (qq.com)](https://mp.weixin.qq.com/s/IQAXfv8RPKHyAN35E7J4QQ)
 >
 > [TCC-Transaction原理 - 掘金 (juejin.cn)](https://juejin.cn/post/6969550902084501511)
+>
+> [tcc-transaction深入理解__再见阿郎_的专栏-CSDN博客](https://blog.csdn.net/FU250/article/details/106427151)
