@@ -13,7 +13,8 @@
 
 - `tcc-transaction-core` ：tcc-transaction 底层实现。
 - `tcc-transaction-api` ：tcc-transaction 使用 API。
-- `tcc-transaction-spring` ：tcc-transaction Spring 支持。
+- `tcc-transaction-spring`：tcc-transaction 对 Spring 的支持。
+- `tcc-transaction-dubbo`：tcc-transaction 对 Dubbo 的支持。
 
 本文基于`tcc-transaction 1.7.x`版本源码进行分析。
 
