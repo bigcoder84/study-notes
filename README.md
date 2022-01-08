@@ -30,6 +30,8 @@
 
 [分布式思想](./分布式与微服务/分布式思想/index.md)
 
+[分布式事务](./分布式与微服务/分布式事务/index.md)
+
 [Dubbo](./分布式与微服务/Dubbo/index.md)
 
 [SpringCloud](./分布式与微服务/SpringCloud/index.md)
