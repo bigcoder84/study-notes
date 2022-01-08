@@ -30,11 +30,14 @@
     - [8.1 DubboTransactionContextEditor](#81-dubbotransactioncontexteditor)
     - [8.2 CompensableTransactionFilter](#82-compensabletransactionfilter)
   - [九. 总结](#九-总结)
-  本文主要介绍TCC的原理，以及从代码的角度上分析如何实现的；不涉及具体使用示例。本文通过分析[tcc-transaction](https://link.juejin.cn/?target=https%3A%2F%2Fgithub.com%2Fchangmingxie%2Ftcc-transaction)源码带大家了解TCC分布式事务的实现原理。
 
-需要注意的是，本文所有代码都基于`master-1.7.x`分支，不同版本的源码会存在一定的差异。完整代码注释请参考：[bigcoder84/tcc-transaction](https://github.com/bigcoder84/tcc-transaction)
+
 
 ## 一. 概述
+
+本文主要介绍TCC的原理，以及从代码的角度上分析如何实现的；不涉及具体使用示例。本文通过分析[tcc-transaction](https://link.juejin.cn/?target=https%3A%2F%2Fgithub.com%2Fchangmingxie%2Ftcc-transaction)源码带大家了解TCC分布式事务的实现原理。
+
+需要注意的是，本文所有代码都基于`master-1.7.x`分支，不同版本的源码会存在一定的差异。完整代码注释请参考：[bigcoder84/tcc-transaction](https://github.com/bigcoder84/tcc-transaction)
 
 ### 1.1 项目模块
 
