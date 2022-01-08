@@ -1,7 +1,36 @@
 # tcc-transaction源码分析
 
-
-本文主要介绍TCC的原理，以及从代码的角度上分析如何实现的；不涉及具体使用示例。本文通过分析[tcc-transaction](https://link.juejin.cn/?target=https%3A%2F%2Fgithub.com%2Fchangmingxie%2Ftcc-transaction)源码带大家了解TCC分布式事务的实现原理。
+- [tcc-transaction源码分析](#tcc-transaction源码分析)
+  - [一. 概述](#一-概述)
+    - [1.1 项目模块](#11-项目模块)
+    - [1.2 tcc-transaction中的概念](#12-tcc-transaction中的概念)
+  - [二. TCC-Transaction 原理](#二-tcc-transaction-原理)
+  - [三. 事务与参与者](#三-事务与参与者)
+    - [3.1 事务](#31-事务)
+    - [3.2 参与者](#32-参与者)
+  - [四. 事务管理器](#四-事务管理器)
+    - [4.1 发起根事务](#41-发起根事务)
+    - [4.2 创建分支事务](#42-创建分支事务)
+    - [4.3 获取分支事务](#43-获取分支事务)
+    - [4.4 提交事务](#44-提交事务)
+    - [4.5 回滚事务](#45-回滚事务)
+    - [4.6 添加事务到事务管理器](#46-添加事务到事务管理器)
+  - [五. 事务拦截器](#五-事务拦截器)
+    - [5.1 Compensable](#51-compensable)
+    - [5.2 事务拦截器](#52-事务拦截器)
+    - [5.3 资源协调者拦截器](#53-资源协调者拦截器)
+  - [六. 事务存储器](#六-事务存储器)
+    - [6.1 序列化](#61-序列化)
+    - [6.2 存储器](#62-存储器)
+  - [七. 事务恢复](#七-事务恢复)
+    - [7.1 事务重试配置](#71-事务重试配置)
+    - [7.2 事务重试JOB](#72-事务重试job)
+    - [7.3 异常事务恢复](#73-异常事务恢复)
+  - [八. Dubbo实现](#八-dubbo实现)
+    - [8.1 DubboTransactionContextEditor](#81-dubbotransactioncontexteditor)
+    - [8.2 CompensableTransactionFilter](#82-compensabletransactionfilter)
+  - [九. 总结](#九-总结)
+  本文主要介绍TCC的原理，以及从代码的角度上分析如何实现的；不涉及具体使用示例。本文通过分析[tcc-transaction](https://link.juejin.cn/?target=https%3A%2F%2Fgithub.com%2Fchangmingxie%2Ftcc-transaction)源码带大家了解TCC分布式事务的实现原理。
 
 需要注意的是，本文所有代码都基于`master-1.7.x`分支，不同版本的源码会存在一定的差异。完整代码注释请参考：[bigcoder84/tcc-transaction](https://github.com/bigcoder84/tcc-transaction)
 
@@ -1793,7 +1822,13 @@ public class CompensableTransactionFilter implements Filter {
 ![](../images/10.png)
 TCC依赖于事务记录，在开始TCC事务前标记创建此记录，这样在服务宕机等意外情况下，还能通过JOB保证事务状态最终恢复一致性。因为存在失败重试的逻辑，所以cancel、commit方法必须实现幂等。其实在分布式开发中，凡是涉及到写操作的地方都应该实现幂等。
 
-事务拦截器和资源协调者拦截器协作完成TCC事务：
+事务拦截器和资源协调者拦截器以及Dubbo Filter协作生成完整事务树：
+
+![](../images/23.png)
+
+其中“事务拦截器”主要负责生成根事务/分支事务，而“资源协调者拦截器”主要负责为事务生成事务参与者，在资源协调者切面中以及在调用Dubbo RPC服务之前都会调用“资源协调者拦截器”为事务生成事务参与者，并持久化事务信息。当事务进行confirm/camcel操作时，会根据事务ID，查询到当前事务的所有事务参与者信息，并统一进行confirm/cancel操作。
+
+详细的代码流程如下：
 
 ![](../images/22.png)
 
