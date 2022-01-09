@@ -26,6 +26,8 @@
 
 [Redis哨兵](./subfile/_19Redis哨兵.md)
 
+[Redis Cluster](./subfile/_20Redis_Cluster.md)
+
 [RedisCluster和Codis对Lua的支持](./subfile/_21RedisCluster和Codis对Lua的支持.md)
 
 ## 二. 底层原理
