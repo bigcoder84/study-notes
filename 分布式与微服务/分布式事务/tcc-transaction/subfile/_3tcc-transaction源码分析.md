@@ -1387,11 +1387,11 @@ public interface TransactionRepository {
 
  **TCC 恢复**。主要涉及如下二个 package 路径下的类：
 
-- `org.mengyun.tcctransaction.recover`
-- - RecoverConfig，事务恢复配置**接口**
+- `org.mengyun.tcctransaction.recovery`
+- - RecoverFrequency，事务恢复配置**接口**
   - TransactionRecovery，事务恢复逻辑
 - `org.mengyun.tcctransaction.spring.recover` ：
-- - DefaultRecoverConfig，默认事务恢复配置**实现**
+- - DefaultRecoverFrequency，默认事务恢复配置**实现**
   - RecoverScheduledJob，事务恢复定时任务
 
 事务信息被持久化到外部的存储器中。**事务存储是事务恢复的基础**。通过读取外部存储器中的异常事务，定时任务会按照一定频率对事务进行重试，直到事务完成或超过最大重试次数。
