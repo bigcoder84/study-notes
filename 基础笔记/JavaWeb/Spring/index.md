@@ -1,5 +1,7 @@
 # Spring
 
+## 一. Spring基础
+
 [Spring项目分模块配置](./subfile/_1Spring项目分模块配置.md)
 
 [从零搭建分模块SSM项目](./subfile/_9从零搭建分模块SSM项目.md)
@@ -18,4 +20,8 @@
 
 [Spring事务的回滚](./subfile/_8Spring事务回滚.md)
 
-[Spring循环依赖](./subfile/_20Spring循环依赖.md)
+[Spring循环依赖](./subfile/_10Spring循环依赖.md)
+
+## 二. 源码分析
+
+[Spring源码调试环境搭建](./subfile/_11Spring源码调试环境搭建.md)
