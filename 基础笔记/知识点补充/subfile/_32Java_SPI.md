@@ -38,7 +38,7 @@ private static void loadInitialDrivers() {
         .....
         AccessController.doPrivileged(new PrivilegedAction<Void>() {
             public Void run() {
-				//使用ServiceLoader动态加载具体的驱动实现类
+								//使用ServiceLoader动态加载具体的驱动实现类
                 ServiceLoader<Driver> loadedDrivers = ServiceLoader.load(Driver.class);
                 Iterator<Driver> driversIterator = loadedDrivers.iterator();
                 try{
@@ -59,7 +59,7 @@ private static void loadInitialDrivers() {
 
 ![](../images/89.png)
 
-slf4j是一个典型的门面接口，早起我们使用log4j作为日记记录框架，我们需要同时引入slf4j和log4j的依赖。后面比较流行logback，我们也想要把项目切换到logback上来，此时利用SPI的机制，我们只需要把log4j的jar包替换为logback的jar包就可以了。
+slf4j是一个典型的门面接口，早期我们使用log4j作为日记记录框架，我们需要同时引入slf4j和log4j的依赖。后面比较流行logback，我们也想要把项目切换到logback上来，此时利用SPI的机制，我们只需要把log4j的jar包替换为logback的jar包就可以了。
 
 在`log4j-to-slf4j.jar`中我们可以看到前面提到的**服务提供方的SPI接口声明**：
 
@@ -190,7 +190,11 @@ public class INumOperateTest {
 
 本文涉及的源码：[java-spi-demo](https://github.com/tianjindong/java-spi-demo)
 
-## 四. 声明
+## 四. Java SPI源码分析
+
+
+
+## 五. 声明
 
 本文参考至：
 
