@@ -30,6 +30,8 @@
 
 [RedisCluster和Codis对Lua的支持](./subfile/_21RedisCluster和Codis对Lua的支持.md)
 
+[JedisPool资源池优化](./subfile/_22JedisPool资源池优化.md)
+
 ## 二. 底层原理
 
 ### 2.1 底层数据结构
