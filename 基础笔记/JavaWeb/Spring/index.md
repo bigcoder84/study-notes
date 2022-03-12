@@ -35,3 +35,5 @@
 [IoC之获取验证模式](./subfile/_15IoC之获取验证模式.md)
 
 [IoC之获取Document对象](./subfile/_16IoC之获取Document对象.md)
+
+[IoC之注册BeanDefinitions](./subfile/_17IoC之注册BeanDefinitions.md)
