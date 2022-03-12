@@ -33,3 +33,5 @@
 [IoC之加载BeanDefinition](./subfile/_14IoC之加载BeanDefinition.md)
 
 [IoC之获取验证模式](./subfile/_15IoC之获取验证模式.md)
+
+[IoC之获取Document对象](./subfile/_16IoC之获取Document对象.md)
