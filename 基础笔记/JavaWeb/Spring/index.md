@@ -29,3 +29,5 @@
 [深入理解Spring IoC](./subfile/_12深入理解SpringIOC.md)
 
 [IoC之Spring统一资源加载策略](./subfile/_13IoC之Spring统一资源加载策略.md)
+
+[IoC之加载BeanDefinition](./subfile/_14IoC之加载BeanDefinition.md)
