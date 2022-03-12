@@ -31,3 +31,5 @@
 [IoC之Spring统一资源加载策略](./subfile/_13IoC之Spring统一资源加载策略.md)
 
 [IoC之加载BeanDefinition](./subfile/_14IoC之加载BeanDefinition.md)
+
+[IoC之获取验证模式](./subfile/_15IoC之获取验证模式.md)

@@ -146,8 +146,8 @@ protected Document doLoadDocument(InputSource inputSource, Resource resource) th
 }
 ```
 
-1. 调用 `#getValidationModeForResource(Resource resource)` 方法，获取指定资源（xml）的**验证模式**。
-2. 调用 `DocumentLoader#loadDocument(InputSource inputSource, EntityResolver entityResolver, ErrorHandler errorHandler, int validationMode, boolean namespaceAware)` 方法，获取 XML Document 实例 。
+1. 调用 `#getValidationModeForResource(Resource resource)` 方法，获取指定资源（xml）的验证模式，参考[IoC 之获取验证模式](./_15IoC之获取验证模式.md)。
+2. 调用 `DocumentLoader#loadDocument(InputSource inputSource, EntityResolver entityResolver, ErrorHandler errorHandler, int validationMode, boolean namespaceAware)` 方法，获取 XML Document 实例，参考 [IoC之获取Document对象](./_16IoC之获取Document对象.md) 。
 
 ### 2.2 registerBeanDefinitions
 
