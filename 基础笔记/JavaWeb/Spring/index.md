@@ -38,4 +38,6 @@
 
 [IoC之注册BeanDefinitions](./subfile/_17IoC之注册BeanDefinitions.md)
 
-[IoC之解析import标签](./subfile/_18IoC之注册import标签.md)
+[IoC之解析import标签](./subfile/_18IoC之解析import标签.md)
+
+[IoC之解析bean标签](./subfile/_19IoC之解析bean标签.md)
