@@ -45,3 +45,5 @@
 [IoC之BeanDefinition](./subfile/_20IoC之BeanDefinition.md)
 
 [IoC之解析bean标签下子元素](./subfile/_21IoC之解析bean标签下子元素.md)
+
+[IoC之注册解析的BeanDefinitions](./subfile/_22IoC之注册解析的BeanDefinitions.md)
