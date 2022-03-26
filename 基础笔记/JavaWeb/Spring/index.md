@@ -57,3 +57,5 @@
 [IoC之装载BeanDefinitions总结](./subfile/_23IoC之装载BeanDefinitions总结.md)
 
 ### 2.3 Bean的加载
+
+[Bean的加载](./subfile/_24Bean的加载.md)
