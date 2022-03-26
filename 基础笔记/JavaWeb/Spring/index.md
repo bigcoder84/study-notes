@@ -22,6 +22,8 @@
 
 [Spring循环依赖](./subfile/_10Spring循环依赖.md)
 
+[FactoryBean详解](./subfile/_25FactoryBean详解.md)
+
 ## 二. 源码分析
 
 [Spring源码调试环境搭建](./subfile/_11Spring源码调试环境搭建.md)
