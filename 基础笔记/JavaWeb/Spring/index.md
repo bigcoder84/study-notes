@@ -61,3 +61,5 @@
 [Bean的加载](./subfile/_24Bean的加载.md)
 
 [从单例缓存中获取单例Bean](./subfile/_26从单例缓存中获取单例Bean.md)
+
+[parentBeanFactory与依赖处理](./subfile/_27parentBeanFactory与依赖处理.md)
