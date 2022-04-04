@@ -63,3 +63,5 @@
 [从单例缓存中获取单例Bean](./subfile/_26从单例缓存中获取单例Bean.md)
 
 [parentBeanFactory与依赖处理](./subfile/_27parentBeanFactory与依赖处理.md)
+
+[分析各scope的Bean创建](./subfile/_28分析各scope的Bean创建.md)
