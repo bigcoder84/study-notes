@@ -1058,3 +1058,5 @@ public Object instantiate(RootBeanDefinition bd, @Nullable String beanName, Bean
 ```
 
 核心的部分，在于 `<x>` 处，利用 Java 反射执行工厂方法并返回创建好的实例。
+
+### 3.3 autowireConstructor
