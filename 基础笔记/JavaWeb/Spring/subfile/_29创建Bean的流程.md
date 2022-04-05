@@ -329,15 +329,15 @@ protected Object doCreateBean(final String beanName, final RootBeanDefinition mb
 整体的思路：
 
 - `<1>` 处，如果是单例模式，则清除缓存。
-- `<2>` 处，调用 `#createBeanInstance(String beanName, RootBeanDefinition mbd, Object[] args)` 方法，实例化 bean ，主要是将 BeanDefinition 转换为 `org.springframework.beans.BeanWrapper` 对象。
+- `<2>` 处，调用 `#createBeanInstance(String beanName, RootBeanDefinition mbd, Object[] args)` 方法，实例化 bean ，主要是将 BeanDefinition 转换为 `org.springframework.beans.BeanWrapper` 对象。代码详解见:[《三. createBeanInstance》](#createBeanInstance)
 - `<3>` 处，MergedBeanDefinitionPostProcessor 的应用。
 - `<4>` 处，单例模式的循环依赖处理。
-- `<5>` 处，调用 `#populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper bw)` 方法，进行属性填充。将所有属性填充至 bean 的实例中。
+- `<5>` 处，调用 `#populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper bw)` 方法，进行属性填充。将所有属性填充至 bean 的实例中。代码详解见:[《四. populateBean》](#populateBean)
 - `<6>` 处，调用 `#initializeBean(final String beanName, final Object bean, RootBeanDefinition mbd)` 方法，初始化 bean 。
 - `<7>` 处，依赖检查。
 - `<8>` 处，注册 DisposableBean 。
 
-## 三. createBeanInstance
+## 三. createBeanInstance<a name="createBeanInstance"></a>
 
 实例化 bean，对应的方法为 `#createBeanInstance(String beanName, RootBeanDefinition mbd, Object[] args)` 。代码如下：
 
@@ -1060,3 +1060,565 @@ public Object instantiate(RootBeanDefinition bd, @Nullable String beanName, Bean
 核心的部分，在于 `<x>` 处，利用 Java 反射执行工厂方法并返回创建好的实例。
 
 ### 3.3 autowireConstructor
+
+这个初始化方法，我们可以简单理解为是**带有参数的构造方法**，来初始化 Bean 对象。代码段如下：
+
+```java
+// AbstractAutowireCapableBeanFactory.java
+
+protected BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd, @Nullable Constructor<?>[] ctors, @Nullable Object[] explicitArgs) {
+    return new ConstructorResolver(this).autowireConstructor(beanName, mbd, ctors, explicitArgs);
+}
+
+// ConstructorResolver.java
+
+public BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd,
+        @Nullable Constructor<?>[] chosenCtors, @Nullable Object[] explicitArgs) {
+    // 封装 BeanWrapperImpl 对象，并完成初始化
+    BeanWrapperImpl bw = new BeanWrapperImpl();
+    this.beanFactory.initBeanWrapper(bw);
+
+    // 获得 constructorToUse、argsHolderToUse、argsToUse
+    Constructor<?> constructorToUse = null; // 构造函数
+    ArgumentsHolder argsHolderToUse = null; // 构造参数
+    Object[] argsToUse = null; // 构造参数
+
+    // 确定构造参数
+    // 如果 getBean() 已经传递，则直接使用
+    if (explicitArgs != null) {
+        argsToUse = explicitArgs;
+    } else {
+        // 尝试从缓存中获取
+        Object[] argsToResolve = null;
+        synchronized (mbd.constructorArgumentLock) {
+            // 缓存中的构造函数或者工厂方法
+            constructorToUse = (Constructor<?>) mbd.resolvedConstructorOrFactoryMethod;
+            if (constructorToUse != null && mbd.constructorArgumentsResolved) {
+                // Found a cached constructor...
+                // 缓存中的构造参数
+                argsToUse = mbd.resolvedConstructorArguments;
+                if (argsToUse == null) {
+                    argsToResolve = mbd.preparedConstructorArguments;
+                }
+            }
+        }
+        // 缓存中存在,则解析存储在 BeanDefinition 中的参数
+        // 如给定方法的构造函数 A(int ,int )，则通过此方法后就会把配置文件中的("1","1")转换为 (1,1)
+        // 缓存中的值可能是原始值也有可能是最终值
+        if (argsToResolve != null) {
+            argsToUse = resolvePreparedArguments(beanName, mbd, bw, constructorToUse, argsToResolve, true);
+        }
+    }
+
+    // 没有缓存，则尝试从配置文件中获取参数
+    if (constructorToUse == null || argsToUse == null) {
+        // Take specified constructors, if any.
+        // 如果 chosenCtors 未传入，则获取构造方法们
+        Constructor<?>[] candidates = chosenCtors;
+        if (candidates == null) {
+            Class<?> beanClass = mbd.getBeanClass();
+            try {
+                candidates = (mbd.isNonPublicAccessAllowed() ?
+                        beanClass.getDeclaredConstructors() : beanClass.getConstructors());
+            } catch (Throwable ex) {
+                throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                        "Resolution of declared constructors on bean Class [" + beanClass.getName() +
+                        "] from ClassLoader [" + beanClass.getClassLoader() + "] failed", ex);
+            }
+        }
+
+        // TODO 芋艿 创建 Bean
+        if (candidates.length == 1 && explicitArgs == null && !mbd.hasConstructorArgumentValues()) {
+            Constructor<?> uniqueCandidate = candidates[0];
+            if (uniqueCandidate.getParameterCount() == 0) {
+                synchronized (mbd.constructorArgumentLock) {
+                    mbd.resolvedConstructorOrFactoryMethod = uniqueCandidate;
+                    mbd.constructorArgumentsResolved = true;
+                    mbd.resolvedConstructorArguments = EMPTY_ARGS;
+                }
+                bw.setBeanInstance(instantiate(beanName, mbd, uniqueCandidate, EMPTY_ARGS));
+                return bw;
+            }
+        }
+
+        // 是否需要解析构造器
+        // Need to resolve the constructor.
+        boolean autowiring = (chosenCtors != null ||
+                mbd.getResolvedAutowireMode() == AutowireCapableBeanFactory.AUTOWIRE_CONSTRUCTOR);
+        // 用于承载解析后的构造函数参数的值
+        ConstructorArgumentValues resolvedValues = null;
+        int minNrOfArgs;
+        if (explicitArgs != null) {
+            minNrOfArgs = explicitArgs.length;
+        } else {
+            // 从 BeanDefinition 中获取构造参数，也就是从配置文件中提取构造参数
+            ConstructorArgumentValues cargs = mbd.getConstructorArgumentValues();
+            resolvedValues = new ConstructorArgumentValues();
+            // 解析构造函数的参数
+            // 将该 bean 的构造函数参数解析为 resolvedValues 对象，其中会涉及到其他 bean
+            minNrOfArgs = resolveConstructorArguments(beanName, mbd, bw, cargs, resolvedValues);
+        }
+
+        // 对构造函数进行排序处理
+        // public 构造函数优先参数数量降序，非public 构造函数参数数量降序
+        AutowireUtils.sortConstructors(candidates);
+
+        // 最小参数类型权重
+        int minTypeDiffWeight = Integer.MAX_VALUE;
+        Set<Constructor<?>> ambiguousConstructors = null;
+        LinkedList<UnsatisfiedDependencyException> causes = null;
+
+        // 迭代所有构造函数
+        for (Constructor<?> candidate : candidates) {
+            // 获取该构造函数的参数类型
+            Class<?>[] paramTypes = candidate.getParameterTypes();
+
+            // 如果已经找到选用的构造函数或者需要的参数个数小于当前的构造函数参数个数，则终止。
+            // 因为，已经按照参数个数降序排列了
+            if (constructorToUse != null && argsToUse.length > paramTypes.length) {
+                // Already found greedy constructor that can be satisfied ->
+                // do not look any further, there are only less greedy constructors left.
+                break;
+            }
+            // 参数个数不等，继续
+            if (paramTypes.length < minNrOfArgs) {
+                continue;
+            }
+
+            // 参数持有者 ArgumentsHolder 对象
+            ArgumentsHolder argsHolder;
+            if (resolvedValues != null) {
+                try {
+                    // 注释上获取参数名称
+                    String[] paramNames = ConstructorPropertiesChecker.evaluate(candidate, paramTypes.length);
+                    if (paramNames == null) {
+                        // 获取构造函数、方法参数的探测器
+                        ParameterNameDiscoverer pnd = this.beanFactory.getParameterNameDiscoverer();
+                        if (pnd != null) {
+                            // 通过探测器获取构造函数的参数名称
+                            paramNames = pnd.getParameterNames(candidate);
+                        }
+                    }
+                    // 根据构造函数和构造参数，创建参数持有者 ArgumentsHolder 对象
+                    argsHolder = createArgumentArray(beanName, mbd, resolvedValues, bw, paramTypes, paramNames,
+                            getUserDeclaredConstructor(candidate), autowiring, candidates.length == 1);
+                } catch (UnsatisfiedDependencyException ex) {
+                    // 若发生 UnsatisfiedDependencyException 异常，添加到 causes 中。
+                    if (logger.isTraceEnabled()) {
+                        logger.trace("Ignoring constructor [" + candidate + "] of bean '" + beanName + "': " + ex);
+                    }
+                    // Swallow and try next constructor.
+                    if (causes == null) {
+                        causes = new LinkedList<>();
+                    }
+                    causes.add(ex);
+                    continue; // continue ，继续执行
+                }
+            } else {
+                // continue 构造函数没有参数
+                // Explicit arguments given -> arguments length must match exactly.
+                if (paramTypes.length != explicitArgs.length) {
+                    continue;
+                }
+                // 根据 explicitArgs ，创建 ArgumentsHolder 对象
+                argsHolder = new ArgumentsHolder(explicitArgs);
+            }
+
+            // isLenientConstructorResolution 判断解析构造函数的时候是否以宽松模式还是严格模式
+            // 严格模式：解析构造函数时，必须所有的都需要匹配，否则抛出异常
+            // 宽松模式：使用具有"最接近的模式"进行匹配
+            // typeDiffWeight：类型差异权重
+            int typeDiffWeight = (mbd.isLenientConstructorResolution() ?
+                    argsHolder.getTypeDifferenceWeight(paramTypes) : argsHolder.getAssignabilityWeight(paramTypes));
+            // Choose this constructor if it represents the closest match.
+            // 如果它代表着当前最接近的匹配则选择其作为构造函数
+            if (typeDiffWeight < minTypeDiffWeight) {
+                constructorToUse = candidate;
+                argsHolderToUse = argsHolder;
+                argsToUse = argsHolder.arguments;
+                minTypeDiffWeight = typeDiffWeight;
+                ambiguousConstructors = null;
+            } else if (constructorToUse != null && typeDiffWeight == minTypeDiffWeight) {
+                if (ambiguousConstructors == null) {
+                    ambiguousConstructors = new LinkedHashSet<>();
+                    ambiguousConstructors.add(constructorToUse);
+                }
+                ambiguousConstructors.add(candidate);
+            }
+        }
+
+        // 没有可执行的工厂方法，抛出异常
+        if (constructorToUse == null) {
+            if (causes != null) {
+                UnsatisfiedDependencyException ex = causes.removeLast();
+                for (Exception cause : causes) {
+                    this.beanFactory.onSuppressedException(cause);
+                }
+                throw ex;
+            }
+            throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                    "Could not resolve matching constructor " +
+                    "(hint: specify index/type/name arguments for simple parameters to avoid type ambiguities)");
+        } else if (ambiguousConstructors != null && !mbd.isLenientConstructorResolution()) {
+            throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                    "Ambiguous constructor matches found in bean '" + beanName + "' " +
+                    "(hint: specify index/type/name arguments for simple parameters to avoid type ambiguities): " +
+                    ambiguousConstructors);
+        }
+
+        if (explicitArgs == null) {
+            // 将解析的构造函数加入缓存
+            argsHolderToUse.storeCache(mbd, constructorToUse);
+        }
+    }
+
+    // 创建 Bean 对象，并设置到 bw 中
+    bw.setBeanInstance(instantiate(beanName, mbd, constructorToUse, argsToUse));
+    return bw;
+}
+```
+
+- 代码与 `#instantiateUsingFactoryMethod(String beanName, RootBeanDefinition mbd, @Nullable Object[] explicitArgs)` 方法，一样，又长又难懂。但是如果理解了 `#instantiateUsingFactoryMethod(...)` 方法的初始化 bean 的过程，那么 `#autowireConstructor(...)` 方法，**也不存在什么难的地方了**。
+- 一句话概括：首先确定构造函数参数、构造函数，然后调用相应的初始化策略进行 bean 的初始化。关于如何确定构造函数、构造参数，该部分逻辑和 `#instantiateUsingFactoryMethod(...)` 方法，基本一致。所以这里不再重复阐述了，具体过程请移步[【死磕 Spring】—— IoC 之加载 bean：创建 bean（二）](http://svip.iocoder.cn/Spring/IoC-get-Bean-createBean-2)，这里我们重点分析初始化策略。
+
+#### 3.1 instantiate
+
+```java
+private Object instantiate(
+		String beanName, RootBeanDefinition mbd, Constructor<?> constructorToUse, Object[] argsToUse) {
+
+	try {
+        // <1> 获取实例化 Bean 的策略 InstantiationStrategy 对象。
+		InstantiationStrategy strategy = this.beanFactory.getInstantiationStrategy();
+		// 安全模式
+		if (System.getSecurityManager() != null) {
+
+			return AccessController.doPrivileged((PrivilegedAction<Object>) () ->
+					strategy.instantiate(mbd, beanName, this.beanFactory, constructorToUse, argsToUse),
+					this.beanFactory.getAccessControlContext());
+		}
+		else {
+			// 创建对象
+			return strategy.instantiate(mbd, beanName, this.beanFactory, constructorToUse, argsToUse);
+		}
+	}
+	catch (Throwable ex) {
+		throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+				"Bean instantiation via constructor failed", ex);
+	}
+}
+```
+
+- `<1>` 首先，是获取实例化 Bean 的策略 InstantiationStrategy 对象。
+- `<2>` 然后，调用其 `#instantiate(RootBeanDefinition bd, String beanName, BeanFactory owner, Constructor<?> ctor, Object... args)` 方法，该方法在 SimpleInstantiationStrategy 中实现。代码如下：
+
+```java
+// SimpleInstantiationStrategy.java
+@Override
+public Object instantiate(RootBeanDefinition bd, @Nullable String beanName, BeanFactory owner,
+		final Constructor<?> ctor, Object... args) {
+
+	// <x1> 没有覆盖，直接使用反射实例化即可
+	if (!bd.hasMethodOverrides()) {
+		if (System.getSecurityManager() != null) {
+			// 设置构造方法，可访问
+			// use own privileged to change accessibility (when security is on)
+			AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+				ReflectionUtils.makeAccessible(ctor);
+				return null;
+			});
+		}
+		// 通过 BeanUtils 直接使用构造器对象实例化 Bean 对象
+		return BeanUtils.instantiateClass(ctor, args);
+	}
+	else {
+		// <x2> 生成 CGLIB 创建的子类对象
+		return instantiateWithMethodInjection(bd, beanName, owner, ctor, args);
+	}
+}
+```
+
+- `<x1>` 如果该 bean 没有配置 `lookup-method`、`replaced-method` 标签或者 `@Lookup` 注解，则直接通过**反射**的方式实例化 Bean 对象即可，方便快捷。详细解析，见 [「3.1.1 反射创建 Bean 对象」](#反射创建Bean) 中。
+- `<x2>` 但是，如果存在需要覆盖的方法或者动态替换的方法时，则需要使用 CGLIB 进行动态代理，因为可以在创建代理的同时将动态方法织入类中。详细解析，见 [「3.1.2 CGLIB 创建 Bean 对象」](#CGLIB创建Bean对象) 中。
+
+#### 3.1.1 反射创建 Bean 对象<a name="反射创建Bean"></a>
+
+```java
+// BeanUtils.java
+
+public static <T> T instantiateClass(Constructor<T> ctor, Object... args) throws BeanInstantiationException {
+    Assert.notNull(ctor, "Constructor must not be null");
+    try {
+        // 设置构造方法，可访问
+        ReflectionUtils.makeAccessible(ctor);
+        // 使用构造方法，创建对象
+        return (KotlinDetector.isKotlinReflectPresent() && KotlinDetector.isKotlinType(ctor.getDeclaringClass()) ?
+                KotlinDelegate.instantiateClass(ctor, args) : ctor.newInstance(args));
+    // 各种异常的翻译，最终统一抛出 BeanInstantiationException 异常
+    } catch (InstantiationException ex) {
+        throw new BeanInstantiationException(ctor, "Is it an abstract class?", ex);
+    } catch (IllegalAccessException ex) {
+        throw new BeanInstantiationException(ctor, "Is the constructor accessible?", ex);
+    } catch (IllegalArgumentException ex) {
+        throw new BeanInstantiationException(ctor, "Illegal arguments for constructor", ex);
+    } catch (InvocationTargetException ex) {
+        throw new BeanInstantiationException(ctor, "Constructor threw exception", ex.getTargetException());
+    }
+}
+```
+
+#### 3.1.2 CGLIB 创建 Bean 对象<a name="CGLIB创建Bean对象"></a>
+
+```java
+// SimpleInstantiationStrategy.java
+
+protected Object instantiateWithMethodInjection(RootBeanDefinition bd, @Nullable String beanName, BeanFactory owner) {
+	throw new UnsupportedOperationException("Method Injection not supported in SimpleInstantiationStrategy");
+}
+```
+
+方法默认是**没有实现**的，具体过程由其子类 `org.springframework.beans.factory.support.CglibSubclassingInstantiationStrategy` 来实现。代码如下：
+
+```java
+// CglibSubclassingInstantiationStrategy.java
+
+@Override
+protected Object instantiateWithMethodInjection(RootBeanDefinition bd, @Nullable String beanName, BeanFactory owner) {
+    return instantiateWithMethodInjection(bd, beanName, owner, null);
+}
+@Override
+protected Object instantiateWithMethodInjection(RootBeanDefinition bd, @Nullable String beanName, BeanFactory owner, @Nullable Constructor<?> ctor, Object... args) {
+    // Must generate CGLIB subclass...
+    // 通过CGLIB生成一个子类对象
+    return new CglibSubclassCreator(bd, owner).instantiate(ctor, args);
+}
+```
+
+创建一个 CglibSubclassCreator 对象，后调用其 `#instantiate(Constructor<?> ctor, Object... args)` 方法，生成其子类对象。代码如下：
+
+```java
+// CglibSubclassingInstantiationStrategy.java
+
+public Object instantiate(@Nullable Constructor<?> ctor, Object... args) {
+    // 通过 Cglib 创建一个代理类
+    Class<?> subclass = createEnhancedSubclass(this.beanDefinition);
+    Object instance;
+    // 没有构造器，通过 BeanUtils 使用默认构造器创建一个bean实例
+    if (ctor == null) {
+        instance = BeanUtils.instantiateClass(subclass);
+    } else {
+        try {
+            // 获取代理类对应的构造器对象，并实例化 bean
+            Constructor<?> enhancedSubclassConstructor = subclass.getConstructor(ctor.getParameterTypes());
+            instance = enhancedSubclassConstructor.newInstance(args);
+        } catch (Exception ex) {
+            throw new BeanInstantiationException(this.beanDefinition.getBeanClass(),
+                    "Failed to invoke constructor for CGLIB enhanced subclass [" + subclass.getName() + "]", ex);
+        }
+    }
+    // SPR-10785: set callbacks directly on the instance instead of in the
+    // enhanced class (via the Enhancer) in order to avoid memory leaks.
+    // 为了避免 memory leaks 异常，直接在 bean 实例上设置回调对象
+    Factory factory = (Factory) instance;
+    factory.setCallbacks(new Callback[] {NoOp.INSTANCE,
+            new LookupOverrideMethodInterceptor(this.beanDefinition, this.owner),
+            new ReplaceOverrideMethodInterceptor(this.beanDefinition, this.owner)});
+    return instance;
+}
+```
+
+- 到这类 CGLIB 的方式分析完毕了，当然这里还没有具体分析 CGLIB 生成子类的详细过程，具体的过程等后续分析 AOP 的时候再详细地介绍。
+
+### 3.4 instantiateBean
+
+```java
+// AbstractAutowireCapableBeanFactory.java
+
+protected BeanWrapper instantiateBean(final String beanName, final RootBeanDefinition mbd) {
+    try {
+        Object beanInstance;
+        final BeanFactory parent = this;
+        // 安全模式
+        if (System.getSecurityManager() != null) {
+            beanInstance = AccessController.doPrivileged((PrivilegedAction<Object>) () ->
+                    // 获得 InstantiationStrategy 对象，并使用它，创建 Bean 对象
+                    getInstantiationStrategy().instantiate(mbd, beanName, parent),
+                    getAccessControlContext());
+        } else {
+            // 获得 InstantiationStrategy 对象，并使用它，创建 Bean 对象
+            beanInstance = getInstantiationStrategy().instantiate(mbd, beanName, parent);
+        }
+        // 封装 BeanWrapperImpl  并完成初始化
+        BeanWrapper bw = new BeanWrapperImpl(beanInstance);
+        initBeanWrapper(bw);
+        return bw;
+    } catch (Throwable ex) {
+        throw new BeanCreationException(
+                mbd.getResourceDescription(), beanName, "Instantiation of bean failed", ex);
+    }
+}
+```
+
+- 这个方法,相比于 `#instantiateUsingFactoryMethod(...)` 、 `#autowireConstructor(...)` 方法，**实在是太简单了**，因为，它没有参数，所以不需要确认经过复杂的过来来确定构造器、构造参数，所以这里就不过多阐述了。
+
+#### 3.4.1 instantiate
+
+```java
+// SimpleInstantiationStrategy.java
+
+@Override
+public Object instantiate(RootBeanDefinition bd, @Nullable String beanName, BeanFactory owner) {
+    // Don't override the class with CGLIB if no overrides.
+    // 没有覆盖，直接使用反射实例化即可
+    if (!bd.hasMethodOverrides()) {
+        Constructor<?> constructorToUse;
+        synchronized (bd.constructorArgumentLock) {
+            // 获得构造方法 constructorToUse
+            constructorToUse = (Constructor<?>) bd.resolvedConstructorOrFactoryMethod;
+            if (constructorToUse == null) {
+                final Class<?> clazz = bd.getBeanClass();
+                // 如果是接口，抛出 BeanInstantiationException 异常
+                if (clazz.isInterface()) {
+                    throw new BeanInstantiationException(clazz, "Specified class is an interface");
+                }
+                try {
+                    // 从 clazz 中，获得构造方法
+                    if (System.getSecurityManager() != null) { // 安全模式
+                        constructorToUse = AccessController.doPrivileged(
+                                (PrivilegedExceptionAction<Constructor<?>>) clazz::getDeclaredConstructor);
+                    } else {
+                        constructorToUse =  clazz.getDeclaredConstructor();
+                    }
+                    // 标记 resolvedConstructorOrFactoryMethod 属性
+                    bd.resolvedConstructorOrFactoryMethod = constructorToUse;
+                } catch (Throwable ex) {
+                    throw new BeanInstantiationException(clazz, "No default constructor found", ex);
+                }
+            }
+        }
+        // 通过 BeanUtils 直接使用构造器对象实例化 Bean 对象
+        return BeanUtils.instantiateClass(constructorToUse);
+    } else {
+        // Must generate CGLIB subclass.
+        // 生成 CGLIB 创建的子类对象
+        return instantiateWithMethodInjection(bd, beanName, owner);
+    }
+}
+```
+
+## 四. populateBean<a name="populateBean"></a>
+
+```java
+// AbstractAutowireCapableBeanFactory.java
+
+protected void populateBean(String beanName, RootBeanDefinition mbd, @Nullable BeanWrapper bw) {
+    // 没有实例化对象
+    if (bw == null) {
+        // 有属性，则抛出 BeanCreationException 异常
+        if (mbd.hasPropertyValues()) {
+            throw new BeanCreationException(
+                    mbd.getResourceDescription(), beanName, "Cannot apply property values to null instance");
+            // 没有属性，直接 return 返回
+        } else {
+            // Skip property population phase for null instance.
+            return;
+        }
+    }
+
+    // <1> 在设置属性之前给 InstantiationAwareBeanPostProcessors 最后一次改变 bean 的机会
+    // Give any InstantiationAwareBeanPostProcessors the opportunity to modify the
+    // state of the bean before properties are set. This can be used, for example,
+    // to support styles of field injection.
+    boolean continueWithPropertyPopulation = true;
+    if (!mbd.isSynthetic()  // bean 不是"合成"的，即未由应用程序本身定义
+            && hasInstantiationAwareBeanPostProcessors()) { // 是否持有 InstantiationAwareBeanPostProcessor
+        // 迭代所有的 BeanPostProcessors
+        for (BeanPostProcessor bp : getBeanPostProcessors()) {
+            if (bp instanceof InstantiationAwareBeanPostProcessor) { // 如果为 InstantiationAwareBeanPostProcessor
+                InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
+                // 返回值为是否继续填充 bean
+                // postProcessAfterInstantiation：如果应该在 bean上面设置属性则返回 true，否则返回 false
+                // 一般情况下，应该是返回true 。
+                // 返回 false 的话，将会阻止在此 Bean 实例上调用任何后续的 InstantiationAwareBeanPostProcessor 实例。
+                if (!ibp.postProcessAfterInstantiation(bw.getWrappedInstance(), beanName)) {
+                    continueWithPropertyPopulation = false;
+                    break;
+                }
+            }
+        }
+    }
+    // 如果后续处理器发出停止填充命令，则终止后续操作
+    if (!continueWithPropertyPopulation) {
+        return;
+    }
+
+    // bean 的属性值
+    PropertyValues pvs = (mbd.hasPropertyValues() ? mbd.getPropertyValues() : null);
+
+    // <2> 自动注入
+    if (mbd.getResolvedAutowireMode() == AUTOWIRE_BY_NAME || mbd.getResolvedAutowireMode() == AUTOWIRE_BY_TYPE) {
+        // 将 PropertyValues 封装成 MutablePropertyValues 对象
+        // MutablePropertyValues 允许对属性进行简单的操作，并提供构造函数以支持Map的深度复制和构造。
+        MutablePropertyValues newPvs = new MutablePropertyValues(pvs);
+        // Add property values based on autowire by name if applicable.
+        // 根据名称自动注入
+        if (mbd.getResolvedAutowireMode() == AUTOWIRE_BY_NAME) {
+            autowireByName(beanName, mbd, bw, newPvs);
+        }
+        // Add property values based on autowire by type if applicable.
+        // 根据类型自动注入
+        if (mbd.getResolvedAutowireMode() == AUTOWIRE_BY_TYPE) {
+            autowireByType(beanName, mbd, bw, newPvs);
+        }
+        pvs = newPvs;
+    }
+
+    // 是否已经注册了 InstantiationAwareBeanPostProcessors
+    boolean hasInstAwareBpps = hasInstantiationAwareBeanPostProcessors();
+    // 是否需要进行【依赖检查】
+    boolean needsDepCheck = (mbd.getDependencyCheck() != AbstractBeanDefinition.DEPENDENCY_CHECK_NONE);
+
+    // <3> BeanPostProcessor 处理
+    PropertyDescriptor[] filteredPds = null;
+    if (hasInstAwareBpps) {
+        if (pvs == null) {
+            pvs = mbd.getPropertyValues();
+        }
+        // 遍历 BeanPostProcessor 数组
+        for (BeanPostProcessor bp : getBeanPostProcessors()) {
+            if (bp instanceof InstantiationAwareBeanPostProcessor) {
+                InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
+                // 对所有需要依赖检查的属性进行后处理
+                PropertyValues pvsToUse = ibp.postProcessProperties(pvs, bw.getWrappedInstance(), beanName);
+                if (pvsToUse == null) {
+                    // 从 bw 对象中提取 PropertyDescriptor 结果集
+                    // PropertyDescriptor：可以通过一对存取方法提取一个属性
+                    if (filteredPds == null) {
+                        filteredPds = filterPropertyDescriptorsForDependencyCheck(bw, mbd.allowCaching);
+                    }
+                    pvsToUse = ibp.postProcessPropertyValues(pvs, filteredPds, bw.getWrappedInstance(), beanName);
+                    if (pvsToUse == null) {
+                        return;
+                    }
+                }
+                pvs = pvsToUse;
+            }
+        }
+    }
+    
+    // <4> 依赖检查
+    if (needsDepCheck) {
+        if (filteredPds == null) {
+            filteredPds = filterPropertyDescriptorsForDependencyCheck(bw, mbd.allowCaching);
+        }
+        // 依赖检查，对应 depends-on 属性
+        checkDependencies(beanName, mbd, filteredPds, pvs);
+    }
+
+    // <5> 将属性应用到 bean 中
+    if (pvs != null) {
+        applyPropertyValues(beanName, mbd, bw, pvs);
+    }
+}
+```
+
