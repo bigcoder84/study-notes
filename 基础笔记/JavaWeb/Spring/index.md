@@ -69,3 +69,5 @@
 [分析各scope的Bean创建](./subfile/_28分析各scope的Bean创建.md)
 
 [创建Bean的流程](./subfile/_29创建Bean的流程.md)
+
+[循环依赖处理](./subfile/_31循环依赖处理.md)

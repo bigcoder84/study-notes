@@ -2287,3 +2287,8 @@ protected void invokeInitMethods(String beanName, final Object bean, @Nullable R
 
 - 首先，检查是否为 InitializingBean 。如果**是**的话，需要执行 `#afterPropertiesSet()` 方法，因为我们除了可以使用 `init-method` 来自定初始化方法外，还可以实现 InitializingBean 接口。接口仅有一个 `#afterPropertiesSet()` 方法。
 - 两者的执行先后顺序是先 `<1>` 的 `#afterPropertiesSet()` 方法，后 `<2>` 的 `init-method` 对应的方法
+
+## 六. 总结
+
+![](../images/66.png)
+
