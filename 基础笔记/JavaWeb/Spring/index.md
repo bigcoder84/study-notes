@@ -71,3 +71,7 @@
 [创建Bean的流程](./subfile/_29创建Bean的流程.md)
 
 [循环依赖处理](./subfile/_31循环依赖处理.md)
+
+### 2.4 接口体系
+
+[Aware接口](./subfile/_32Aware接口.md)
