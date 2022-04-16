@@ -75,3 +75,5 @@
 ### 2.4 接口体系
 
 [Aware接口](./subfile/_32Aware接口.md)
+
+[﻿BeanPostProcessor接口](./subfile/_33﻿BeanPostProcessor接口.md)
