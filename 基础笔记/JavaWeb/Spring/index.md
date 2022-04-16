@@ -77,3 +77,5 @@
 [Aware接口](./subfile/_32Aware接口.md)
 
 [﻿BeanPostProcessor接口](./subfile/_33﻿BeanPostProcessor接口.md)
+
+[InitializingBean接口](./subfile/_33InitializingBean接口.md)
