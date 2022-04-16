@@ -79,3 +79,5 @@
 [﻿BeanPostProcessor接口](./subfile/_33﻿BeanPostProcessor接口.md)
 
 [InitializingBean接口](./subfile/_33InitializingBean接口.md)
+
+[Bean的生命周期](./subfile/_34Bean的生命周期.md)
