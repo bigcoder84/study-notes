@@ -81,3 +81,5 @@
 [InitializingBean接口](./subfile/_33InitializingBean接口.md)
 
 [Bean的生命周期](./subfile/_34Bean的生命周期.md)
+
+[BeanFactoryPostProcessor接口](./subfile/_35BeanFactoryPostProcessor接口.md)
