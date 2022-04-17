@@ -85,3 +85,5 @@
 [BeanFactoryPostProcessor接口](./subfile/_35BeanFactoryPostProcessor接口.md)
 
 [PropertyPlaceholderConfigurer](./subfile/_36PropertyPlaceholderConfigurer.md)
+
+[Spring动态加载属性配置文件](./subfile/_37Spring动态加载属性配置文件.md)
