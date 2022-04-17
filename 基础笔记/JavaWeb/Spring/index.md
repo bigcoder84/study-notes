@@ -83,3 +83,5 @@
 [Bean的生命周期](./subfile/_34Bean的生命周期.md)
 
 [BeanFactoryPostProcessor接口](./subfile/_35BeanFactoryPostProcessor接口.md)
+
+[PropertyPlaceholderConfigurer](./subfile/_36PropertyPlaceholderConfigurer.md)
