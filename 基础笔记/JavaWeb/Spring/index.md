@@ -89,3 +89,5 @@
 [Spring动态加载属性配置文件](./subfile/_37Spring动态加载属性配置文件.md)
 
 [PropertyOverrideConfigurer详解](./subfile/_38PropertyOverrideConfigurer详解.md)
+
+[Bean的类型转换体系](./subfile/_39Bean的类型转换体系.md)
