@@ -80,7 +80,7 @@
 
 [InitializingBean接口](./subfile/_33InitializingBean接口.md)
 
-[Bean的生命周期](./subfile/_34Bean的生命周期.md)
+[一文梳理Bean生命周期](./subfile/_43一文梳理Bean生命周期.md)
 
 [BeanFactoryPostProcessor接口](./subfile/_35BeanFactoryPostProcessor接口.md)
 
