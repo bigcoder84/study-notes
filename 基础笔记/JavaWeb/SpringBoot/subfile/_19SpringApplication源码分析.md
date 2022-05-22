@@ -86,9 +86,9 @@ public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySourc
     Assert.notNull(primarySources, "PrimarySources must not be null");
     this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
     this.webApplicationType = WebApplicationType.deduceFromClasspath();
-    // 初始化 initializers 属性
+    // 加载classpath环境中配置的ApplicationContextInitializer实现类
     setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
-    // 初始化 listeners 属性
+    // 通过SPI机制，加载classpath环境中配置的ApplicationListener实现类，并实例化
     setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
     this.mainApplicationClass = deduceMainApplicationClass();
 }
