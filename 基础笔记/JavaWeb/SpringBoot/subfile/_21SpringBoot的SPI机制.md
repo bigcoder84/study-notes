@@ -420,6 +420,20 @@ private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] 
 }
 ```
 
+## 三. SpringBoot2.7.0 自动配置将不推荐使用`spring.factories`
+
+> 参考文献：[Spring Boot 2.7 Release Notes](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.7-Release-Notes)
+
+SpringBoot 2.7 中，不再推荐使用`/META-INF/spring.factories`文件作为自动配置类的配置文件，所以对于有自定义Starter的开发者来说，有时间要抓紧把这一变化改起来了，因为在SpringBoot 3开始将移除对/META-INF/spring.factories的支持。
+
+![](../images/47.png)
+
+如果您已经创建了自动配置，那么应该将注册从`META-INF/spring.factories`转移到一个名为`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`的新文件。每一行都包含自动配置的完全限定名。请参考： [the included auto-configurations](https://github.com/spring-projects/spring-boot/blob/main/spring-boot-project/spring-boot-autoconfigure/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports)
+
+为了向后兼容，spring.factories 的功能仍将暂时支持。
+
+
+
 
 
 > 本文参考至：
