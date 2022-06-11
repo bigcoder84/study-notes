@@ -16,5 +16,7 @@
 
 ## 源码分析
 
+[阅读源码前的准备](./subfile/_9阅读源码前的准备.md)
+
 [RocketMQ消息发送流程](./subfile/_4RocketMQ消息发送流程.md)
 
