@@ -37,3 +37,5 @@
 [RedoLog和UndoLog到底是什么](./subfile/_18RedoLog和UndoLog到底是什么.md)
 
 [创建索引会锁表吗](./subfile/_19创建索引会锁表吗.md)
+
+[MySQL逻辑架构](./subfile/_20MySQL逻辑架构.md)

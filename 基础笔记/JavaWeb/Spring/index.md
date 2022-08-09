@@ -22,6 +22,10 @@
 
 [Spring循环依赖](./subfile/_10Spring循环依赖.md)
 
+[FactoryBean详解](./subfile/_25FactoryBean详解.md)
+
+[Spring最全的依赖注入方式](./subfile/_30Spring最全的依赖注入方式.md)
+
 ## 二. 源码分析
 
 [Spring源码调试环境搭建](./subfile/_11Spring源码调试环境搭建.md)
@@ -55,3 +59,39 @@
 [IoC之装载BeanDefinitions总结](./subfile/_23IoC之装载BeanDefinitions总结.md)
 
 ### 2.3 Bean的加载
+
+[Bean的加载](./subfile/_24Bean的加载.md)
+
+[从单例缓存中获取单例Bean](./subfile/_26从单例缓存中获取单例Bean.md)
+
+[parentBeanFactory与依赖处理](./subfile/_27parentBeanFactory与依赖处理.md)
+
+[分析各scope的Bean创建](./subfile/_28分析各scope的Bean创建.md)
+
+[创建Bean的流程](./subfile/_29创建Bean的流程.md)
+
+[循环依赖处理](./subfile/_31循环依赖处理.md)
+
+### 2.4 接口体系
+
+[Aware接口](./subfile/_32Aware接口.md)
+
+[﻿BeanPostProcessor接口](./subfile/_33﻿BeanPostProcessor接口.md)
+
+[InitializingBean接口](./subfile/_33InitializingBean接口.md)
+
+[一文梳理Bean生命周期](./subfile/_43一文梳理Bean生命周期.md)
+
+[BeanFactoryPostProcessor接口](./subfile/_35BeanFactoryPostProcessor接口.md)
+
+[PropertyPlaceholderConfigurer](./subfile/_36PropertyPlaceholderConfigurer.md)
+
+[Spring动态加载属性配置文件](./subfile/_37Spring动态加载属性配置文件.md)
+
+[PropertyOverrideConfigurer详解](./subfile/_38PropertyOverrideConfigurer详解.md)
+
+[Bean的类型转换体系](./subfile/_39Bean的类型转换体系.md)
+
+[自定义类型转换器](./subfile/_40自定义类型转换器.md)
+
+[ApplicationContext接口体系](./subfile/_41ApplicationContext接口体系.md)
