@@ -1,8 +1,8 @@
 # Redo Log和Undo Log到底是什么
 
-> 本文转载至：[MySQL事务实现及Redo Log和Undo Log详解 — 东平的笔记仓库 (cheng-dp.github.io)](https://cheng-dp.github.io/2019/05/09/mysql-tx-redo-undo/#undo-log)
+## 一. 前言
 
-## 一. ACID实现
+`MySQL` 日志 主要包括错误日志、查询日志、慢查询日志、事务日志、二进制日志几大类。其中，比较重要的还要属二进制日志 `binlog`（归档日志）和事务日志 `redo log`（重做日志）和 `undo log`（回滚日志）。
 
 事务(Transaction)实现着重于实现事务的ACID属性，即:
 
@@ -11,22 +11,28 @@
 - 隔离性(Isolation)
 - 持久性(Duration)
 
-事务的隔离性由锁机制和MVCC实现，原子性(Atomic)由Undo Log实现，持久性由Redo Log实现，一致性由Undo Log和Redo Log共同实现(即：数据库总是从一个一致状态转移到另一个一致状态)。
+事务的隔离性由锁机制和MVCC实现，原子性（Atomic）由Undo Log实现，持久性由Redo Log实现，一致性由Undo Log和Redo Log共同实现(即：数据库总是从一个一致状态转移到另一个一致状态)。
+
+![](../images/81.png)
 
 ## 二. Redo Log
 
-重做日志(Redo Log)用来实现事务的**持久性(Duration)**，记录每次操作上页的物理修改。
+`redo log`（重做日志）是`InnoDB`存储引擎独有的，它让`MySQL`拥有了崩溃恢复能力。
+
+比如 `MySQL` 实例挂了或宕机了，重启时，`InnoDB`存储引擎会使用`redo log`恢复数据，保证数据的持久性与完整性。
+
+![](../images/82.png)
 
 ### 2.1 解决问题
 
-InnoDB存储引擎的存储数据存放在磁盘中，同时提供内存缓存(Buffer Pool)包含磁盘中部分数据页的映射，作为数据库访问的缓冲。Buffer Pool中修改的脏页数据会定期刷新到磁盘中。
+InnoDB 存储引擎的存储数据存放在磁盘中，同时提供内存缓存(Buffer Pool)包含磁盘中部分数据页的映射，作为数据库访问的缓冲。Buffer Pool中修改的脏页数据会定期刷新到磁盘中。
 
 **如果MySQL宕机，而Buffer Pool的数据没有完全刷新到磁盘，就会导致数据丢失，无法保证持久性。** 因此引入Redo Log解决这个问题。
 
 - 当数据修改时，首先写入Redo Log，再更新到Buffer Pool，保证数据不会因为宕机而丢失，保证持久性。
 - 当事务提交时会调用fsync将redo log刷至磁盘持久化。MySQL宕机时，通过读取Redo Log中的数据，对数据库进行恢复。
 
-Redo Log也是记录在磁盘中，为什么会比直接将Buffer Pool写入磁盘更快？
+**Redo Log也是记录在磁盘中，为什么会比直接将Buffer Pool写入磁盘更快**？
 
 - Buffer Pool刷入脏页至磁盘是随机IO，每次修改的数据位置随机，而Redo Log永远在页中追加，属于顺序IO。
 - Buffer Pool刷入磁盘是以数据页为单位，每次都需要整页写入。而Redo Log只需要写入真正**物理修改**的部分，IO数据量大大减少。
@@ -200,3 +206,128 @@ Rollback Segment管理参数：
 
 事务提交时，虽然不会立即删除Undo Log，但是会将对应的Undo Log放入一个删除列表中，未来通过purge线程来进行判断并删除。
 
+## 四. Bin Log
+
+`redo log` 它是物理日志，记录内容是“在某个数据页上做了什么修改”，属于 `InnoDB` 存储引擎。
+
+而 `binlog` 是逻辑日志，记录内容是语句的原始逻辑，类似于“给 ID=2 这一行的 c 字段加 1”，属于`MySQL Server` 层。
+
+不管用什么存储引擎，只要发生了表数据更新，都会产生 `binlog` 日志。
+
+那 `binlog` 到底是用来干嘛的？
+
+可以说`MySQL`数据库的**数据备份、主备、主主、主从**都离不开`binlog`，需要依靠`binlog`来同步数据，保证数据一致性。
+
+![](../images/84.png)
+
+`binlog`会记录所有涉及更新数据的逻辑操作，并且是顺序写。
+
+### 4.1 记录格式
+
+`binlog` 日志有三种格式，可以通过`binlog_format`参数指定。
+
+- **statement**
+- **row**
+- **mixed**
+
+指定`statement`，记录的内容是`SQL`语句原文，比如执行一条`update T set update_time=now() where id=1`，记录的内容如下。
+
+![](../images/85.png)
+
+同步数据时，会执行记录的`SQL`语句，但是有个问题，`update_time=now()`这里会获取当前系统时间，直接执行会导致与原库的数据不一致。
+
+为了解决这种问题，我们需要指定为`row`，记录的内容不再是简单的`SQL`语句了，还包含操作的具体数据，记录内容如下。
+
+![](../images/86.png)
+
+
+
+`row`格式记录的内容看不到详细信息，要通过`mysqlbinlog`工具解析出来。
+
+`update_time=now()`变成了具体的时间`update_time=1627112756247`，条件后面的@1、@2、@3 都是该行数据第 1 个~3 个字段的原始值（**假设这张表只有 3 个字段**）。
+
+这样就能保证同步数据的一致性，通常情况下都是指定为`row`，这样可以为数据库的恢复与同步带来更好的可靠性。
+
+但是这种格式，需要更大的容量来记录，比较占用空间，恢复与同步时会更消耗`IO`资源，影响执行速度。
+
+所以就有了一种折中的方案，指定为`mixed`，记录的内容是前两者的混合。
+
+`MySQL`会判断这条`SQL`语句是否可能引起数据不一致，如果是，就用`row`格式，否则就用`statement`格式。
+
+### 4.2 写入机制
+
+`binlog`的写入时机也非常简单，事务执行过程中，先把日志写到`binlog cache`，事务提交的时候，再把`binlog cache`写到`binlog`文件中。
+
+因为一个事务的`binlog`不能被拆开，无论这个事务多大，也要确保一次性写入，所以系统会给每个线程分配一个块内存作为`binlog cache`。
+
+我们可以通过`binlog_cache_size`参数控制单个线程 binlog cache 大小，如果存储内容超过了这个参数，就要暂存到磁盘（`Swap`）。
+
+`binlog`日志刷盘流程如下
+
+![](../images/87.png)
+
+- **上图的 write，是指把日志写入到文件系统的 page cache，并没有把数据持久化到磁盘，所以速度比较快**
+- **上图的 fsync，才是将数据持久化到磁盘的操作**
+
+`write`和`fsync`的时机，可以由参数`sync_binlog`控制，默认是`0`。
+
+为`0`的时候，表示每次提交事务都只`write`，由系统自行判断什么时候执行`fsync`。
+
+![](../images/88.png)
+
+虽然性能得到提升，但是机器宕机，`page cache`里面的 binlog 会丢失。
+
+为了安全起见，可以设置为`1`，表示每次提交事务都会执行`fsync`，就如同 **redo log 日志刷盘流程** 一样。
+
+最后还有一种折中方式，可以设置为`N(N>1)`，表示每次提交事务都`write`，但累积`N`个事务后才`fsync`。
+
+![](../images/89.png)
+
+在出现`IO`瓶颈的场景里，将`sync_binlog`设置成一个比较大的值，可以提升性能。
+
+同样的，如果机器宕机，会丢失最近`N`个事务的`binlog`日志。
+
+### 4.3 两阶段提交
+
+`redo log`（重做日志）让`InnoDB`存储引擎拥有了崩溃恢复能力。
+
+`binlog`（归档日志）保证了`MySQL`集群架构的数据一致性。
+
+虽然它们都属于持久化的保证，但是侧重点不同。
+
+在执行更新语句过程，会记录`redo log`与`binlog`两块日志，以基本的事务为单位，`redo log`在事务执行过程中可以不断写入，而`binlog`只有在提交事务时才写入，所以`redo log`与`binlog`的写入时机不一样。
+
+![](../images/90.png)
+
+回到正题，`redo log`与`binlog`两份日志之间的逻辑不一致，会出现什么问题？
+
+我们以`update`语句为例，假设`id=2`的记录，字段`c`值是`0`，把字段`c`值更新成`1`，`SQL`语句为`update T set c=1 where id=2`。
+
+假设执行过程中写完`redo log`日志后，`binlog`日志写期间发生了异常，会出现什么情况呢？
+
+![](../images/91.png)
+
+由于`binlog`没写完就异常，这时候`binlog`里面没有对应的修改记录。因此，之后用`binlog`日志恢复数据时，就会少这一次更新，恢复出来的这一行`c`值是`0`，而原库因为`redo log`日志恢复，这一行`c`值是`1`，最终数据不一致。
+
+![](../images/92.png)
+
+为了解决两份日志之间的逻辑一致问题，`InnoDB`存储引擎使用**两阶段提交**方案。
+
+原理很简单，将`redo log`的写入拆成了两个步骤`prepare`和`commit`，这就是**两阶段提交**。
+
+![](../images/93.png)
+
+使用**两阶段提交**后，写入`binlog`时发生异常也不会有影响，因为`MySQL`根据`redo log`日志恢复数据时，发现`redo log`还处于`prepare`阶段，并且没有对应`binlog`日志，就会回滚该事务。
+
+![](../images/94.png)
+
+再看一个场景，`redo log`设置`commit`阶段发生异常，那会不会回滚事务呢？
+
+![](../images/95.png)
+
+并不会回滚事务，它会执行上图框住的逻辑，虽然`redo log`是处于`prepare`阶段，但是能通过事务`id`找到对应的`binlog`日志，所以`MySQL`认为是完整的，就会提交事务恢复数据。
+
+> 本文参考至：
+>
+> - [MySQL事务实现及Redo Log和Undo Log详解 — 东平的笔记仓库 (cheng-dp.github.io)](https://cheng-dp.github.io/2019/05/09/mysql-tx-redo-undo/#undo-log)
+> - [JavaGuide/mysql-logs.md at main · Snailclimb/JavaGuide (github.com)](https://github.com/Snailclimb/JavaGuide/blob/main/docs/database/mysql/mysql-logs.md)
