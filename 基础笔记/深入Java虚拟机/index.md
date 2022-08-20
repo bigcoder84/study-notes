@@ -1,4 +1,6 @@
-## 深入Java虚拟机
+# 深入Java虚拟机
+
+## 一. 基础知识
 
 [Java虚拟机的内存区域划分](./subfile/_1Java虚拟机的内存区域划分.md)
 
@@ -24,3 +26,6 @@
 
 [JVM_MinorGC和FullGC触发机制](./subfile/_13JVM_MinorGC和FullGC触发机制.md)
 
+## 二. 排查工具
+
+[jstack命令详解](./subfile/_14jstack命令详解.md)
