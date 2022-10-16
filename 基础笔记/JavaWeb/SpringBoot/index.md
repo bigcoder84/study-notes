@@ -38,6 +38,8 @@
 
 [SpringBoot配置文件读取](./subfile/_18SpringBoot配置文件读取.md)
 
+[请求参数注解校验](./subfile/_25请求参数注解校验.md)
+
 ## 二. 源码分析
 
 [SpringApplication源码分析](./subfile/_19SpringApplication源码分析.md)
