@@ -40,6 +40,16 @@
 
 [CompletableFuture源码分析](./subfile/_28CompletableFuture源码分析.md)
 
+[JDK7中HashMap扩容死锁问题](./subfile/_20JDK7中HashMap扩容死锁问题.md)
+
+[ConcurrentHashMap](./subfile/_21ConcurrentHashMap.md)
+
+[阻塞队列](./subfile/_22阻塞队列.md)
+
+[线程池](./subfile/_23线程池原理.md)
+
+[ThreadLocal、InheritableThreadLocal详解](./subfile/_31ThreadLocal、InheritableThreadLocal详解.md)
+
 ## 原子操作
 
 [原子操作CAS](./subfile/_14原子操作CAS.md)
@@ -58,12 +68,5 @@
 
 [AQS源码分析](./subfile/_19AQS源码解析.md)
 
-## 并发工具
 
-[JDK7中HashMap扩容死锁问题](./subfile/_20JDK7中HashMap扩容死锁问题.md)
 
-[ConcurrentHashMap](./subfile/_21ConcurrentHashMap.md)
-
-[阻塞队列](./subfile/_22阻塞队列.md)
-
-[线程池](./subfile/_23线程池原理.md)
