@@ -396,3 +396,13 @@ public static <C, B> boolean registerTransmittee(@NonNull Transmittee<C, B> tran
 ```
 
 可以看到capture方法中，会拿到当前主线程中的 `holder` 变量，它其中保存着当前线程使用到的所有 TransmittableThreadLocal 实例，然后copy其中的value，为子线程创建快照。
+
+
+
+
+
+> 本文参考至：
+>
+> [从TransmittableThreadLocal使用前调研（源码分析） - 简书 (jianshu.io)](http://events.jianshu.io/p/79650be29e34)
+>
+> [小伙伴同学们写的 TTL实际业务使用场景 与 设计实现解析的文章（写得都很好！ ）❤️ · Issue #123 · alibaba/transmittable-thread-local (github.com)](https://github.com/alibaba/transmittable-thread-local/issues/123)
