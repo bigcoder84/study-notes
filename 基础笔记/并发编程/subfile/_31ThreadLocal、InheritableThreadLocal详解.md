@@ -404,16 +404,6 @@ private void init(ThreadGroup g, Runnable target, String name,
 
 可以看到线程在初始化时，会尝试将父线程的inheritableThreadLocals 拷贝到当前正在创建的子线程的 inheritableThreadLocals 上，这样在子线程中也能获取到父线程的数据了。
 
-## 
-
-
-
-
-
-
-
-
-
 > 本文参考至：
 >
 > [一文搞懂 ThreadLocal 原理 - 武培轩 - 博客园 (cnblogs.com)](https://www.cnblogs.com/wupeixuan/p/12638203.html)
