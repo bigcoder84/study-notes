@@ -57,3 +57,5 @@
 [Redis常用数据类型](./subfile/_10Redis常用数据类型.md)
 
 [爬虫突破封禁的5种常见方法](./subfile/_28爬虫突破封禁的5种常见方法.md)
+
+[JavaAgent详解](./subfile/_34JavaAgent详解.md)
