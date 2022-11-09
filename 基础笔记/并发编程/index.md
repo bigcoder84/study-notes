@@ -50,6 +50,8 @@
 
 [ThreadLocal、InheritableThreadLocal详解](./subfile/_31ThreadLocal、InheritableThreadLocal详解.md)
 
+[TransmittableThreadLocal源码详解](./subfile/32TransmittableThreadLocal源码详解.md)
+
 ## 原子操作
 
 [原子操作CAS](./subfile/_14原子操作CAS.md)
