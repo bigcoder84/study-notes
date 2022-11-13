@@ -9,3 +9,5 @@
 [Grafana图表配置快速入门](./subfile/_4Grafana图表配置快速入门.md)
 
 [PromQL快速入门](./subfile/_5PromQL快速入门.md)
+
+[Prometheus关键概念](./subfile/_6Prometheus关键概念.md)
