@@ -72,6 +72,8 @@
 
 [HTTP实体数据](./subfile/_30HTTP_BODY数据.md)
 
+[HTTP的缓存机制](./subfile/_31HTTP的缓存机制.md)
+
 ## 网络应用
 
 [使用OpenVPN搭建虚拟专用网络](./subfile/_26使用OpenVPN搭建虚拟专用网络.md)
