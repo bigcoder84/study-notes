@@ -24,12 +24,18 @@
 
 [从虚拟机的角度看i++和++i](./subfile/_11从虚拟机的角度看i++和++i.md)
 
+## 二. ParNew+CMS
+
 [JVM_MinorGC和FullGC触发机制](./subfile/_13JVM_MinorGC和FullGC触发机制.md)
 
 [CMS垃圾回收器](./subfile/_15CMS垃圾回收器.md)
 
 [JVM三色标记算法](./subfile/_16JVM三色标记算法.md)
 
-## 二. 排查工具
+[ParNew+CMS垃圾回收器常见问题](./subfile/_17ParNew+CMS垃圾回收器常见问题.md)
+
+[ParNew+CMS常见参数](./subfile/_18ParNew+CMS常见参数.md)
+
+## 三. 排查工具
 
 [jstack命令详解](./subfile/_14jstack命令详解.md)
