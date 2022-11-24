@@ -26,13 +26,11 @@
 
 ## 二. ParNew+CMS
 
-[JVM_MinorGC和FullGC触发机制](./subfile/_13JVM_MinorGC和FullGC触发机制.md)
-
 [CMS垃圾回收器](./subfile/_15CMS垃圾回收器.md)
 
 [JVM三色标记算法](./subfile/_16JVM三色标记算法.md)
 
-[ParNew+CMS垃圾回收器常见问题](./subfile/_17ParNew+CMS垃圾回收器常见问题.md)
+[关于ParNew+CMS垃圾回收器的一些疑惑](./subfile/_17关于ParNew+CMS垃圾回收器的一些疑惑.md)
 
 [ParNew+CMS常见参数](./subfile/_18ParNew+CMS常见参数.md)
 
