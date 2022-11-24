@@ -36,6 +36,8 @@
 
 [ParNew+CMS常见参数](./subfile/_18ParNew+CMS常见参数.md)
 
+[一文读懂ParNew+CMS_GC日志](./subfile/_19一文读懂ParNew+CMS_GC日志.md)
+
 ## 三. 排查工具
 
 [jstack命令详解](./subfile/_14jstack命令详解.md)
