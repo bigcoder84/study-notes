@@ -157,7 +157,9 @@ Dubbo 源码解析系列文章基于Dubbo 2.7.10版本进行，可以从 Github 
 - dubbo-qos，提供在线运维命令。
   - 拓展参考 [《在线运维命令参考手册》](https://dubbo.apache.org/zh/docs/v3.0/references/configuration/references/qos/) 和 [《Dubbo 开发指南 —— Telnet 命令扩展》](https://dubbo.apache.org/zh/docs/v3.0/references/spis/telnet-handler/) 文档。
 
-### 2.11 dubbo-dependencies-bom
+### 2.11 Maven POM
+
+#### 2.11.1 dubbo-dependencies-bom
 
 `dubbo-dependencies-bom/pom.xml`，Maven BOM(Bill Of Materials) ，统一定义了 Dubbo 依赖的三方库的版本号：
 
@@ -166,3 +168,31 @@ Dubbo 源码解析系列文章基于Dubbo 2.7.10版本进行，可以从 Github 
 `dubbo-parent` 会引入该 BOM ：
 
 ![](../images/25.png)
+
+#### 2.11.2 dubbo-bom
+
+`dubbo-bom/pom.xml`，Maven BOM(Bill Of Materials) ，统一定义了 Dubbo 的版本号：
+
+![](../images/26.png)
+
+`dubbo-demo` 和 `dubbo-test` 会引入该 BOM 。以 `dubbo-demo` 举例子：
+
+![](../images/27.png)
+
+#### 2.11.3 dubbo-parent
+
+`dubbo/pom.xml`，Dubbo Parent POM 。
+
+Dubbo 的 Maven 模块，都会引入该 pom 文件。以 `dubbo-cluster` 举例子：
+
+![](../images/28.png)
+
+我们整理下上面的 pom 文件：
+
+![](../images/29.png)
+
+#### 2.11.4 dubbo-all
+
+`dubbo/all/pom.xml`，Dubbo All POM ，定义了 Dubbo 的打包脚本。
+
+我们在使用 Dubbo 库时，引入该 pom 文件。
