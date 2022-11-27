@@ -23,3 +23,5 @@
 ## 二. 源码剖析
 
 [Dubbo源码项目结构](./subfile/_11Dubbo源码项目结构.md)
+
+[Dubbo核心流程](./subfile/_12Dubbo核心流程.md)
