@@ -390,16 +390,20 @@ public class DubboInternalLoadingStrategy implements LoadingStrategy {
                     type + ", class line: " + clazz.getName() + "), class "
                     + clazz.getName() + " is not subtype of interface.");
         }
+        // 检测目标类上是否有 Adaptive 注解
         if (clazz.isAnnotationPresent(Adaptive.class)) {
             // 缓存自适应拓展对象的类到 `cachedAdaptiveClass`
             cacheAdaptiveClass(clazz, overridden);
         } else if (isWrapperClass(clazz)) {
+            // 检测 clazz 是否是 Wrapper 类型
             // 缓存拓展 Wrapper 实现类到 `cachedWrapperClasses`
             cacheWrapperClass(clazz);
         } else {
+            // 程序进入此分支，表明 clazz 是一个普通的拓展类
             clazz.getConstructor();
             // 未配置拓展名，自动生成。例如，DemoFilter 为 demo 。主要用于兼容 Java SPI 的配置。
             if (StringUtils.isEmpty(name)) {
+                // 如果 name 为空，则尝试从 Extension 注解中获取 name，或使用小写的类名作为 name
                 name = findAnnotationName(clazz);
                 if (name.length() == 0) {
                     throw new IllegalStateException("No such extension name for the class " + clazz.getName() + " in the config " + resourceURL);
@@ -615,3 +619,717 @@ ExtensionLoader.getExtensionLoader(Protocol.class).getExtension(name)
 
 #### 4.4.3 injectExtension
 
+```java
+ 	private T injectExtension(T instance) {
+
+        if (objectFactory == null) {
+            return instance;
+        }
+
+        try {
+            for (Method method : instance.getClass().getMethods()) {
+                if (!isSetter(method)) {
+                    continue;
+                }
+                /**
+                 * Check {@link DisableInject} to see if we need auto injection for this property
+                 */
+                if (method.getAnnotation(DisableInject.class) != null) {
+                    continue;
+                }
+                // 获得属性的类型
+                Class<?> pt = method.getParameterTypes()[0];
+                if (ReflectUtils.isPrimitives(pt)) {
+                    continue;
+                }
+
+                try {
+                    // 获取setter的属性名，例如:setVersion，返回"version"
+                    String property = getSetterProperty(method);
+                    // 获得属性值
+                    Object object = objectFactory.getExtension(pt, property); // 第 28 行
+                    // 设置属性值
+                    if (object != null) {
+                        method.invoke(instance, object);
+                    }
+                } catch (Exception e) {
+                    logger.error("Failed to inject via method " + method.getName()
+                            + " of interface " + type.getName() + ": " + e.getMessage(), e);
+                }
+
+            }
+        } catch (Exception e) {
+            logger.error(e.getMessage(), e);
+        }
+        return instance;
+    }
+```
+
+- 第 28 行：获得**属性值**。**注意**，此处虽然调用的是 `ExtensionFactory#getExtension(type, name)` 方法，实际获取的不仅仅是拓展对象，也可以是 Spring Bean 对象。
+
+### 4.5 获得自适应的拓展对象
+
+在 Dubbo 的代码里，常常能看到如下的代码：
+
+```java
+ExtensionLoader.getExtensionLoader(Protocol.class).getAdaptiveExtension();
+```
+
+> 友情提示，胖友先看下 [「6. Adaptive」](http://svip.iocoder.cn/Dubbo/spi/#) 的内容再回到此处。
+>
+> Dubbo 自适应拓展的作用可以参考：[SPI 自适应拓展 | Apache Dubbo](https://dubbo.apache.org/zh/docsv2.7/dev/source/adaptive-extension/)
+
+#### 4.5.1 getAdaptiveExtension
+
+```java
+    @SuppressWarnings("unchecked")
+    public T getAdaptiveExtension() {
+        // 从缓存中，获得自适应拓展对象
+        Object instance = cachedAdaptiveInstance.get();
+        if (instance == null) {
+            // 若之前创建报错，则抛出异常 IllegalStateException
+            if (createAdaptiveInstanceError != null) {
+                throw new IllegalStateException("Failed to create adaptive instance: " +
+                        createAdaptiveInstanceError.toString(),
+                        createAdaptiveInstanceError);
+            }
+
+            synchronized (cachedAdaptiveInstance) {
+                instance = cachedAdaptiveInstance.get();
+                if (instance == null) {
+                    try {
+                        // 创建自适应拓展对象
+                        instance = createAdaptiveExtension();
+                        // 设置到缓存
+                        cachedAdaptiveInstance.set(instance);
+                    } catch (Throwable t) {
+                        // 记录异常
+                        createAdaptiveInstanceError = t;
+                        throw new IllegalStateException("Failed to create adaptive instance: " + t.toString(), t);
+                    }
+                }
+            }
+        }
+
+        return (T) instance;
+    }
+```
+
+#### 4.5.2 createAdaptiveExtension
+
+```java
+    /**
+     * 创建自适应拓展对象
+     *
+     * @return 拓展对象
+     */
+    @SuppressWarnings("unchecked")
+    private T createAdaptiveExtension() {
+        try {
+            // 创建自适应拓展对象，并注入属性
+            return injectExtension((T) getAdaptiveExtensionClass().newInstance());
+        } catch (Exception e) {
+            throw new IllegalStateException("Can't create adaptive extension " + type + ", cause: " + e.getMessage(), e);
+        }
+    }
+```
+
+#### 4.5.3 getAdaptiveExtensionClass
+
+`#getAdaptiveExtensionClass()` 方法，获得自适应拓展类。代码如下：
+
+```java
+    /**
+    * @return 自适应拓展类
+    */
+    private Class<?> getAdaptiveExtensionClass() {
+        getExtensionClasses();
+        // cachedAdaptiveClass 存在 直接返回
+        if (cachedAdaptiveClass != null) {
+            return cachedAdaptiveClass;
+        }
+        // 自动生成自适应拓展的代码实现，并编译后返回该类。
+        return cachedAdaptiveClass = createAdaptiveExtensionClass();
+    }
+```
+
+#### 4.5.4 createAdaptiveExtensionClass
+
+```java
+     /**
+      * 自动生成自适应拓展的代码实现，并编译后返回该类。
+      *
+      * @return 类
+      */
+    private Class<?> createAdaptiveExtensionClass() {
+        // 自动生成自适应拓展的代码实现的字符串
+        String code = new AdaptiveClassCodeGenerator(type, cachedDefaultName).generate();// 第 5 行
+        // 编译代码，并返回该类
+        ClassLoader classLoader = findClassLoader();
+        org.apache.dubbo.common.compiler.Compiler compiler = ExtensionLoader.getExtensionLoader(org.apache.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
+        return compiler.compile(code, classLoader);
+    }
+```
+
+第 5 行会生成自适应拓展的代码实现，然后会编译字符串生成 Class。我们以 `org.apache.dubbo.rpc.cluster.Cluster` 接口为例，它生成的自适应拓展实现如下：
+
+```java
+package org.apache.dubbo.rpc.cluster;
+
+import org.apache.dubbo.common.extension.ExtensionLoader;
+
+
+public class Cluster$Adaptive implements org.apache.dubbo.rpc.cluster.Cluster {
+    public org.apache.dubbo.rpc.cluster.Cluster getCluster(
+        java.lang.String arg0) {
+        throw new UnsupportedOperationException(
+            "The method public static org.apache.dubbo.rpc.cluster.Cluster org.apache.dubbo.rpc.cluster.Cluster.getCluster(java.lang.String) of interface org.apache.dubbo.rpc.cluster.Cluster is not adaptive method!");
+    }
+
+    public org.apache.dubbo.rpc.cluster.Cluster getCluster(
+        java.lang.String arg0, boolean arg1) {
+        throw new UnsupportedOperationException(
+            "The method public static org.apache.dubbo.rpc.cluster.Cluster org.apache.dubbo.rpc.cluster.Cluster.getCluster(java.lang.String,boolean) of interface org.apache.dubbo.rpc.cluster.Cluster is not adaptive method!");
+    }
+
+    public org.apache.dubbo.rpc.Invoker join(
+        org.apache.dubbo.rpc.cluster.Directory arg0)
+        throws org.apache.dubbo.rpc.RpcException {
+        if (arg0 == null) {
+            throw new IllegalArgumentException(
+                "org.apache.dubbo.rpc.cluster.Directory argument == null");
+        }
+		
+        if (arg0.getUrl() == null) {
+            throw new IllegalArgumentException(
+                "org.apache.dubbo.rpc.cluster.Directory argument getUrl() == null");
+        }
+		// 获取请求的URL
+        org.apache.dubbo.common.URL url = arg0.getUrl();
+        // 获取URL上的 cluster 参数，如果没有该参数，则默认为 failover
+        String extName = url.getParameter("cluster", "failover");
+
+        if (extName == null) {
+            throw new IllegalStateException(
+                "Failed to get extension (org.apache.dubbo.rpc.cluster.Cluster) name from url (" +
+                url.toString() + ") use keys([cluster])");
+        }
+		// 根据URL指定的集群容错策略，加载对应的Cluster实现类，并调用对应实现的join方法
+        org.apache.dubbo.rpc.cluster.Cluster extension = (org.apache.dubbo.rpc.cluster.Cluster) ExtensionLoader.getExtensionLoader(org.apache.dubbo.rpc.cluster.Cluster.class)
+                                                                                                               .getExtension(extName);
+
+        return extension.join(arg0);
+    }
+}
+
+```
+
+生成的代码中，就是自适应拓展实现的核心，它会根据请求URL的参数，去动态加载对应的Cluster实现，完成不同的集群容错策略。
+
+### 4.6 获得激活的拓展对象数组
+
+在 Dubbo 的代码里，看到使用代码如下：
+
+```java
+List<Filter> filters = ExtensionLoader.getExtensionLoader(Filter.class).getActivateExtension(invoker.getUrl(), key, group);
+```
+
+#### 4.6.1 getActivateExtension
+
+`#getActivateExtension(url, key, group)` 方法，获得符合自动激活条件的拓展对象数组。
+
+```java
+    /**
+     * This is equivalent to {@code getActivateExtension(url, url.getParameter(key).split(","), null)}
+     *  获得符合自动激活条件的拓展对象数组
+     * @param url   url
+     * @param key   url parameter key which used to get extension point names
+     * @param group group
+     * @return extension list which are activated.
+     * @see #getActivateExtension(org.apache.dubbo.common.URL, String[], String)
+     */
+    public List<T> getActivateExtension(URL url, String key, String group) {
+        // 从 Dubbo URL 获得参数值
+        String value = url.getParameter(key);
+        // 获得符合自动激活条件的拓展对象数组
+        return getActivateExtension(url, StringUtils.isEmpty(value) ? null : COMMA_SPLIT_PATTERN.split(value), group);
+    }
+
+    /**
+     * Get activate extensions.
+     * 获得符合自动激活条件的拓展对象数组
+     * @param url    url
+     * @param values extension point names
+     * @param group  group
+     * @return extension list which are activated
+     * @see org.apache.dubbo.common.extension.Activate
+     */
+    public List<T> getActivateExtension(URL url, String[] values, String group) {
+        List<T> activateExtensions = new ArrayList<>();
+        List<String> names = values == null ? new ArrayList<>(0) : asList(values);
+        // 处理自动激活的拓展对象们
+        // 判断不存在配置 `"-name"` 。例如，<dubbo:service filter="-default" /> ，代表移除所有默认过滤器。
+        if (!names.contains(REMOVE_VALUE_PREFIX + DEFAULT_KEY)) {
+            // 获得拓展实现类数组
+            getExtensionClasses();
+            for (Map.Entry<String, Object> entry : cachedActivates.entrySet()) {
+                String name = entry.getKey();
+                Object activate = entry.getValue();
+
+                String[] activateGroup, activateValue;
+
+                if (activate instanceof Activate) {
+                    activateGroup = ((Activate) activate).group();
+                    activateValue = ((Activate) activate).value();
+                } else if (activate instanceof com.alibaba.dubbo.common.extension.Activate) {
+                    activateGroup = ((com.alibaba.dubbo.common.extension.Activate) activate).group();
+                    activateValue = ((com.alibaba.dubbo.common.extension.Activate) activate).value();
+                } else {
+                    continue;
+                }
+                if (isMatchGroup(group, activateGroup) // 匹配分组
+                        && !names.contains(name)  // 不包含在自定义配置里。如果包含，会在下面的代码处理。
+                        && !names.contains(REMOVE_VALUE_PREFIX + name) // 判断是否配置移除。例如 <dubbo:service filter="-monitor" />，则 MonitorFilter 会被移除
+                        && isActive(activateValue, url)) { // 判断是否激活
+                    activateExtensions.add(getExtension(name));
+                }
+            }
+            // 排序
+            activateExtensions.sort(ActivateComparator.COMPARATOR);
+        }
+        // 处理自定义配置的拓展对象们。例如在 <dubbo:service filter="demo" /> ，代表需要加入 DemoFilter 。
+        List<T> loadedExtensions = new ArrayList<>();
+        for (int i = 0; i < names.size(); i++) {
+            String name = names.get(i);
+            if (!name.startsWith(REMOVE_VALUE_PREFIX)
+                    && !names.contains(REMOVE_VALUE_PREFIX + name)) {
+                // 将配置的自定义在自动激活的拓展对象们前面。例如，<dubbo:service filter="demo,default,demo2" /> ，则 DemoFilter 就会放在默认的过滤器前面。
+                if (DEFAULT_KEY.equals(name)) {
+                    if (!loadedExtensions.isEmpty()) {
+                        activateExtensions.addAll(0, loadedExtensions);
+                        loadedExtensions.clear();
+                    }
+                } else {
+                    // 获得拓展对象
+                    loadedExtensions.add(getExtension(name));
+                }
+            }
+        }
+        // 添加到结果集
+        if (!loadedExtensions.isEmpty()) {
+            activateExtensions.addAll(loadedExtensions);
+        }
+        return activateExtensions;
+    }
+```
+
+## 五. @SPI
+
+`org.apache.dubbo.common.extension.SPI`，扩展点接口的标识。代码如下：
+
+```java
+@Documented
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE})
+public @interface SPI {
+
+    /**
+     * default extension name
+     */
+    String value() default "";
+
+}
+```
+
+- `value` ，默认拓展实现类的名字。例如，Protocol 拓展接口，代码如下：
+
+  ```
+  @SPI("dubbo")
+  public interface Protocol {
+      // ... 省略代码
+  }
+  ```
+
+  - 其中 `"dubbo"` 指的是 DubboProtocol 做为 Protocol 默认的拓展实现类。
+
+## 六. @Adaptive
+
+`org.apache.dubbo.common.extension.Adaptive`，自适应拓展信息的标记。代码如下：
+
+```java
+package org.apache.dubbo.common.extension;
+
+import org.apache.dubbo.common.URL;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Provide helpful information for {@link ExtensionLoader} to inject dependency extension instance.
+ *
+ * @see ExtensionLoader
+ * @see URL
+ */
+@Documented
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE, ElementType.METHOD})
+public @interface Adaptive {
+
+    /**
+     * 从 {@link URL }的 Key 名，对应的 Value 作为要 Adapt 成的 Extension 名。
+     * <p>
+     * 如果 {@link URL} 这些 Key 都没有 Value ，使用 缺省的扩展（注解 @SPI 设置的值）。<br>
+     * 比如，@Adptive({"key1", "key2"})，表示
+     * <ol>
+     *      <li>先在URL上找key1的Value作为要Adapt成的Extension名；
+     *      <li>key1没有Value，则使用key2的Value作为要Adapt成的Extension名。
+     *      <li>key2没有Value，使用默认的扩展。
+     *      <li>如果没有设定缺省扩展，则方法调用会抛出{@link IllegalStateException}。
+     * </ol>
+     * <p>
+     * 如果参数名为空，则根据接口的类名生成一个默认的参数名，其规则是 接口名称的全小写。
+     * 例如 org.apache.dubbo.rpc.Protocol 接口，默认的参数名是：protocol
+     
+     * 详细逻辑参考：org.apache.dubbo.common.extension.AdaptiveClassCodeGenerator#getMethodAdaptiveValue
+     *
+     * @see SPI#value()
+     */
+    String[] value() default {};
+
+}
+```
+
+`@Adaptive`注解，可添加**类**或**方法**上，分别代表了两种不同的使用方式。
+
+> 友情提示：一个拓展接口，有且仅有一个 Adaptive 拓展实现类。
+
+- 第一种，标记在**类**上，代表**手动实现**（代码中声明一个类）它是一个拓展接口的 Adaptive 拓展实现类。目前 Dubbo 项目里，只有 ExtensionFactory 拓展的实现类 AdaptiveExtensionFactory 有这么用。
+- 第二种，标记在拓展接口的方法上，代表自动生成代码实现该接口的 Adaptive 拓展实现类（参考：[「4.5.4 createAdaptiveExtensionClassCode」](# 4.5.4 createAdaptiveExtensionClass)）。
+  - value，从 Dubbo URL 获取参数中，使用键名（Key），获取键值。该值为真正的拓展名。
+    - 自适应拓展实现类，会获取拓展名对应的**真正**的拓展对象。通过该对象，执行真正的逻辑。
+    - 可以设置**多个**键名（Key），顺序获取直到**有值**。若最终获取不到，使用**默认拓展名**。
+  - 在 [「4.5.4 createAdaptiveExtensionClassCode」](http://svip.iocoder.cn/Dubbo/spi/#) 详细解析。
+
+## 七. @Activate
+
+`org.apache.dubbo.common.extension.Activate`，自动激活条件的标记。代码如下：
+
+```java
+@Documented
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE, ElementType.METHOD})
+public @interface Activate {
+    /**
+     * Activate the current extension when one of the groups matches. The group passed into
+     * {@link ExtensionLoader#getActivateExtension(URL, String, String)} will be used for matching.
+     *
+     * @return group names to match
+     * @see ExtensionLoader#getActivateExtension(URL, String, String)
+     */
+    /**
+     * Group过滤条件。
+     * <br />
+     * 包含{@link ExtensionLoader#getActivateExtension}的group参数给的值，则返回扩展。
+     * <br />
+     * 如没有Group设置，则不过滤。
+     */
+    String[] group() default {};
+
+    /**
+     * Activate the current extension when the specified keys appear in the URL's parameters.
+     * <p>
+     * For example, given <code>@Activate("cache, validation")</code>, the current extension will be return only when
+     * there's either <code>cache</code> or <code>validation</code> key appeared in the URL's parameters.
+     * </p>
+     *
+     * @return URL parameter keys
+     * @see ExtensionLoader#getActivateExtension(URL, String)
+     * @see ExtensionLoader#getActivateExtension(URL, String, String)
+     */
+    /**
+     * Key过滤条件。包含{@link ExtensionLoader#getActivateExtension}的URL的参数Key中有，则返回扩展。
+     * <p/>
+     * 示例：<br/>
+     * 注解的值 <code>@Activate("cache,validatioin")</code>，
+     * 则{@link ExtensionLoader#getActivateExtension}的URL的参数有<code>cache</code>Key，或是<code>validatioin</code>则返回扩展。
+     * <br/>
+     * 如没有设置，则不过滤。
+     */
+    String[] value() default {};
+
+    /**
+     * Relative ordering info, optional
+     * Deprecated since 2.7.0
+     *
+     * @return extension list which should be put before the current one
+     */
+    /**
+     * 排序信息，可以不提供。
+     */
+    @Deprecated
+    String[] before() default {};
+
+    /**
+     * Relative ordering info, optional
+     * Deprecated since 2.7.0
+     *
+     * @return extension list which should be put after the current one
+     */
+    /**
+     * 排序信息，可以不提供。
+     */
+    @Deprecated
+    String[] after() default {};
+
+    /**
+     * Absolute ordering info, optional
+     *
+     * @return absolute ordering info
+     */
+    /**
+     * 排序信息，可以不提供。
+     */
+    int order() default 0;
+}
+```
+
+- 对于可以被框架中自动激活加载扩展，`@Activate` 用于配置扩展被自动激活加载条件。比如，Filter 扩展，有多个实现，使用 `@Activate` 的扩展可以根据**条件**被自动加载。
+- 分成过滤条件和排序信息**两类属性**，大家可以看下代码里的注释。
+- 在 [「4.6 获得激活的拓展对象数组」](#4.6 获得激活的拓展对象数组) 详细解析。
+
+## 八. ExtensionFactory
+
+`org.apache.dubbo.common.extension.ExtensionFactory`，拓展工厂接口。代码如下：
+
+```java
+/**
+ * ExtensionFactory
+ *
+ * 拓展工厂接口
+ */
+@SPI
+public interface ExtensionFactory {
+
+    /**
+     * Get extension.
+     *
+     * 获得拓展对象
+     *
+     * @param type object type. 拓展接口
+     * @param name object name. 拓展名
+     * @return object instance. 拓展对象
+     */
+    <T> T getExtension(Class<T> type, String name);
+
+}
+```
+
+- ExtensionFactory 自身也是拓展接口，基于 Dubbo SPI 加载具体拓展实现类。
+- `#getExtension(type, name)` 方法，在 [「4.4.3 injectExtension」](#4.4.3 injectExtension) 中，获得拓展对象，向创建的拓展对象**注入依赖属性**。在实际代码中，我们可以看到不仅仅获得的是拓展对象，也可以是 Spring 中的 Bean 对象。
+- ExtensionFactory 子类类图如下：
+
+![](../images/51.png)
+
+### 8.1 AdaptiveExtensionFactory
+
+`org.apache.dubbo.common.extension.factory.AdaptiveExtensionFactory`，自适应 ExtensionFactory 拓展实现类。代码如下：
+
+```java
+@Adaptive
+public class AdaptiveExtensionFactory implements ExtensionFactory {
+
+    /**
+     * ExtensionFactory 拓展对象集合
+     */
+    private final List<ExtensionFactory> factories;
+
+    public AdaptiveExtensionFactory() {
+        // 使用 ExtensionLoader 加载拓展对象实现类。
+        ExtensionLoader<ExtensionFactory> loader = ExtensionLoader.getExtensionLoader(ExtensionFactory.class);
+        List<ExtensionFactory> list = new ArrayList<ExtensionFactory>();
+        for (String name : loader.getSupportedExtensions()) {
+            list.add(loader.getExtension(name));
+        }
+        factories = Collections.unmodifiableList(list);
+    }
+
+    @Override
+    public <T> T getExtension(Class<T> type, String name) {
+        // 遍历工厂数组，直到获得到属性
+        for (ExtensionFactory factory : factories) {
+            T extension = factory.getExtension(type, name);
+            if (extension != null) {
+                return extension;
+            }
+        }
+        return null;
+    }
+
+}
+```
+
+- `@Adaptive` 注解，为 ExtensionFactory 的**自适应**拓展实现类。
+- **构造**方法，使用 ExtensionLoader 加载 ExtensionFactory 拓展对象的实现类。若胖友没自己实现 ExtensionFactory 的情况下，`factories` 为 SpiExtensionFactory 和 SpringExtensionFactory 。
+- `#getExtension(type, name)` 方法，遍历 `factories` ，调用其 `#getExtension(type, name)` 方法，直到获得到属性值。
+
+### 8.2 SpiExtensionFactory
+
+`org.apache.dubbo.common.extension.factory.SpiExtensionFactory`，SPI ExtensionFactory 拓展实现类。代码如下：
+
+```java
+public class SpiExtensionFactory implements ExtensionFactory {
+
+    /**
+     * 获得拓展对象
+     *
+     * @param type object type. 拓展接口
+     * @param name object name. 拓展名
+     * @param <T> 泛型
+     * @return 拓展对象
+     */
+    @Override
+    public <T> T getExtension(Class<T> type, String name) {
+        if (type.isInterface() && type.isAnnotationPresent(SPI.class)) {// 校验是 @SPI
+            // 加载拓展接口对应的 ExtensionLoader 对象
+            ExtensionLoader<T> loader = ExtensionLoader.getExtensionLoader(type);
+            // 加载拓展对象
+            if (!loader.getSupportedExtensions().isEmpty()) {
+                return loader.getAdaptiveExtension();
+            }
+        }
+        return null;
+    }
+
+}
+```
+
+### 8.3 SpringExtensionFactory
+
+`org.apache.dubbo.config.spring.extension.SpringExtensionFactory`，Spring ExtensionFactory 拓展实现类。代码如下：
+
+```java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.dubbo.config.spring.extension;
+
+import org.apache.dubbo.common.extension.ExtensionFactory;
+import org.apache.dubbo.common.extension.SPI;
+import org.apache.dubbo.common.logger.Logger;
+import org.apache.dubbo.common.logger.LoggerFactory;
+import org.apache.dubbo.common.utils.ConcurrentHashSet;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
+
+import java.util.Set;
+
+import static org.apache.dubbo.config.spring.util.DubboBeanUtils.getOptionalBean;
+
+/**
+ * SpringExtensionFactory
+ */
+public class SpringExtensionFactory implements ExtensionFactory {
+    private static final Logger logger = LoggerFactory.getLogger(SpringExtensionFactory.class);
+
+    /**
+     * Spring Context 集合
+     */
+    private static final Set<ApplicationContext> CONTEXTS = new ConcurrentHashSet<ApplicationContext>();
+
+    public static void addApplicationContext(ApplicationContext context) {
+        CONTEXTS.add(context);
+        if (context instanceof ConfigurableApplicationContext) {
+            ((ConfigurableApplicationContext) context).registerShutdownHook();
+        }
+    }
+
+    public static void removeApplicationContext(ApplicationContext context) {
+        CONTEXTS.remove(context);
+    }
+
+    public static Set<ApplicationContext> getContexts() {
+        return CONTEXTS;
+    }
+
+    // currently for test purpose
+    public static void clearContexts() {
+        CONTEXTS.clear();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T getExtension(Class<T> type, String name) {
+
+        //SPI should be get from SpiExtensionFactory
+        if (type.isInterface() && type.isAnnotationPresent(SPI.class)) {
+            return null;
+        }
+
+        for (ApplicationContext context : CONTEXTS) {
+            // 获得属性
+            T bean = getOptionalBean(context, name, type);
+            if (bean != null) {
+                return bean;
+            }
+        }
+
+        //logger.warn("No spring extension (bean) named:" + name + ", try to find an extension (bean) of type " + type.getName());
+
+        return null;
+    }
+
+}
+```
+
+例子:
+
+DemoFilter 是笔者实现的 Filter 拓展实现类，代码如下：
+
+```java
+public class DemoFilter implements Filter {
+
+    private DemoDAO demoDAO;
+
+    @Override
+    public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
+        return invoker.invoke(invocation);
+    }
+
+    public DemoFilter setDemoDAO(DemoDAO demoDAO) {
+        this.demoDAO = demoDAO;
+        return this;
+    }
+}
+```
+
+- DemoDAO ，笔者在 Spring 中声明对应的 Bean 对象。
+
+  ```
+  <bean id="demoDAO" class="com.alibaba.dubbo.demo.provider.DemoDAO" />
+  ```
+
+- 在 [「4.4.3 injectExtension」](http://svip.iocoder.cn/Dubbo/spi/#) 中，会调用 `#setDemoDAO(demo)` 方法，将 DemoFilter 依赖的属性 `demoDAO` 注入。
+
+
+
+
+
+> 本文参考至：
+>
+> [Dubbo SPI | Apache Dubbo](https://dubbo.apache.org/zh/docsv2.7/dev/source/dubbo-spi/)
