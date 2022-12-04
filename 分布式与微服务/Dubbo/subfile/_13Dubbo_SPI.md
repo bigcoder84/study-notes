@@ -1,5 +1,36 @@
 # Dubbo SPI
 
+- [Dubbo SPI](#dubbo-spi)
+  - [一. 概述](#一-概述)
+  - [二. Dubbo SPI特性](#二-dubbo-spi特性)
+  - [三. 代码结构](#三-代码结构)
+  - [四. ExtensionLoader](#四-extensionloader)
+    - [4.1 属性](#41-属性)
+    - [4.2 获得拓展配置](#42-获得拓展配置)
+      - [4.2.1 getExtensionClasses](#421-getextensionclasses)
+      - [4.2.2 loadExtensionClasses](#422-loadextensionclasses)
+    - [4.3 获得拓展加载器](#43-获得拓展加载器)
+      - [4.3.1 getExtensionLoader](#431-getextensionloader)
+      - [4.3.2 构造方法](#432-构造方法)
+    - [4.4 获得指定拓展对象](#44-获得指定拓展对象)
+      - [4.4.1 getExtension](#441-getextension)
+      - [4.4.2 createExtension](#442-createextension)
+      - [4.4.3 injectExtension 注入依赖](#443-injectextension 注入依赖)
+    - [4.5 获得自适应的拓展对象](#45-获得自适应的拓展对象)
+      - [4.5.1 getAdaptiveExtension](#451-getadaptiveextension)
+      - [4.5.2 createAdaptiveExtension](#452-createadaptiveextension)
+      - [4.5.3 getAdaptiveExtensionClass](#453-getadaptiveextensionclass)
+      - [4.5.4 createAdaptiveExtensionClass](#454-createadaptiveextensionclass)
+    - [4.6 获得激活的拓展对象数组](#46-获得激活的拓展对象数组)
+      - [4.6.1 getActivateExtension](#461-getactivateextension)
+  - [五. @SPI](#五-spi)
+  - [六. @Adaptive](#六-adaptive)
+  - [七. @Activate](#七-activate)
+  - [八. ExtensionFactory](#八-extensionfactory)
+    - [8.1 AdaptiveExtensionFactory](#81-adaptiveextensionfactory)
+    - [8.2 SpiExtensionFactory](#82-spiextensionfactory)
+    - [8.3 SpringExtensionFactory](#83-springextensionfactory)
+
 ## 一. 概述
 
 本文主要分享 **Dubbo 的拓展机制 SPI**。
@@ -617,7 +648,7 @@ ExtensionLoader.getExtensionLoader(Protocol.class).getExtension(name)
 >
 > - 例如：[ListenerExporterWrapper、[ProtocolFilterWrapper](https://github.com/YunaiV/dubbo/blob/6b8e51ac55880a0f10a34f297d0869fcdbb42369/dubbo-rpc/dubbo-rpc-api/src/main/java/com/alibaba/dubbo/rpc/protocol/ProtocolFilterWrapper.java) 。
 
-#### 4.4.3 injectExtension
+#### 4.4.3 injectExtension 注入依赖
 
 ```java
  	private T injectExtension(T instance) {
