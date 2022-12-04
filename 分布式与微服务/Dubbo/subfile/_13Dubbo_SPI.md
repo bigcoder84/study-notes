@@ -15,7 +15,7 @@
     - [4.4 获得指定拓展对象](#44-获得指定拓展对象)
       - [4.4.1 getExtension](#441-getextension)
       - [4.4.2 createExtension](#442-createextension)
-      - [4.4.3 injectExtension 注入依赖](#443-injectextension 注入依赖)
+      - [4.4.3 injectExtension注入依赖](#443-injectextension注入依赖)
     - [4.5 获得自适应的拓展对象](#45-获得自适应的拓展对象)
       - [4.5.1 getAdaptiveExtension](#451-getadaptiveextension)
       - [4.5.2 createAdaptiveExtension](#452-createadaptiveextension)
@@ -648,7 +648,7 @@ ExtensionLoader.getExtensionLoader(Protocol.class).getExtension(name)
 >
 > - 例如：[ListenerExporterWrapper、[ProtocolFilterWrapper](https://github.com/YunaiV/dubbo/blob/6b8e51ac55880a0f10a34f297d0869fcdbb42369/dubbo-rpc/dubbo-rpc-api/src/main/java/com/alibaba/dubbo/rpc/protocol/ProtocolFilterWrapper.java) 。
 
-#### 4.4.3 injectExtension 注入依赖
+#### 4.4.3 injectExtension注入依赖
 
 ```java
  	private T injectExtension(T instance) {
