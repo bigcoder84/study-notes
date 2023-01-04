@@ -31,3 +31,7 @@
 [使用Jenkins内置触发器完成自动构建](./subfile/_13Jenkins内置触发器.md)
 
 [使用Git钩子触发自动构建](./subfile/_14Git钩子触发自动构建.md)
+
+[Jenkins参数化构建](./subfile/_15Jenkins参数化构建.md)
+
+[Jenkins流水线构建Docker镜像](./subfile/_16Jenkins流水线构建Docker镜像.md)
