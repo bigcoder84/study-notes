@@ -646,7 +646,7 @@ ExtensionLoader.getExtensionLoader(Protocol.class).getExtension(name)
 >
 > 通过 Wrapper 类可以把所有扩展点公共逻辑移至 Wrapper 中。新加的 Wrapper 在所有的扩展点上添加了逻辑，有些类似 AOP，即 Wrapper 代理了扩展点。
 >
-> - 例如：[ListenerExporterWrapper、[ProtocolFilterWrapper](https://github.com/YunaiV/dubbo/blob/6b8e51ac55880a0f10a34f297d0869fcdbb42369/dubbo-rpc/dubbo-rpc-api/src/main/java/com/alibaba/dubbo/rpc/protocol/ProtocolFilterWrapper.java) 。
+> - 例如：ListenerExporterWrapper、ProtocolFilterWrapper 。
 
 #### 4.4.3 injectExtension注入依赖
 
