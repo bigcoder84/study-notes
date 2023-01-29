@@ -50,7 +50,7 @@
 
 [ThreadLocal、InheritableThreadLocal详解](./subfile/_31ThreadLocal、InheritableThreadLocal详解.md)
 
-[TransmittableThreadLocal源码详解](./subfile/32TransmittableThreadLocal源码详解.md)
+[TransmittableThreadLocal源码详解](./subfile/_32TransmittableThreadLocal源码详解.md)
 
 ## 原子操作
 
