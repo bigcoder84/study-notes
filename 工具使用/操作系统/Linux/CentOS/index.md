@@ -19,3 +19,5 @@
 [less命令](./subfile/_9less命令.md)
 
 [磁盘挂载](./subfile/_10磁盘挂载.md)
+
+[Samba文件共享服务安装](./subfile/_11samba安装详解.md)
