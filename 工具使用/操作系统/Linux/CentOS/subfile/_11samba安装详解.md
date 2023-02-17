@@ -178,6 +178,8 @@ smbstatus
 
 ## 四. Samba服务配置
 
+配置文件地址：`/etc/samba/smb.conf`
+
 ### 4.1 全局配置
 
 在global中添加如下配置：
