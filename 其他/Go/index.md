@@ -60,6 +60,8 @@
 
 [类型断言](./subfile/_29类型断言.md)
 
+[泛型](./subfile/_39泛型.md)
+
 ### 2.5 错误处理
 
 [error类型及其使用](./subfile/_30error类型及其使用.md)
@@ -73,3 +75,11 @@
 [Go协程实现原理和使用示例](./subfile/_33Go协程实现原理和使用示例.md)
 
 [基于共享内存实现协程通信](./subfile/_34基于共享内存实现协程通信.md)
+
+[通过channel进行消息传递](./subfile/_35通过channel进行消息传递.md)
+
+[通道详解](./subfile/_36通道详解.md)
+
+[锁机制（sync.Mutex、sync.RWMutex、sync.Cond）](./subfile/_37锁机制.md)
+
+[原子操作](./subfile/_38原子操作.md)
