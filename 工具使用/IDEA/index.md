@@ -44,6 +44,8 @@
 
 [IDEA查看UML图](./subfile/_19IDEA查看UML图.md)
 
+[IDEA使用WSL并用默认账户登录](./subfile/_23IDEA使用WSL并用默认账户登录.md)
+
 #### IDEA插件
 
 [IDEA酷炫插件推荐](./subfile/_12IDEA酷炫插件推荐.md)
