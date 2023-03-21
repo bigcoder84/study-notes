@@ -49,18 +49,20 @@ develop将a分支合并后，想要不留痕迹的撤回合并。这个时候用
    Author: admin <admin@163.com>
    Date: Wed May 30 13:00:00 2018 +0800
        init project
-   复制代码
    ```
+   
 
-   我要将develop回退到合并之前的状态，那就是退到 commit 1这了，将commit号复制下来。退出编辑界面。
+我要将develop回退到合并之前的状态，那就是退到 commit 1这了，将commit号复制下来。退出编辑界面。
 
 ### 2.1 reset参数定义
 
-1. --soft 回退后a分支修改的代码被保留并标记为add的状态（git status 是绿色的状态）
-2.  --mixed 重置索引，但不重置工作树，更改后的文件标记为未提交（add）的状态。默认操作。
-3.  --hard 重置索引和工作树，并且a分支修改的所有文件和中间的提交，没提交的代码都被丢弃了。
-4.  --merge 和--hard类似，只不过如果在执行reset命令之前你有改动一些文件并且未提交，merge会保留你的这些修改，hard则不会。【注：如果你的这些修改add过或commit过，merge和hard都将删除你的提交】
-5.  --keep 和--hard类似，执行reset之前改动文件如果是a分支修改了的，会提示你修改了相同的文件，不能合并。如果不是a分支修改的文件，会移除缓存区。git status还是可以看到
+`git reset`命令有三个参数可以使用：
+
+- `--soft`: 仅移动HEAD指针和当前分支指向指定的提交，不改变工作区和暂存区的内容。
+- `--mixed` (默认): 移动HEAD指针和当前分支指向指定的提交，并且重置暂存区的内容，但不改变工作区的内容。
+- `--hard`: 移动HEAD指针和当前分支指向指定的提交，并且重置暂存区和工作区的内容。
+- --merge 和--hard类似，只不过如果在执行reset命令之前你有改动一些文件并且未提交，merge会保留你的这些修改，hard则不会。【注：如果你的这些修改add过或commit过，merge和hard都将删除你的提交】
+- --keep 和--hard类似，执行reset之前改动文件如果是a分支修改了的，会提示你修改了相同的文件，不能合并。如果不是a分支修改的文件，会移除缓存区。git status还是可以看到
 
 ### 2.2 巧用reset
 
@@ -72,14 +74,34 @@ git reset HEAD^
 
 - git reset 默认参数是--mixed
 - `HEAD^`表示回退到当前指针的上一个提交
+- `HEAD~2`表示回退两个提交，`HEAD~1`等用于`HEAD^`。
 
-**撤销暂存区的所有修改**
+**将暂存区中的更改撤销**
+
+```shell
+git reset HEAD
+```
+
+**将工作区和暂存区修改全部撤销**
 
 ```shell
 git reset --hard HEAD
 ```
 
+**撤销本地提交并保留更改**
 
+```shell
+git reset HEAD~1 
+git reset HEAD^
+```
+
+**回滚到指定提交并删除后续提交**
+
+```shell
+git reset  <commit-id> --hard
+```
+
+这个命令会将HEAD指针和当前分支指向指定的提交，并且重置暂存区和工作区的内容。这个操作会删除指定提交之后的所有提交，慎用。
 
 ## 三. git revert
 
@@ -121,22 +143,20 @@ branch a       a
    Author: admin <admin@163.com>
    Date: Wed May 30 13:00:00 2018 +0800
        init project
-   复制代码
    ```
-
+   
    这次和`git reset` 不同的是我不能复制 `commit 1`这个commit号了，我需要复制的是`commit 2`的commit号。因为revert后面跟的是具体需要哪个已经合并了的分支，而并不是需要会退到哪的commit号。
-
+   
 1. 开始回退：`git revert 2`
 
    ```
    Revert "close a"
    This reverts commit 2
    #.......
-   复制代码
    ```
-
+   
    这是相当于又新增了一个commit，把a分支上的所有修改又改了回去。
-
+   
 2. Ctrl+X离开编辑commit信息页面。
 
      `git log`查看一下是不是我想的那样
@@ -160,11 +180,10 @@ branch a       a
    
    commit 2
    ....
-   复制代码
    ```
-
+   
    确实是新增加了一个commit，查看代码发现a分支的修改都不存在了，也达到了我想要的效果。
-
+   
 3. push的远程服务器上`git push origin develop`
 
 查看network,是这样的：
