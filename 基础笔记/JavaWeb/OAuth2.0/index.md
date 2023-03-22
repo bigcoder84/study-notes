@@ -9,3 +9,5 @@
 [OAuth2.0使用JWT令牌](./subfile/_4OAuth2.0使用JWT令牌.md)
 
 [如何安全、快速地接入OAuth 2.0](./subfile/_5快速安全的接入授权码模式.md)
+
+[OAuth2.0其它授权模式](./subfile/_6OAuth2.0其它授权模式.md)
