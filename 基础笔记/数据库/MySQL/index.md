@@ -43,3 +43,5 @@
 [MySQL分区表详解](./subfile/_21MySQL分区表详解.md)
 
 [MySQL索引下推原理](./subfile/_22MySQL索引下推.md)
+
+[MySQL为什么有时候会选错索引](./subfile/_23MySQL索引选择.md)
