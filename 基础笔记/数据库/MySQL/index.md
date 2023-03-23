@@ -41,3 +41,5 @@
 [MySQL逻辑架构](./subfile/_20MySQL逻辑架构.md)
 
 [MySQL分区表详解](./subfile/_21MySQL分区表详解.md)
+
+[MySQL索引下推原理](./subfile/_22MySQL索引下推.md)
