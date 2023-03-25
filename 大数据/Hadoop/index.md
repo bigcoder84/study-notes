@@ -7,3 +7,8 @@
 [Hadoop安装](./subfile/_3Hadoop安装.md)
 
 [HDFS详解](./subfile/_4HDFS详解.md)
+
+[MapReduce原理](./subfile/_5MapReduce原理.md)
+
+[编写第一个MapReduce程序](./subfile/_6编写MapReduce第一个程序.md)
+
