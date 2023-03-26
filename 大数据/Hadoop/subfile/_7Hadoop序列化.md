@@ -116,7 +116,6 @@ public interface WritableComparable<T> extends Writable, Comparable<T> {
 ```java
 package cn.bigcoder.demo.mapreduce.netflow;
 
-import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 
 import java.io.DataInput;
@@ -124,7 +123,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 public class NetFlowBean implements WritableComparable<NetFlowBean> {
-    private String ip;
+    private String phone;
     /**
      * 上行流量
      */
@@ -138,12 +137,12 @@ public class NetFlowBean implements WritableComparable<NetFlowBean> {
      */
     private long sumFlow;
 
-    public String getIp() {
-        return ip;
+    public String getPhone() {
+        return phone;
     }
 
-    public void setIp(String ip) {
-        this.ip = ip;
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
 
     public long getUpFlow() {
@@ -172,7 +171,7 @@ public class NetFlowBean implements WritableComparable<NetFlowBean> {
 
     @Override
     public void write(DataOutput dataOutput) throws IOException {
-        dataOutput.writeUTF(ip);
+        dataOutput.writeUTF(phone);
         dataOutput.writeLong(upFlow);
         dataOutput.writeLong(downFlow);
         dataOutput.writeLong(sumFlow);
@@ -186,7 +185,7 @@ public class NetFlowBean implements WritableComparable<NetFlowBean> {
      */
     @Override
     public void readFields(DataInput dataInput) throws IOException {
-        this.ip = dataInput.readUTF();
+        this.phone = dataInput.readUTF();
         this.upFlow = dataInput.readLong();
         this.downFlow = dataInput.readLong();
         this.sumFlow = dataInput.readLong();
@@ -204,7 +203,7 @@ public class NetFlowBean implements WritableComparable<NetFlowBean> {
 
     @Override
     public int compareTo(NetFlowBean o) {
-        return this.ip.compareTo(o.ip);
+        return this.phone.compareTo(o.phone);
     }
 }
 ```
@@ -231,10 +230,8 @@ public class NetFlowMapper extends Mapper<LongWritable, Text, Text, NetFlowBean>
         String line = value.toString();
         // 空格切割
         String[] strs = line.split(" ");
-        // ip
-        String ip = strs[1];
         // 手机号
-        String phone = strs[2];
+        String phone = strs[1];
         // 上行流量
         String up = strs[3];
         // 下行流量
@@ -242,7 +239,7 @@ public class NetFlowMapper extends Mapper<LongWritable, Text, Text, NetFlowBean>
 
         // 封装
         outKey.set(phone);
-        outValue.setIp(ip);
+        outValue.setPhone(phone);
         outValue.setUpFlow(Long.valueOf(up));
         outValue.setDownFlow(Long.valueOf(down));
         outValue.setSumFlow(Long.valueOf(down) + Long.valueOf(up));
@@ -251,6 +248,7 @@ public class NetFlowMapper extends Mapper<LongWritable, Text, Text, NetFlowBean>
         context.write(outKey, outValue);
     }
 }
+
 ```
 
 #### 3.2.3 编写Reducer类
@@ -341,27 +339,26 @@ public class NetFlowDriver {
 #### 3.2.5 本地运行结果
 
 ```txt
-192.168.100.1	240	0	240
-192.168.100.10	918	4938	5856
-192.168.100.11	180	180	360
-192.168.100.12	1938	2910	4848
-192.168.100.13	3008	3720	6728
-192.168.100.14	7335	110349	117684
-192.168.100.15	9531	2412	11943
-192.168.100.16	11058	48243	59301
-192.168.100.17	120	120	240
-192.168.100.18	2481	24681	27162
-192.168.100.19	1116	954	2070
-192.168.100.2	1527	2106	3633
-192.168.100.3	4116	1432	5548
-192.168.100.4	1116	954	2070
-192.168.100.5	3156	2936	6092
-192.168.100.6	240	0	240
-192.168.100.7	6960	690	7650
-192.168.100.8	3659	3538	7197
-192.168.100.9	1938	180	2118
-192.196.100.1	2481	24681	27162
-192.196.100.2	264	0	264
-192.196.100.3	132	1512	1644
+13470253144	180	180	360
+13509468723	7335	110349	117684
+13560439638	918	4938	5856
+13568436656	3597	25635	29232
+13590439668	1116	954	2070
+13630577991	6960	690	7650
+13682846555	1938	2910	4848
+13729199489	240	0	240
+13736230513	2481	24681	27162
+13768778790	120	120	240
+13846544121	264	0	264
+13956435636	132	1512	1644
+13966251146	240	0	240
+13975057813	11058	48243	59301
+13992314666	3008	3720	6728
+15043685818	3659	3538	7197
+15910133277	3156	2936	6092
+15959002129	1938	180	2118
+18271575951	1527	2106	3633
+18390173782	9531	2412	11943
+84188413	4116	1432	5548
 ```
 
