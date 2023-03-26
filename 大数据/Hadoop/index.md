@@ -10,5 +10,6 @@
 
 [MapReduce原理](./subfile/_5MapReduce原理.md)
 
-[编写第一个MapReduce程序](./subfile/_6编写MapReduce第一个程序.md)
+[编写第一个MapReduce程序](./subfile/_6编写第一个MapReduce程序.md)
 
+[Hadoop序列化](./subfile/_7Hadoop序列化.md)
