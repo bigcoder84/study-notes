@@ -45,3 +45,5 @@
 [MySQL索引下推原理](./subfile/_22MySQL索引下推.md)
 
 [MySQL为什么有时候会选错索引](./subfile/_23MySQL索引选择.md)
+
+[查询一条SQL为啥也这么慢](./subfile/_24查询一条SQL为啥也这么慢.md)
