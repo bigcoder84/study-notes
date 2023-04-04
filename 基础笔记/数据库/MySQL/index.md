@@ -47,3 +47,5 @@
 [MySQL为什么有时候会选错索引](./subfile/_23MySQL索引选择.md)
 
 [查询一条SQL为啥也这么慢](./subfile/_24查询一条SQL为啥也这么慢.md)
+
+[order_by是如何工作的](./subfile/_25order_by是如何工作的.md)
