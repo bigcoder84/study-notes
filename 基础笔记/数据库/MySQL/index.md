@@ -1,4 +1,4 @@
-### 数据库
+### MySQL
 
 [CentOS8安装MySQL](./subfile/_12CentOS8安装MySQL.md)
 
@@ -49,3 +49,5 @@
 [查询一条SQL为啥也这么慢](./subfile/_24查询一条SQL为啥也这么慢.md)
 
 [order_by是如何工作的](./subfile/_25order_by是如何工作的.md)
+
+[InnoDB锁类型](./subfile/_26InnoDB锁类型.md)
