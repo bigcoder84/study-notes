@@ -1,4 +1,4 @@
-## 常见知识点补充
+# 常见知识点补充
 
 ## Java语法
 
@@ -63,3 +63,5 @@
 [JavaAgent详解](./subfile/_34JavaAgent详解.md)
 
 [动态类型语言 VS 静态类型语言](./subfile/_36动态语言VS静态语言.md)
+
+[Java应用的优雅停机](./subfile/_37Java应用的优雅停机.md)
