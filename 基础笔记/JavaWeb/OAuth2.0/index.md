@@ -15,3 +15,5 @@
 [OIDC与OAuth2的区别](./subfile/_7OIDC与OAuth2的区别.md)
 
 [基于OAuth2.0_JWT的微服务参考架构](./subfile/_8基于OAuth2.0_JWT的微服务参考架构.md)
+
+[各大开放平台是如何使用OAuth2.0](./subfile/_9各大开放平台是如何使用OAuth2.0)
