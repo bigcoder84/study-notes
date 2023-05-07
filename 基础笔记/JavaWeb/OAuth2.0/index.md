@@ -13,3 +13,5 @@
 [OAuth2.0其它授权模式](./subfile/_6OAuth2.0其它授权模式.md)
 
 [OIDC与OAuth2的区别](./subfile/_7OIDC与OAuth2的区别.md)
+
+[基于OAuth2.0_JWT的微服务参考架构](./subfile/_8基于OAuth2.0_JWT的微服务参考架构.md)
