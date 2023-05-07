@@ -11,3 +11,5 @@
 [如何安全、快速地接入OAuth 2.0](./subfile/_5快速安全的接入授权码模式.md)
 
 [OAuth2.0其它授权模式](./subfile/_6OAuth2.0其它授权模式.md)
+
+[OIDC与OAuth2的区别](./subfile/_7OIDC与OAuth2的区别.md)
