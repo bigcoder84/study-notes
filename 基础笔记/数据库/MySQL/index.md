@@ -51,3 +51,10 @@
 [order_by是如何工作的](./subfile/_25order_by是如何工作的.md)
 
 [InnoDB锁类型](./subfile/_26InnoDB锁类型.md)
+
+
+
+## 二. MySQL是怎样运行的
+
+[MySQL是怎样运行的-单表访问](./subfile/_27MySQL是怎样运行的-单表访问.md)
+
