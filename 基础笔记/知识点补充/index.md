@@ -60,7 +60,9 @@
 
 [爬虫突破封禁的5种常见方法](./subfile/_28爬虫突破封禁的5种常见方法.md)
 
-[JavaAgent详解](./subfile/_34JavaAgent详解.md)
+[Java Agent详解](./subfile/_34JavaAgent详解.md)
+
+[Jvm Sandbox详解](./subfile/_38JvmSandbox详解.md)
 
 [动态类型语言 VS 静态类型语言](./subfile/_36动态语言VS静态语言.md)
 

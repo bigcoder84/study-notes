@@ -149,7 +149,7 @@ public class MyTransformer implements ClassFileTransformer {
 }
 ```
 
-以上代码的逻辑就是当碰到加载的类是 `cn.bigcoder.demo.agenttest.Person` 的时候：
+以上代码的逻辑就是当遇到加载的类是 `cn.bigcoder.demo.agenttest.Person` 的时候：
 
 1. 在 test 方法开始时插入一条打印语句，打印内容是"动态插入的打印语句"，在test方法结尾处，打印返回值，其中`$_`就是返回值，这是 javassist 里特定的标示符。
 1. 在 test 方法开始时插入`start = System.currentTimeMillis();` 语句，在方法结尾处计算方法耗时，并打印耗时。
