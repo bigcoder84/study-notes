@@ -304,3 +304,10 @@ jvm-sandbox[default] shutdown finished.
 | [LogExceptionModule.java](https://github.com/alibaba/jvm-sandbox/blob/master/sandbox-debug-module/src/main/java/com/alibaba/jvm/sandbox/module/debug/LogExceptionModule.java) | 记录下你的应用都发生了哪些异常 $HOME/logs/sandbox/debug/exception-monitor.log |
 | [LogServletAccessModule.java](https://github.com/alibaba/jvm-sandbox/blob/master/sandbox-debug-module/src/main/java/com/alibaba/jvm/sandbox/module/debug/LogServletAccessModule.java) | 记录下你的应用的HTTP服务请求 $HOME/logs/sandbox/debug/servlet-access.log |
 
+
+
+> 本文参考至：
+>
+> [JVM Sandbox入门教程与原理浅谈 - 蛮三刀酱 - 博客园 (cnblogs.com)](https://www.cnblogs.com/rude3knife/p/jvm-sandbox-for-noob.html)
+>
+> [Home · alibaba/jvm-sandbox Wiki (github.com)](https://github.com/alibaba/jvm-sandbox/wiki)
