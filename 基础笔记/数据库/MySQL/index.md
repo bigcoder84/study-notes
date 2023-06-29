@@ -36,6 +36,8 @@
 
 [MySQL三大日志(binlog、redo log和undo log)详解](./subfile/_18RedoLog和UndoLog到底是什么.md)
 
+[MySQL是如何保证主备一致性的](./subfile/_30MySQL是如何保证主备一致性的.md)
+
 [MySQL InnoDB Online DDL](./subfile/_19OnlineDDL.md)
 
 [MySQL逻辑架构](./subfile/_20MySQL逻辑架构.md)
