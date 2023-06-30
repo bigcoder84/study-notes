@@ -1,4 +1,4 @@
-### MySQL
+# MySQL
 
 [CentOS8安装MySQL](./subfile/_12CentOS8安装MySQL.md)
 
@@ -34,10 +34,6 @@
 
 [Explain查看执行计划](./subfile/_17Explain查看执行计划.md)
 
-[MySQL三大日志(binlog、redo log和undo log)详解](./subfile/_18RedoLog和UndoLog到底是什么.md)
-
-[MySQL是如何保证主备一致性的](./subfile/_30MySQL是如何保证主备一致性的.md)
-
 [MySQL InnoDB Online DDL](./subfile/_19OnlineDDL.md)
 
 [MySQL逻辑架构](./subfile/_20MySQL逻辑架构.md)
@@ -54,9 +50,15 @@
 
 [InnoDB锁类型](./subfile/_26InnoDB锁类型.md)
 
+## 二. MySQL高可用
 
+[MySQL三大日志(binlog、redo log和undo log)详解](./subfile/_18RedoLog和UndoLog到底是什么.md)
 
-## 二. MySQL是怎样运行的
+[MySQL是如何保证主备一致性的](./subfile/_30MySQL是如何保证主备一致性的.md)
+
+[MySQL如何保证高可用](./subfile/_31MySQL如何保证高可用.md)
+
+## 三. MySQL是怎样运行的
 
 [MySQL是怎样运行的-单表访问](./subfile/_27MySQL是怎样运行的-单表访问.md)
 
