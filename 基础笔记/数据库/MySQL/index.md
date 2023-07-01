@@ -1,5 +1,7 @@
 # MySQL
 
+## 一. MySQL基础
+
 [CentOS8安装MySQL](./subfile/_12CentOS8安装MySQL.md)
 
 [使用MySQL数据库时为什么永远不要UTF-8编码](./subfile/_1使用MySQL数据库时为什么永远不要UTF-8编码.md)
@@ -57,6 +59,8 @@
 [MySQL是如何保证主备一致性的](./subfile/_30MySQL是如何保证主备一致性的.md)
 
 [MySQL如何保证高可用](./subfile/_31MySQL如何保证高可用.md)
+
+[备库为什么会延迟好几小时](./subfile/_32备库为什么会延迟好几小时.md)
 
 ## 三. MySQL是怎样运行的
 
