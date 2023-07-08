@@ -1205,7 +1205,7 @@ public static boolean release(Object msg) {
 }
 ```
 
-### 5.9 切片
+### 5.9 slice
 
 ByteBuf切片是【零拷贝】的体现之一，对原始 ByteBuf 进行切片成多个 ByteBuf，**切片后的 ByteBuf 并没有发生内存复制，还是使用原始 ByteBuf 的内存**，切片后的 ByteBuf 维护独立的 read，write 指针
 
@@ -1273,7 +1273,37 @@ read index:0 write index:5 capacity:5
 +--------+-------------------------------------------------+----------------+
 ```
 
-### 5.10 Netty ByteBuf 相比 NIO 原生 ByteBuffer 优势
+### 5.10 duplicate
+
+![](../images/45.png)
+
+调用duplicate()方法生成的 ByteBuf 对象，和原始ByteBuf共用底层物理内存。
+
+### 5.11 copy
+
+与 duplicate() 方法一样会生成一个新的 ByteBuf 对象，但与之不同的是，会将原始的物理内存也复制一份出来。
+
+### 5.12 composite
+
+我们还可以创建一个 CompositeByteBuf，用于将多个小的ByteBuf合并为一个大的ByteBuf，将底层多块物理内存逻辑连接在一起。
+
+```java
+public static void main(String[] args) {
+    ByteBuf buffer1 = ByteBufAllocator.DEFAULT.buffer(16, 32);
+    ByteBuf buffer2 = ByteBufAllocator.DEFAULT.buffer(16, 32);
+    buffer1.writeBytes(new byte[]{1, 2, 3, 4});
+    buffer2.writeBytes(new byte[]{5, 6, 7, 8});
+
+    CompositeByteBuf buffer = ByteBufAllocator.DEFAULT.compositeBuffer();
+    buffer.addComponents(true, buffer1, buffer2);
+
+    ByteBufUtil.log(buffer);
+}
+```
+
+
+
+### 5.12 Netty ByteBuf 相比 NIO 原生 ByteBuffer 优势
 
 - 池化思想 - 可以重用池中 ByteBuf 实例，更节约内存，减少内存溢出的可能
 - **读写指针分离**，不需要像 ByteBuffer 一样切换读写模式
