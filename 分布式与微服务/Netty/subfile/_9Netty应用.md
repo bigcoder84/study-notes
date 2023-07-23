@@ -916,3 +916,481 @@ public class EncoderStudy {
 |00000000| ca 00 00 00 05 fe 57 6f 72 6c 64                |......World     |
 +--------+-------------------------------------------------+----------------+
 ```
+
+## 二. 协议设计与解析
+
+TCP/IP 中消息传输基于流的方式，没有边界
+
+**协议的目的就是划定消息的边界，制定通信双方要共同遵守的通信规则**
+
+### 2.1 Redis协议
+
+redis协议规范参考：[Redis协议详细规范](https://redis.com.cn/topics/protocol.html)
+
+如果我们要向Redis服务器发送一条`set name Nyima`的指令，需要遵守如下协议
+
+```java
+// 该指令一共有3部分，每条指令之后都要添加回车与换行符
+*3\r\n
+// 第一个指令的长度是3
+$3\r\n
+// 第一个指令是set指令
+set\r\n
+// 下面的指令以此类推
+$4\r\n
+name\r\n
+$5\r\n
+Nyima\r\nCopy
+```
+
+**客户端代码如下**
+
+```java
+public class RedisClient {
+    static final Logger log = LoggerFactory.getLogger(StudyServer.class);
+    public static void main(String[] args) {
+        NioEventLoopGroup group =  new NioEventLoopGroup();
+        try {
+            ChannelFuture channelFuture = new Bootstrap()
+                    .group(group)
+                    .channel(NioSocketChannel.class)
+                    .handler(new ChannelInitializer<SocketChannel>() {
+                        @Override
+                        protected void initChannel(SocketChannel ch) {
+                            // 打印日志
+                            ch.pipeline().addLast(new LoggingHandler(LogLevel.DEBUG));
+                            ch.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+                                @Override
+                                public void channelActive(ChannelHandlerContext ctx) throws Exception {
+                                    // 回车与换行符
+                                    final byte[] LINE = {'\r','\n'};
+                                    // 获得ByteBuf
+                                    ByteBuf buffer = ctx.alloc().buffer();
+                                    // 连接建立后，向Redis中发送一条指令，注意添加回车与换行
+                                    // set name Nyima
+                                    buffer.writeBytes("*3".getBytes());
+                                    buffer.writeBytes(LINE);
+                                    buffer.writeBytes("$3".getBytes());
+                                    buffer.writeBytes(LINE);
+                                    buffer.writeBytes("set".getBytes());
+                                    buffer.writeBytes(LINE);
+                                    buffer.writeBytes("$4".getBytes());
+                                    buffer.writeBytes(LINE);
+                                    buffer.writeBytes("name".getBytes());
+                                    buffer.writeBytes(LINE);
+                                    buffer.writeBytes("$5".getBytes());
+                                    buffer.writeBytes(LINE);
+                                    buffer.writeBytes("Nyima".getBytes());
+                                    buffer.writeBytes(LINE);
+                                    ctx.writeAndFlush(buffer);
+                                }
+
+                            });
+                        }
+                    })
+                    .connect(new InetSocketAddress("localhost", 6379));
+            channelFuture.sync();
+            // 关闭channel
+            channelFuture.channel().close().sync();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            // 关闭group
+            group.shutdownGracefully();
+        }
+    }
+}
+```
+
+**控制台打印结果**
+
+```
+1600 [nioEventLoopGroup-2-1] DEBUG io.netty.handler.logging.LoggingHandler  - [id: 0x28c994f1, L:/127.0.0.1:60792 - R:localhost/127.0.0.1:6379] WRITE: 34B
+         +-------------------------------------------------+
+         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
++--------+-------------------------------------------------+----------------+
+|00000000| 2a 33 0d 0a 24 33 0d 0a 73 65 74 0d 0a 24 34 0d |*3..$3..set..$4.|
+|00000010| 0a 6e 61 6d 65 0d 0a 24 35 0d 0a 4e 79 69 6d 61 |.name..$5..Nyima|
+|00000020| 0d 0a                                           |..              |
++--------+-------------------------------------------------+----------------+
+```
+
+**Redis中查询执行结果**
+
+![](../images/47.png)
+
+### 2.2 HTTP协议
+
+HTTP协议在请求行请求头中都有很多的内容，自己实现较为困难，可以使用`HttpServerCodec`作为**服务器端的解码器与编码器，来处理HTTP请求**
+
+```java
+// HttpServerCodec 中既有请求的解码器 HttpRequestDecoder 又有响应的编码器 HttpResponseEncoder
+// Codec(CodeCombine) 一般代表该类既作为 编码器 又作为 解码器
+public final class HttpServerCodec extends CombinedChannelDuplexHandler<HttpRequestDecoder, HttpResponseEncoder>
+        implements HttpServerUpgradeHandler.SourceCodec
+```
+
+**服务器代码**
+
+```java
+package cn.bigcoder.qa.netty.netty.http;
+
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
+import lombok.extern.slf4j.Slf4j;
+
+import java.nio.charset.StandardCharsets;
+
+import static com.google.common.net.HttpHeaders.CONTENT_LENGTH;
+
+/**
+ * @author: Jindong.Tian
+ * @date: 2023-07-23
+ **/
+@Slf4j
+public class HttpTest {
+    public static void main(String[] args) {
+        NioEventLoopGroup boss = new NioEventLoopGroup(1);
+        NioEventLoopGroup worker = new NioEventLoopGroup();
+        ServerBootstrap serverBootstrap = new ServerBootstrap();
+        serverBootstrap.group(boss, worker);
+        serverBootstrap.channel(NioServerSocketChannel.class);
+        serverBootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
+            @Override
+            protected void initChannel(SocketChannel ch) throws Exception {
+                ch.pipeline().addLast(new LoggingHandler(LogLevel.DEBUG));
+                ch.pipeline().addLast(new HttpServerCodec());
+                ch.pipeline().addLast(new SimpleChannelInboundHandler<HttpRequest>() {
+
+                    @Override
+                    protected void channelRead0(ChannelHandlerContext ctx, HttpRequest msg) throws Exception {
+                        log.debug(msg.uri());
+                        // 获得完整响应，设置版本号与状态码
+                        DefaultFullHttpResponse response = new DefaultFullHttpResponse(msg.protocolVersion(), HttpResponseStatus.OK);
+                        // 设置响应内容
+
+                        byte[] bytes = ("<h1>Hello, World!</h1>" + "<h2>" + msg.uri() + "</h2>").getBytes(StandardCharsets.UTF_8);
+                        // 设置响应体长度，避免浏览器一直接收响应内容
+                        response.headers().setInt(CONTENT_LENGTH, bytes.length);
+                        // 设置响应体
+                        response.content().writeBytes(bytes);
+
+                        // 写回响应
+                        ctx.writeAndFlush(response);
+                    }
+                });
+            }
+        });
+        serverBootstrap.bind(8000);
+
+    }
+}
+
+```
+
+服务器负责处理请求并响应浏览器。所以**只需要处理HTTP请求**即可。
+
+```java
+// 服务器只处理HTTPRequest
+ch.pipeline().addLast(new SimpleChannelInboundHandler<HttpRequest>()
+```
+
+获得请求后，需要返回响应给浏览器。需要创建响应对象`DefaultFullHttpResponse`，设置HTTP版本号及状态码，为避免浏览器获得响应后，因为获得`CONTENT_LENGTH`而一直空转，需要添加`CONTENT_LENGTH`字段，表明响应体中数据的具体长度：
+
+```java
+// 获得完整响应，设置版本号与状态码
+DefaultFullHttpResponse response = new DefaultFullHttpResponse(msg.protocolVersion(), HttpResponseStatus.OK);
+// 设置响应内容
+byte[] bytes = ("<h1>Hello, World!</h1>" + "<h2>" + msg.uri() + "</h2>").getBytes(StandardCharsets.UTF_8);
+// 设置响应体长度，避免浏览器一直接收响应内容
+response.headers().setInt(CONTENT_LENGTH, bytes.length);
+// 设置响应体
+response.content().writeBytes(bytes);
+```
+
+**运行结果**
+
+![](../images/48.png)
+
+
+
+控制台：
+
+```txt
+12:32:30.773 [nioEventLoopGroup-3-3] DEBUG io.netty.handler.logging.LoggingHandler - [id: 0x038e5571, L:/0:0:0:0:0:0:0:1:8000 - R:/0:0:0:0:0:0:0:1:4569] READ: 436B
+         +-------------------------------------------------+
+         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
++--------+-------------------------------------------------+----------------+
+|00000000| 47 45 54 20 2f 74 65 73 74 20 48 54 54 50 2f 31 |GET /test HTTP/1|
+|00000010| 2e 31 0d 0a 48 6f 73 74 3a 20 6c 6f 63 61 6c 68 |.1..Host: localh|
+|00000020| 6f 73 74 3a 38 30 30 30 0d 0a 43 6f 6e 6e 65 63 |ost:8000..Connec|
+|00000030| 74 69 6f 6e 3a 20 6b 65 65 70 2d 61 6c 69 76 65 |tion: keep-alive|
+|00000040| 0d 0a 55 73 65 72 2d 41 67 65 6e 74 3a 20 4d 6f |..User-Agent: Mo|
+|00000050| 7a 69 6c 6c 61 2f 35 2e 30 20 28 57 69 6e 64 6f |zilla/5.0 (Windo|
+|00000060| 77 73 20 4e 54 20 31 30 2e 30 3b 20 57 69 6e 36 |ws NT 10.0; Win6|
+|00000070| 34 3b 20 78 36 34 29 20 41 70 70 6c 65 57 65 62 |4; x64) AppleWeb|
+|00000080| 4b 69 74 2f 35 33 37 2e 33 36 20 28 4b 48 54 4d |Kit/537.36 (KHTM|
+|00000090| 4c 2c 20 6c 69 6b 65 20 47 65 63 6b 6f 29 20 54 |L, like Gecko) T|
+|000000a0| 79 70 6f 72 61 2f 31 2e 32 2e 34 20 43 68 72 6f |ypora/1.2.4 Chro|
+|000000b0| 6d 65 2f 39 38 2e 30 2e 34 37 35 38 2e 31 30 39 |me/98.0.4758.109|
+|000000c0| 20 45 6c 65 63 74 72 6f 6e 2f 31 37 2e 31 2e 32 | Electron/17.1.2|
+|000000d0| 20 53 61 66 61 72 69 2f 35 33 37 2e 33 36 0d 0a | Safari/537.36..|
+|000000e0| 41 63 63 65 70 74 3a 20 69 6d 61 67 65 2f 61 76 |Accept: image/av|
+|000000f0| 69 66 2c 69 6d 61 67 65 2f 77 65 62 70 2c 69 6d |if,image/webp,im|
+|00000100| 61 67 65 2f 61 70 6e 67 2c 69 6d 61 67 65 2f 73 |age/apng,image/s|
+|00000110| 76 67 2b 78 6d 6c 2c 69 6d 61 67 65 2f 2a 2c 2a |vg+xml,image/*,*|
+|00000120| 2f 2a 3b 71 3d 30 2e 38 0d 0a 53 65 63 2d 46 65 |/*;q=0.8..Sec-Fe|
+|00000130| 74 63 68 2d 53 69 74 65 3a 20 63 72 6f 73 73 2d |tch-Site: cross-|
+|00000140| 73 69 74 65 0d 0a 53 65 63 2d 46 65 74 63 68 2d |site..Sec-Fetch-|
+|00000150| 4d 6f 64 65 3a 20 6e 6f 2d 63 6f 72 73 0d 0a 53 |Mode: no-cors..S|
+|00000160| 65 63 2d 46 65 74 63 68 2d 44 65 73 74 3a 20 69 |ec-Fetch-Dest: i|
+|00000170| 6d 61 67 65 0d 0a 41 63 63 65 70 74 2d 45 6e 63 |mage..Accept-Enc|
+|00000180| 6f 64 69 6e 67 3a 20 67 7a 69 70 2c 20 64 65 66 |oding: gzip, def|
+|00000190| 6c 61 74 65 2c 20 62 72 0d 0a 41 63 63 65 70 74 |late, br..Accept|
+|000001a0| 2d 4c 61 6e 67 75 61 67 65 3a 20 7a 68 2d 43 4e |-Language: zh-CN|
+|000001b0| 0d 0a 0d 0a                                     |....            |
++--------+-------------------------------------------------+----------------+
+12:32:30.773 [nioEventLoopGroup-3-3] DEBUG cn.bigcoder.qa.netty.netty.http.HttpTest - /test
+12:32:30.773 [nioEventLoopGroup-3-3] DEBUG io.netty.handler.logging.LoggingHandler - [id: 0x038e5571, L:/0:0:0:0:0:0:0:1:8000 - R:/0:0:0:0:0:0:0:1:4569] WRITE: 75B
+         +-------------------------------------------------+
+         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
++--------+-------------------------------------------------+----------------+
+|00000000| 48 54 54 50 2f 31 2e 31 20 32 30 30 20 4f 4b 0d |HTTP/1.1 200 OK.|
+|00000010| 0a 43 6f 6e 74 65 6e 74 2d 4c 65 6e 67 74 68 3a |.Content-Length:|
+|00000020| 20 33 36 0d 0a 0d 0a 3c 68 31 3e 48 65 6c 6c 6f | 36....<h1>Hello|
+|00000030| 2c 20 57 6f 72 6c 64 21 3c 2f 68 31 3e 3c 68 32 |, World!</h1><h2|
+|00000040| 3e 2f 74 65 73 74 3c 2f 68 32 3e                |>/test</h2>     |
++--------+-------------------------------------------------+----------------+
+```
+
+### 2.3 自定义协议
+
+#### 2.3.1 组成要素
+
+如果想要自定义一个通信协议，我们可以从下列几个角度去设计协议规范。
+
+- **魔数**：用来在第一时间判定接收的数据是否为无效数据包
+- **版本号**：可以支持协议的升级
+- 序列化算法：消息正文到底采用哪种序列化反序列化方式
+  - 如：json、protobuf、hessian、jdk
+- **指令类型**：是登录、注册、单聊、群聊… 跟业务相关
+- **请求序号**：为了双工通信，提供异步能力
+- **正文长度**
+- **消息正文**
+
+#### 2.3.2 编码器与解码器
+
+```java
+import com.alibaba.fastjson2.JSONObject;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.ByteToMessageCodec;
+import lombok.extern.slf4j.Slf4j;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+/**
+ * @author: Jindong.Tian
+ * @date: 2023-07-23
+ **/
+@Slf4j
+public class MessageCodec extends ByteToMessageCodec<Message> {
+    @Override
+    protected void encode(ChannelHandlerContext ctx, Message msg, ByteBuf out) throws Exception {
+        // 设置魔数 4个字节
+        out.writeBytes(new byte[]{'B', 'I', 'G', 'R'});
+        // 设置版本号 1个字节
+        out.writeByte(1);
+        // 设置序列化方式 1个字节，约定1代表json序列化
+        out.writeByte(1);
+        // 设置指令类型 1个字节
+        out.writeByte(msg.getMessageType());
+        // 设置请求序号 4个字节
+        out.writeInt(msg.getSequenceId());
+        // 为了补齐为16个字节，填充1个字节的数据
+        out.writeByte(0xff);
+
+        // 获得序列化后的msg
+        String json = JSONObject.toJSONString(msg);
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+
+        // 获得并设置正文长度 长度用4个字节标识
+        out.writeInt(bytes.length);
+        // 设置消息正文
+        out.writeBytes(bytes);
+    }
+
+    @Override
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+        // 获取魔数
+        int magic = in.readInt();
+        // 获取版本号
+        byte version = in.readByte();
+        // 获得序列化方式
+        byte seqType = in.readByte();
+        // 获得指令类型
+        byte messageType = in.readByte();
+        // 获得请求序号
+        int sequenceId = in.readInt();
+        // 移除补齐字节
+        in.readByte();
+        // 获得正文长度
+        int length = in.readInt();
+        // 获得正文
+        byte[] bytes = new byte[length];
+        in.readBytes(bytes, 0, length);
+        String json = new String(bytes, StandardCharsets.UTF_8);
+        Message message = JSONObject.parseObject(json, Message.class);
+
+        // 将信息放入List中，传递给下一个handler
+        out.add(message);
+
+        log.info("魔数:{}, 版本号:{}, 序列化方法:{}, 指令类型:{}, 请求序号:{}, 正文长度:{}",
+                magic, version, seqType, messageType, sequenceId, length);
+        log.info("转换后对象:{}", message);
+    }
+}
+
+```
+
+- 编码器与解码器方法源于**父类ByteToMessageCodec**，通过该类可以自定义编码器与解码器，**泛型类型为被编码与被解码的类**。此处使用了自定义类Message，代表消息。
+
+  ```java
+  public class MessageCodec extends ByteToMessageCodec<Message>
+  ```
+
+- 编码器负责将附加信息与正文信息写入到ByteBuf中，其中附加信息总字节数最好为2^n，不足需要补齐。正文内容如果为对象，需要通过序列化将其放入到ByteBuf中
+
+- 解码器负责将ByteBuf中的信息取出，并放入List中，该List用于将信息传递给下一个handler
+
+**测试编码逻辑**：
+
+```java
+import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.logging.LoggingHandler;
+
+/**
+ * @author: Jindong.Tian
+ * @date: 2023-07-23
+ **/
+public class CodecTest {
+    public static void main(String[] args) {
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new LoggingHandler(),
+              	// 避免出现粘包半包现象
+                new LengthFieldBasedFrameDecoder(1024, 12, 4, 0, 0),
+                new MessageCodec()
+        );
+        LoginMessage message = new LoginMessage();
+        message.setUsername("zhangsan");
+        message.setPassword("123456");
+        channel.writeOutbound(message);
+    }
+}
+```
+
+输出：
+
+```txt
+16:24:56.771 [main] DEBUG io.netty.handler.logging.LoggingHandler - [id: 0xembedded, L:embedded - R:embedded] WRITE: 94B
+         +-------------------------------------------------+
+         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
++--------+-------------------------------------------------+----------------+
+|00000000| 42 49 47 52 01 01 00 00 01 5b 38 ff 00 00 00 4e |BIGR.....[8....N|
+|00000010| 7b 22 6d 65 73 73 61 67 65 54 79 70 65 22 3a 30 |{"messageType":0|
+|00000020| 2c 22 70 61 73 73 77 6f 72 64 22 3a 22 31 32 33 |,"password":"123|
+|00000030| 34 35 36 22 2c 22 73 65 71 75 65 6e 63 65 49 64 |456","sequenceId|
+|00000040| 22 3a 38 38 38 38 38 2c 22 75 73 65 72 6e 61 6d |":88888,"usernam|
+|00000050| 65 22 3a 22 7a 68 61 6e 67 73 61 6e 22 7d       |e":"zhangsan"}  |
++--------+-------------------------------------------------+----------------+
+16:24:56.771 [main] DEBUG io.netty.handler.logging.LoggingHandler - [id: 0xembedded, L:embedded - R:embedded] FLUSH
+
+Process finished with exit code 0
+
+```
+
+![](../images/49.png)
+
+**测试解码逻辑**：
+
+```java
+public class TestCodec {
+    
+    public static void main(String[] args) throws Exception {
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new LoggingHandler(),
+                // 避免出现粘包半包现象
+                new LengthFieldBasedFrameDecoder(1024, 12,4,0,0),
+                new MessageCodec()
+        );
+        LoginMessage message = new LoginMessage();
+        message.setUsername("zhangsan");
+        message.setPassword("123456");
+
+        ByteBuf buffer = ByteBufAllocator.DEFAULT.buffer();
+        new MessageCodec().encode(null, message, buffer);
+
+        // 模拟半包
+        ByteBuf slice = buffer.slice(0, 50);
+        // 由于是零拷贝，防止底层数组被释放
+        slice.retain();
+        channel.writeInbound(slice);
+
+
+        // 分两批写，模拟半包
+        ByteBuf slice2 = buffer.slice(50, buffer.readableBytes() - 50);
+        channel.writeInbound(slice2);
+    }
+}
+```
+
+- 测试类中用到了 `LengthFieldBasedFrameDecoder`，避免粘包半包问题
+- 通过 `MessageCodec `的 encode 方法将附加信息与正文写入到ByteBuf中，通过channel执行入站操作。入站时会调用decode方法进行解码
+
+运行结果：
+
+![](../images/50.png)
+
+#### 2.3.3 Sharable注解
+
+为了**提高handler的复用率**，让不同的channel复用同一个handler对象进行处理操作，而不需要重复创建。
+
+```java
+LoggingHandler loggingHandler = new LoggingHandler(LogLevel.DEBUG);
+// 不同的channel中使用同一个handler对象，提高复用率
+channel1.pipeline().addLast(loggingHandler);
+channel2.pipeline().addLast(loggingHandler);
+```
+
+但是**并不是所有的handler都能通过这种方法来提高复用率的**，例如`LengthFieldBasedFrameDecoder`。如果多个channel中使用同一个 `LengthFieldBasedFrameDecoder` 对象，则可能发生如下问题
+
+- channel1中收到了一个半包，`LengthFieldBasedFrameDecoder` 发现不是一条完整的数据，则没有继续向下传播
+- 此时channel2中也收到了一个半包，因为两个channel使用了同一个`LengthFieldBasedFrameDecoder`，存入其中的数据刚好拼凑成了一个完整的数据包。`LengthFieldBasedFrameDecoder` 让该数据包继续向下传播，最终引发错误。
+
+为了提高handler的复用率，同时又避免出现一些并发问题，**Netty中原生的handler中用`@Sharable`注解来标明，该handler能否在多个channel中共享。**
+
+**只有带有该注解，才能通过对象的方式被共享**，否则无法被共享。例如Netty原生的 `io.netty.handler.logging.LoggingHandler` 就带了该注解：
+
+![](../images/51.png)
+
+
+
+
+
+
+
+> 本文参考至：
+>
+> https://nyimac.gitee.io/2021/04/25/Netty%E5%9F%BA%E7%A1%80
