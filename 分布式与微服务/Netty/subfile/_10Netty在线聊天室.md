@@ -811,3 +811,343 @@ ch.pipeline().addLast(new ChannelDuplexHandler() {
 });
 ```
 
+可以看到，每3秒服务端就会收到客户端的心跳消息：
+
+![](../images/56.png)
+
+## 六. 优化
+
+### 6.1 拓展序列化算法
+
+#### 6.1.1 序列化接口
+
+```java
+public interface Serializer {
+    /**
+     * 序列化
+     * @param object 被序列化的对象
+     * @param <T> 被序列化对象类型
+     * @return 序列化后的字节数组
+     */
+    <T> byte[] serialize(T object);
+
+    /**
+     * 反序列化
+     * @param clazz 反序列化的目标类的Class对象
+     * @param bytes 被反序列化的字节数组
+     * @param <T> 反序列化目标类
+     * @return 反序列化后的对象
+     */
+    <T> T deserialize(Class<T> clazz, byte[] bytes);
+}
+```
+
+#### 6.1.2 枚举实现类
+
+```java
+public enum SerializerAlgorithm implements Serializer {
+    // Java的序列化和反序列化
+    Java {
+        @Override
+        public <T> byte[] serialize(T object) {
+            // 序列化后的字节数组
+            byte[] bytes = null;
+            try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                 ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+                oos.writeObject(object);
+                bytes = bos.toByteArray();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return bytes;
+        }
+
+        @Override
+        public <T> T deserialize(Class<T> clazz, byte[] bytes) {
+            T target = null;
+            System.out.println(Arrays.toString(bytes));
+            try (ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
+                 ObjectInputStream ois = new ObjectInputStream(bis)) {
+                target = (T) ois.readObject();
+            } catch (IOException | ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+            // 返回反序列化后的对象
+            return target;
+        }
+    }
+    
+     // Json的序列化和反序列化
+    Json {
+        @Override
+        public <T> byte[] serialize(T object) {
+            String s = new Gson().toJson(object);
+            System.out.println(s);
+            // 指定字符集，获得字节数组
+            return s.getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public <T> T deserialize(Class<T> clazz, byte[] bytes) {
+            String s = new String(bytes, StandardCharsets.UTF_8);
+            System.out.println(s);
+            // 此处的clazz为具体类型的Class对象，而不是父类Message的
+            return new Gson().fromJson(s, clazz);
+        }
+    }
+}
+```
+
+#### 6.1.2 修改原编解码器
+
+```java
+// 获得序列化后的msg
+// 使用指定的序列化方式
+SerializerAlgorithm[] values = SerializerAlgorithm.values();
+// 获得序列化后的对象
+byte[] bytes = values[out.getByte(5)-1].serialize(msg);
+```
+
+### 6.2 参数调优
+
+#### 6.2.1 CONNECT_TIMEOUT_MILLIS
+
+- 属于 **SocketChannal** 的参数
+- 用在**客户端建立连接**时，如果在指定毫秒内无法连接，会抛出 timeout 异常
+- **注意**：SO_TIMEOUT 主要用在阻塞 IO，阻塞IO中 accept 和 read 等都是无限等待，如果不希望永久阻塞，使用它调整时间。
+
+**使用**
+
+```java
+public class TestParam {
+    public static void main(String[] args) {
+        // SocketChannel 5s内未建立连接就抛出异常
+        new Bootstrap().option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000);
+        
+        // ServerSocketChannel 5s内未建立连接就抛出异常
+        new ServerBootstrap().option(ChannelOption.CONNECT_TIMEOUT_MILLIS,5000);
+        // SocketChannel 5s内未建立连接就抛出异常
+        new ServerBootstrap().childOption(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000);
+    }
+}
+```
+
+- 客户端通过 `Bootstrap.option` 函数来配置参数，**配置参数作用于 SocketChannel**
+- 服务器通过 ServerBootstrap 来配置参数，但是对于不同的 Channel 需要选择不同的方法
+  - 通过 `option` 来配置 **ServerSocketChannel** 上的参数
+  - 通过 `childOption` 来配置 **SocketChannel** 上的参数
+
+**源码分析**
+
+客户端中连接服务器的线程是 NIO 线程，抛出异常的是主线程。这是如何做到超时判断以及线程通信的呢？
+
+```java
+public final void connect(
+                final SocketAddress remoteAddress, final SocketAddress localAddress, final ChannelPromise promise) {
+    
+    ...
+        
+    // Schedule connect timeout.
+    // 设置超时时间，通过option方法传入的CONNECT_TIMEOUT_MILLIS参数进行设置
+    int connectTimeoutMillis = config().getConnectTimeoutMillis();
+    // 如果超时时间大于0
+    if (connectTimeoutMillis > 0) {
+        // 创建一个定时任务，延时connectTimeoutMillis（设置的超时时间时间）后执行
+        // schedule(Runnable command, long delay, TimeUnit unit)
+        connectTimeoutFuture = eventLoop().schedule(new Runnable() {
+            @Override
+            public void run() {
+                // 判断是否建立连接，Promise进行NIO线程与主线程之间的通信
+                // 如果超时，则通过tryFailure方法将异常放入Promise中
+                // 在主线程中抛出
+                ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
+                ConnectTimeoutException cause = new ConnectTimeoutException("connection timed out: " + remoteAddress);
+                if (connectPromise != null && connectPromise.tryFailure(cause)) {
+                    close(voidPromise());
+                }
+            }
+        }, connectTimeoutMillis, TimeUnit.MILLISECONDS);
+    }
+    
+   	...
+        
+}
+```
+
+超时的判断**主要是通过 Eventloop 的 schedule 方法和 Promise 共同实现的**
+
+- schedule 设置了一个定时任务，延迟`connectTimeoutMillis`秒后执行该方法
+- 如果指定时间内没有建立连接，则会执行其中的任务
+  - 任务负责创建 `ConnectTimeoutException` 异常，并将异常通过 Pormise 传给主线程并抛出
+
+#### 6.2.2 SO_BACKLOG
+
+该参数是 **ServerSocketChannel** 的参数
+
+**三次握手与连接队列**
+
+第一次握手时，因为客户端与服务器之间的连接还未完全建立，连接会被放入**半连接队列**中
+
+![](../images/57.png)
+
+当完成三次握手以后，连接会被放入**全连接队列中**
+
+![](../images/58.png)
+
+服务器处理Accept事件是在TCP三次握手，也就是建立连接之后。服务器会从全连接队列中获取连接并进行处理
+
+![](../images/59.png)
+
+> 1. 全连接队列的意义：
+>    - 保持已建立的连接：全连接队列用于存储已经完成三次握手的TCP连接。这些连接处于已建立状态，可以进行数据的传输和通信。
+>    - 避免连接丢失：如果服务器正在处理一个已建立连接的请求，并且有新的连接请求到达，这些新的连接请求会被放置在全连接队列中等待处理。这样可以避免连接请求丢失，确保服务器能够逐个处理连接请求。
+>    - 顺序处理连接：全连接队列中的连接请求可以按照先到先服务的原则进行顺序处理，确保公平性和连接请求的有序性。
+> 2. 半连接队列的意义：
+>    - 防止服务器资源耗尽：半连接队列用于存储已经发送了SYN报文但尚未完成三次握手的连接请求。服务器在接收到SYN报文后，会将这些连接请求放置在半连接队列中等待响应。通过限制半连接队列的长度，可以控制同时等待握手完成的连接数量，避免服务器资源耗尽。
+>    - 防止SYN洪泛攻击：SYN洪泛攻击是一种常见的网络攻击方式，攻击者发送大量伪造的SYN报文给服务器，使服务器占用大量资源来处理伪造的连接请求。通过限制半连接队列的长度，可以减轻服务器对SYN洪泛攻击的影响，保护服务器的正常运行。
+
+在 linux 2.2 之前，backlog 大小包括了两个队列的大小，**在 linux 2.2 之后，分别用下面两个参数来控制**
+
+- 半连接队列 - sync queue
+  - 大小通过 /proc/sys/net/ipv4/tcp_max_syn_backlog 指定，在 `syncookies` 启用的情况下，逻辑上没有最大值限制，这个设置便被忽略
+- 全连接队列 - accept queue
+  - 其大小通过 /proc/sys/net/core/somaxconn 指定，在使用 listen 函数时，**内核会根据传入的 backlog 参数与系统参数，取二者的较小值**
+  - 如果 accpet queue 队列满了，server 将发送一个拒绝连接的错误信息到 client
+
+**作用**
+
+在Netty中，`SO_BACKLOG`主要用于设置全连接队列的大小。**当处理Accept的速率小于连接建立的速率时，全连接队列中堆积的连接数大于`SO_BACKLOG`设置的值是，便会抛出异常**
+
+**设置方式如下**
+
+```java
+// 设置全连接队列，大小为2
+new ServerBootstrap().option(ChannelOption.SO_BACKLOG, 2);
+```
+
+**默认值**
+
+backlog参数在`NioServerSocketChannel.doBind`方法被使用
+
+```java
+@Override
+protected void doBind(SocketAddress localAddress) throws Exception {
+    if (PlatformDependent.javaVersion() >= 7) {
+        javaChannel().bind(localAddress, config.getBacklog());
+    } else {
+        javaChannel().socket().bind(localAddress, config.getBacklog());
+    }
+}
+```
+
+其中backlog被保存在了`DefaultServerSocketChannelConfig`配置类中
+
+```java
+private volatile int backlog = NetUtil.SOMAXCONN;
+```
+
+具体的赋值操作如下
+
+```java
+SOMAXCONN = AccessController.doPrivileged(new PrivilegedAction<Integer>() {
+    @Override
+    public Integer run() {
+        // Determine the default somaxconn (server socket backlog) value of the platform.
+        // The known defaults:
+        // - Windows NT Server 4.0+: 200
+        // - Linux and Mac OS X: 128
+        int somaxconn = PlatformDependent.isWindows() ? 200 : 128;
+        File file = new File("/proc/sys/net/core/somaxconn");
+        BufferedReader in = null;
+        try {
+            // file.exists() may throw a SecurityException if a SecurityManager is used, so execute it in the
+            // try / catch block.
+            // See https://github.com/netty/netty/issues/4936
+            if (file.exists()) {
+                in = new BufferedReader(new FileReader(file));
+                // 将somaxconn设置为Linux配置文件中设置的值
+                somaxconn = Integer.parseInt(in.readLine());
+                if (logger.isDebugEnabled()) {
+                    logger.debug("{}: {}", file, somaxconn);
+                }
+            } else {
+                ...
+            }
+            ...
+        }  
+        // 返回backlog的值
+        return somaxconn;
+    }
+}
+```
+
+- backlog的值会根据操作系统的不同，来
+
+  选择不同的默认值
+
+  - Windows 200
+  - Linux/Mac OS 128
+
+- **如果配置文件`/proc/sys/net/core/somaxconn`存在**，会读取配置文件中的值，并将backlog的值设置为配置文件中指定的
+
+#### 6.2.3 TCP_NODELAY
+
+- 属于 **SocketChannal** 参数
+- 因为 Nagle 算法，数据包会堆积到一定的数量后一起发送，这就**可能导致数据的发送存在一定的延时**
+- **该参数默认为false**，如果不希望的发送被延时，则需要将该值设置为true
+
+#### 6.2.4 SO_SNDBUF & SO_RCVBUF
+
+- SO_SNDBUF 属于 **SocketChannal** 参数
+- SO_RCVBUF **既可用于 SocketChannal 参数，也可以用于 ServerSocketChannal 参数**（建议设置到 ServerSocketChannal 上）
+- 该参数用于**指定接收方与发送方的滑动窗口大小**
+
+#### 6.2.5 ALLOCATOR
+
+- 属于 **SocketChannal** 参数
+- 用来配置 ByteBuf 是池化还是非池化，是直接内存还是堆内存
+
+**使用**
+
+```java
+// 选择ALLOCATOR参数，设置SocketChannel中分配的ByteBuf类型
+// 第二个参数需要传入一个ByteBufAllocator，用于指定生成的 ByteBuf 的类型
+new ServerBootstrap().childOption(ChannelOption.ALLOCATOR, new PooledByteBufAllocator());
+```
+
+**ByteBufAllocator类型**
+
+- 池化并使用直接内存
+
+  ```java
+  // true表示使用直接内存
+  new PooledByteBufAllocator(true);
+  ```
+
+- 池化并使用堆内存
+
+  ```java
+  // false表示使用堆内存
+  new PooledByteBufAllocator(false);
+  ```
+
+- 非池化并使用直接内存
+
+  ```java
+  // ture表示使用直接内存
+  new UnpooledByteBufAllocator(true);
+  ```
+
+- 非池化并使用堆内存
+
+  ```java
+  // false表示使用堆内存
+  new UnpooledByteBufAllocator(false);
+  ```
+
+#### 6.2.6 RCVBUF_ALLOCATOR
+
+- 属于 **SocketChannal** 参数
+- **控制 Netty 接收缓冲区大小**
+- 负责入站数据的分配，决定入站缓冲区的大小（并可动态调整），**统一采用 direct 直接内存**，具体池化还是非池化由 allocator 决定
+
