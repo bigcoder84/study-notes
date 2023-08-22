@@ -23,3 +23,5 @@
 [Samba文件共享服务安装](./subfile/_11samba安装详解.md)
 
 [Linux的进程-线程-文件描述符是什么](./subfile/_12Linux的进程-线程-文件描述符是什么.md)
+
+[Linux标准输入和参数的区别](./subfile/_13Linux标准输入和参数的区别.md)
