@@ -12,3 +12,4 @@
 
 [死锁排查](./subfile/_5死锁排查.md)
 
+[MyBatisPlus+ShardingJDBC批量插入不返回ID](./subfile/_6MyBatisPlus+ShardingJDBC批量插入不返回ID.md)
