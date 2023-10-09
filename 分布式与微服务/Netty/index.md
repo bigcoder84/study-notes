@@ -14,6 +14,8 @@
 
 [网络编程](./subfile/_4网络编程.md)
 
+[内存映射读写文件](./subfile/_12内存映射机制.md)
+
 ## 二. Netty
 
 [Netty初体验](./subfile/_7Netty初体验.md)
