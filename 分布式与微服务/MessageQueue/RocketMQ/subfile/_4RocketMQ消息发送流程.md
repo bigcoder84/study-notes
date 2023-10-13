@@ -1,8 +1,6 @@
 # RocketMQ消息发送流程
 
-> 本文转载至：[RocketMQ 消息发送流程 | 赵坤的个人网站 (kunzhao.org)](https://kunzhao.org/docs/rocketmq/rocketmq-send-message-flow/)
-
-本文基于RocketMQ 4.8.0 进行源码分析
+本文基于RocketMQ 4.6.0 进行源码分析
 
 本文讲述 RocketMQ 发送一条**普通消息**的流程。
 
@@ -167,8 +165,6 @@ public boolean initialize() {
         return true;
     }
 ```
-
-
 
 ## 五. 选择 NameServer
 
@@ -353,15 +349,253 @@ public class TopicPublishInfo {
 
 ## 七. 给Broker发送消息
 
-在确定了 Master Broker 地址和这个 Broker 的消息队列以后，客户端才开始真正地发送消息给这个 Broker，也是从这里客户端才开始与 Broker 进行交互:
+```java
+// org.apache.rocketmq.client.impl.producer.DefaultMQProducerImpl#sendDefaultImpl
+private SendResult sendDefaultImpl(
+        Message msg,
+        final CommunicationMode communicationMode,
+        final SendCallback sendCallback,
+        final long timeout
+    ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        this.makeSureStateOK();
+        Validators.checkMessage(msg, this.defaultMQProducer);
+        final long invokeID = random.nextLong();
+        long beginTimestampFirst = System.currentTimeMillis();
+        long beginTimestampPrev = beginTimestampFirst;
+        long endTimestamp = beginTimestampFirst;
+        // 第一步：查询topic对应的路由信息
+        TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
+        if (topicPublishInfo != null && topicPublishInfo.ok()) {
+            boolean callTimeout = false;
+            MessageQueue mq = null;
+            Exception exception = null;
+            SendResult sendResult = null
+            // 总计发送次数（1+重试次数）
+            int timesTotal = communicationMode == CommunicationMode.SYNC ? 1 + this.defaultMQProducer.getRetryTimesWhenSendFailed() : 1;
+            int times = 0;
+            String[] brokersSent = new String[timesTotal];
+            // 循环指定发送指定次数，直到成功发送后退出循环
+            for (; times < timesTotal; times++) {
+                String lastBrokerName = null == mq ? null : mq.getBrokerName();
+                // 第二步：选择一个消息队列
+                MessageQueue mqSelected = this.selectOneMessageQueue(topicPublishInfo, lastBrokerName);
+                if (mqSelected != null) {
+                    mq = mqSelected;
+                    brokersSent[times] = mq.getBrokerName();
+                    try {
+                        beginTimestampPrev = System.currentTimeMillis();
+                        if (times > 0) {
+                            //Reset topic with namespace during resend.
+                            msg.setTopic(this.defaultMQProducer.withNamespace(msg.getTopic()));
+                        }
+                        long costTime = beginTimestampPrev - beginTimestampFirst;
+                        if (timeout < costTime) {
+                            callTimeout = true;
+                            break;
+                        }
+                        // 第三步：发送消息
+                        sendResult = this.sendKernelImpl(msg, mq, communicationMode, sendCallback, topicPublishInfo, timeout - costTime);
+                        endTimestamp = System.currentTimeMillis();
+                        // 使用本次消息发送延迟时间来计算Broker故障规避时长
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, false);
+                        switch (communicationMode) {
+                            case ASYNC:
+                                return null;
+                            case ONEWAY:
+                                return null;
+                            case SYNC:
+                                if (sendResult.getSendStatus() != SendStatus.SEND_OK) {
+                                    if (this.defaultMQProducer.isRetryAnotherBrokerWhenNotStoreOK()) {
+                                        continue;
+                                    }
+                                }
 
-![](../images/25.png)
+                                return sendResult;
+                            default:
+                                break;
+                        }
+                    } catch (RemotingException e) {
+                        endTimestamp = System.currentTimeMillis();
+                        // 若消息发送失败，则更新失败条目，使用默认时长30s来计算Broker故障规避时长
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, true);
+                        log.warn(String.format("sendKernelImpl exception, resend at once, InvokeID: %s, RT: %sms, Broker: %s", invokeID, endTimestamp - beginTimestampPrev, mq), e);
+                        log.warn(msg.toString());
+                        exception = e;
+                        continue;
+                    } catch (MQClientException e) {
+                        endTimestamp = System.currentTimeMillis();
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, true);
+                        log.warn(String.format("sendKernelImpl exception, resend at once, InvokeID: %s, RT: %sms, Broker: %s", invokeID, endTimestamp - beginTimestampPrev, mq), e);
+                        log.warn(msg.toString());
+                        exception = e;
+                        continue;
+                    } catch (MQBrokerException e) {
+                        endTimestamp = System.currentTimeMillis();
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, true);
+                        log.warn(String.format("sendKernelImpl exception, resend at once, InvokeID: %s, RT: %sms, Broker: %s", invokeID, endTimestamp - beginTimestampPrev, mq), e);
+                        log.warn(msg.toString());
+                        exception = e;
+                        switch (e.getResponseCode()) {
+                            case ResponseCode.TOPIC_NOT_EXIST:
+                            case ResponseCode.SERVICE_NOT_AVAILABLE:
+                            case ResponseCode.SYSTEM_ERROR:
+                            case ResponseCode.NO_PERMISSION:
+                            case ResponseCode.NO_BUYER_ID:
+                            case ResponseCode.NOT_IN_CURRENT_UNIT:
+                                continue;
+                            default:
+                                if (sendResult != null) {
+                                    return sendResult;
+                                }
 
-这里我们暂且先忽略消息体格式的具体编/解码过程，因为我们并不想一开始就卷入这些繁枝细节中，现在先从大体上了解一下整个消息的发送流程，后续会写专门的文章来说明。
+                                throw e;
+                        }
+                    } catch (InterruptedException e) {
+                        endTimestamp = System.currentTimeMillis();
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, false);
+                        log.warn(String.format("sendKernelImpl exception, throw exception, InvokeID: %s, RT: %sms, Broker: %s", invokeID, endTimestamp - beginTimestampPrev, mq), e);
+                        log.warn(msg.toString());
+
+                        log.warn("sendKernelImpl exception", e);
+                        log.warn(msg.toString());
+                        throw e;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if (sendResult != null) {
+                return sendResult;
+            }
+
+            String info = String.format("Send [%d] times, still failed, cost [%d]ms, Topic: %s, BrokersSent: %s",
+                times,
+                System.currentTimeMillis() - beginTimestampFirst,
+                msg.getTopic(),
+                Arrays.toString(brokersSent));
+
+            info += FAQUrl.suggestTodo(FAQUrl.SEND_MSG_FAILED);
+
+            MQClientException mqClientException = new MQClientException(info, exception);
+            if (callTimeout) {
+                throw new RemotingTooMuchRequestException("sendDefaultImpl call timeout");
+            }
+
+            if (exception instanceof MQBrokerException) {
+                mqClientException.setResponseCode(((MQBrokerException) exception).getResponseCode());
+            } else if (exception instanceof RemotingConnectException) {
+                mqClientException.setResponseCode(ClientErrorCode.CONNECT_BROKER_EXCEPTION);
+            } else if (exception instanceof RemotingTimeoutException) {
+                mqClientException.setResponseCode(ClientErrorCode.ACCESS_BROKER_TIMEOUT);
+            } else if (exception instanceof MQClientException) {
+                mqClientException.setResponseCode(ClientErrorCode.BROKER_NOT_EXIST_EXCEPTION);
+            }
+
+            throw mqClientException;
+        }
+
+        validateNameServerSetting();
+
+        throw new MQClientException("No route info of this topic: " + msg.getTopic() + FAQUrl.suggestTodo(FAQUrl.NO_TOPIC_ROUTE_INFO),
+            null).setResponseCode(ClientErrorCode.NOT_FOUND_TOPIC_EXCEPTION);
+    }
+```
 
 ### 7.1 发送消息时的容错机制
 
-// todo
+在RocketMQ Producer发送失败后，Producer默认会再重试两次（retryTimesWhenSendFailed）：
+
+```java
+// 总计发送次数（1+重试次数）
+int timesTotal = communicationMode == CommunicationMode.SYNC ? 1 + this.defaultMQProducer.getRetryTimesWhenSendFailed() : 1;
+```
+
+若上一次发送失败，则在重试选择队列时，会尽量跳过上一次失败的broker，去选择不是上一次失败的broker上的队列：
+
+```java
+// org.apache.rocketmq.client.impl.producer.TopicPublishInfo#selectOneMessageQueue(java.lang.String)
+/**
+ * 选择一个队列，如果上一次发送失败，这一次会尽量规避调上一次失败的broker上的队列
+ * @param lastBrokerName 上一次失败的broker
+ * @return
+ */
+public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
+        if (lastBrokerName == null) {
+            // 在消息发送过程中，可能会多次执行选择消息队列这个方法，
+            //lastBrokerName就是上一次选择的执行发送消息失败的Broker。第一
+            //次执行消息队列选择时，lastBrokerName为null，此时直接用
+            //sendWhichQueue自增再获取值，与当前路由表中消息队列的个数取
+            //模，返回该位置的MessageQueue(selectOneMessageQueue()方法
+            return selectOneMessageQueue();
+        } else {
+            //如果消息发送失败，下次进行消息队列选择时规避上次MesageQueue所在的Broker，否则有可能再次失败。
+            int index = this.sendWhichQueue.getAndIncrement();
+            for (int i = 0; i < this.messageQueueList.size(); i++) {
+                int pos = Math.abs(index++) % this.messageQueueList.size();
+                if (pos < 0)
+                    pos = 0;
+                MessageQueue mq = this.messageQueueList.get(pos);
+                if (!mq.getBrokerName().equals(lastBrokerName)) {
+                    return mq;
+                }
+            }
+            // 如果没有找到其它broker上的队列，则降级为默认逻辑，轮询获取下一个队列信息。
+            return selectOneMessageQueue();
+        }
+    }
+```
+
+但是此种容错只会在当前这一次发送中生效，RocketMQ 提供了 `sendLatencyFaultEnable` 参数开启 broker故障延迟机制，故障延迟机制由 `MQFaultStrategy` 实现，`MQFaultStrategy` 使用了装饰器模式，对基础的容错机制进行了增强：
+
+```java
+// org.apache.rocketmq.client.latency.MQFaultStrategy#selectOneMessageQueue 
+public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
+        if (this.sendLatencyFaultEnable) {
+            // 如果开启了故障延迟机制
+            try {
+                int index = tpInfo.getSendWhichQueue().getAndIncrement();
+                for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
+                    int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
+                    if (pos < 0)
+                        pos = 0;
+                    // 获取一个消息队列
+                    MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
+                    // 验证该消息队列是否可用
+                    if (latencyFaultTolerance.isAvailable(mq.getBrokerName())) {
+                        if (null == lastBrokerName || mq.getBrokerName().equals(lastBrokerName))
+                            return mq;
+                    }
+                }
+
+                final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
+                int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
+                if (writeQueueNums > 0) {
+                    final MessageQueue mq = tpInfo.selectOneMessageQueue();
+                    if (notBestBroker != null) {
+                        mq.setBrokerName(notBestBroker);
+                        mq.setQueueId(tpInfo.getSendWhichQueue().getAndIncrement() % writeQueueNums);
+                    }
+                    return mq;
+                } else {
+                    // 移除失败条目，意味着Broker重新参与路由计算
+                    latencyFaultTolerance.remove(notBestBroker);
+                }
+            } catch (Exception e) {
+                log.error("Error occurred when selecting message queue", e);
+            }
+
+            return tpInfo.selectOneMessageQueue();
+        }
+        // 未开启故障延迟机制，则使用基础的容错机制选择一个队列
+        return tpInfo.selectOneMessageQueue(lastBrokerName);
+    }
+```
+
+是否启用Broker故障延迟机制，开启与不开启sendLatencyFaultEnable机制在消息发送时都能规避故障的Broker，那么这两种机制有何区别呢？
+
+开启所谓的故障延迟机制，即设置sendLatencyFaultEnable为true，其实是一种较为悲观的做法。当消息发送者遇到一次消息发送失败
+后，就会悲观地认为Broker不可用，在接下来的一段时间内就不再向其发送消息，直接避开该Broker。而不开启延迟规避机制，就只会在本次消息发送的重试过程中规避该Broker，下一次消息发送还是会继续尝试。
 
 ## 八. Broker 检查话题信息
 
@@ -424,15 +658,30 @@ public class TopicConfigManager extends ConfigManager {
 
 ![](../images/26.png)
 
-## 九. 消息存储
 
-当 Broker 对消息的一些字段做过一番必要的检查之后，便会存储到磁盘中去:
 
-![](../images/27.png)
-
-## 十. 整体流程
+## 九. 整体流程
 
 发送消息的整体流程:
 
-![](../images/28.png)
+![](../images/7.webp)
 
+- Broker启动时，向NameServer注册信息
+
+- 客户端调用producer发送消息时，会先从NameServer获取该topic的路由信息。消息头code为GET_ROUTEINFO_BY_TOPIC
+
+- 从NameServer返回的路由信息，包括topic包含的队列列表和broker列表
+
+- Producer端根据查询策略，选出其中一个队列，用于后续存储消息
+
+- 每条消息会生成一个唯一id，添加到消息的属性中。属性的key为UNIQ_KEY
+
+- 对消息做一些特殊处理，比如：超过4M会对消息进行压缩
+
+- producer向Broker发送rpc请求，将消息保存到broker端。消息头的code为SEND_MESSAGE或SEND_MESSAGE_V2（配置文件设置了特殊标志）
+
+> 本文参考至：
+>
+> [RocketMQ 消息发送流程 | 赵坤的个人网站 (kunzhao.org)](https://kunzhao.org/docs/rocketmq/rocketmq-send-message-flow/)
+>
+> [图解RocketMQ消息发送和存储流程 - 掘金 (juejin.cn)](https://juejin.cn/post/6844903862147497998)

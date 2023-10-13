@@ -1,8 +1,6 @@
 # RocketMQ消息存储流程
 
-> 本文转载至：[RocketMQ 消息存储流程 | 赵坤的个人网站 (kunzhao.org)](https://kunzhao.org/docs/rocketmq/rocketmq-message-store-flow/)
-
-> 本文基于RocketMQ 4.8.0进行源码分析
+> 本文基于RocketMQ 4.6.0进行源码分析
 
 ## 一. 存储概要设计
 
@@ -514,7 +512,19 @@ public class TransientStorePool {
 }
 ```
 
+#### 2.2.5 内存映射整体流程
+
+![](../images/5.webp)
+
+- 内存映射文件MappedFile通过AllocateMappedFileService创建
+- MappedFile的创建是典型的生产者-消费者模型
+- MappedFileQueue调用getLastMappedFile获取MappedFile时，将请求放入队列中
+- AllocateMappedFileService线程持续监听队列，队列有请求时，创建出MappedFile对象
+- 最后将MappedFile对象预热，底层调用force方法和mlock方法
+
 ## 三. 消息存储整体流程
+
+### 3.1 ConmmitLog存储流程
 
 消息存储入口为`org.apache.rocketmq.store.DefaultMessageStore#putMessage`。
 
@@ -980,6 +990,128 @@ handleDiskFlush(result, putMessageResult, msg);
 // HA主从同步复制
 handleHA(result, putMessageResult, msg);
 ```
+
+### 3.2 ConsumeQueue、Index消息索引的异步构建
+
+因为ConsumeQueue文件、Index文件都是基于CommitLog文件构建的，所以当消息生产者提交的消息存储到CommitLog文件中时，ConsumeQueue文件、Index文件需要及时更新，否则消息无法及时被消费，根据消息属性查找消息也会出现较大延迟。RocketMQ通过开启一个线程ReputMessageServcie来准实时转发CommitLog文件的更新事件，相应的任务处理器根据转发的消息及时更新ConsumeQueue文件、Index文件。
+
+```java
+// org.apache.rocketmq.store.DefaultMessageStore.ReputMessageService
+    class ReputMessageService extends ServiceThread {
+
+        private volatile long reputFromOffset = 0;
+
+
+        /**
+         * ReputMessageService线程每执行一次任务推送，休息1ms后继续
+         * 尝试推送消息到Consume Queue和Index文件中，消息消费转发由
+         * doReput()方法实现
+         */
+        private void doReput() {
+            if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
+                log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
+                    this.reputFromOffset, DefaultMessageStore.this.commitLog.getMinOffset());
+                this.reputFromOffset = DefaultMessageStore.this.commitLog.getMinOffset();
+            }
+            for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
+
+                if (DefaultMessageStore.this.getMessageStoreConfig().isDuplicationEnable()
+                    && this.reputFromOffset >= DefaultMessageStore.this.getConfirmOffset()) {
+                    break;
+                }
+
+                // 返回reputFromOffset偏移量开始的全部有效数据（CommitLog文件）。然后循环读取每一条消息
+                SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
+                if (result != null) {
+                    try {
+                        this.reputFromOffset = result.getStartOffset();
+
+                        for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+                            // 从result返回的ByteBuffer中循环读取消息，一次读取一条，创建Dispatch Request对象
+                            DispatchRequest dispatchRequest =
+                                DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
+                            int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
+
+                            if (dispatchRequest.isSuccess()) {
+                                if (size > 0) {
+                                    // 执行CommitLog转发
+                                    DefaultMessageStore.this.doDispatch(dispatchRequest);
+
+                                    if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
+                                        && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
+                                        DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
+                                            dispatchRequest.getQueueId(), dispatchRequest.getConsumeQueueOffset() + 1,
+                                            dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),
+                                            dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
+                                    }
+
+                                    this.reputFromOffset += size;
+                                    readSize += size;
+                                    if (DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {
+                                        DefaultMessageStore.this.storeStatsService
+                                            .getSinglePutMessageTopicTimesTotal(dispatchRequest.getTopic()).incrementAndGet();
+                                        DefaultMessageStore.this.storeStatsService
+                                            .getSinglePutMessageTopicSizeTotal(dispatchRequest.getTopic())
+                                            .addAndGet(dispatchRequest.getMsgSize());
+                                    }
+                                } else if (size == 0) {
+                                    this.reputFromOffset = DefaultMessageStore.this.commitLog.rollNextFile(this.reputFromOffset);
+                                    readSize = result.getSize();
+                                }
+                            } else if (!dispatchRequest.isSuccess()) {
+
+                                if (size > 0) {
+                                    log.error("[BUG]read total count not equals msg total size. reputFromOffset={}", reputFromOffset);
+                                    this.reputFromOffset += size;
+                                } else {
+                                    doNext = false;
+                                    // If user open the dledger pattern or the broker is master node,
+                                    // it will not ignore the exception and fix the reputFromOffset variable
+                                    if (DefaultMessageStore.this.getMessageStoreConfig().isEnableDLegerCommitLog() ||
+                                        DefaultMessageStore.this.brokerConfig.getBrokerId() == MixAll.MASTER_ID) {
+                                        log.error("[BUG]dispatch message to consume queue error, COMMITLOG OFFSET: {}",
+                                            this.reputFromOffset);
+                                        this.reputFromOffset += result.getSize() - readSize;
+                                    }
+                                }
+                            }
+                        }
+                    } finally {
+                        result.release();
+                    }
+                } else {
+                    doNext = false;
+                }
+            }
+        }
+
+        @Override
+        public void run() {
+            DefaultMessageStore.log.info(this.getServiceName() + " service started");
+
+            while (!this.isStopped()) {
+                try {
+                    Thread.sleep(1);
+                    // 每休息1ms就执行一次消息转发
+                    this.doReput();
+                } catch (Exception e) {
+                    DefaultMessageStore.log.warn(this.getServiceName() + " service has exception. ", e);
+                }
+            }
+
+            DefaultMessageStore.log.info(this.getServiceName() + " service end");
+        }
+
+    }
+```
+
+### 3.3 整体流程
+
+![](../images/6.webp)
+
+- Broker端收到消息后，将消息原始信息保存在CommitLog文件对应的MappedFile中，然后异步刷新到磁盘
+- ReputMessageServie线程异步的将CommitLog中MappedFile中的消息保存到ConsumerQueue和IndexFile中
+- ConsumerQueue和IndexFile只是原始文件的索引信息。
 
 ## 四. 文件创建
 
@@ -1499,6 +1631,18 @@ public class CommitLog {
     }
 ```
 
+刷盘的整体流程：
+
+![](../images/4.webp)
+
+producer发送给broker的消息保存在MappedFile中，然后通过刷盘机制同步到磁盘中
+
+刷盘分为同步刷盘和异步刷盘
+
+异步刷盘后台线程按一定时间间隔执行
+
+同步刷盘也是生产者-消费者模型。broker保存消息到MappedFile后，创建GroupCommitRequest请求放入列表，并阻塞等待。后台线程从列表中获取请求并刷新磁盘，成功刷盘后通知等待线程。
+
 ### 6.1 异步刷盘
 
 当配置为异步刷盘策略的时候，Broker 会运行一个服务 `FlushRealTimeService` 用来刷新缓冲区的消息内容到磁盘，这个服务使用一个独立的线程来做刷盘这件事情，默认情况下每隔 500ms 来检查一次是否需要刷盘:
@@ -1528,3 +1672,14 @@ class FlushRealTimeService extends FlushCommitLogService {
 }
 ```
 
+
+
+
+
+> 本文参考至：
+>
+> 《RocketMQ技术内幕》
+>
+> [RocketMQ 消息存储流程 | 赵坤的个人网站 (kunzhao.org)](https://kunzhao.org/docs/rocketmq/rocketmq-message-store-flow/)
+>
+> [图解RocketMQ消息发送和存储流程 - 掘金 (juejin.cn)](https://juejin.cn/post/6844903862147497998)
