@@ -25,3 +25,5 @@
 [RocketMQ消息消费失败后的重试机制](./subfile/_8RocketMQ重试机制.md)
 
 [RocketMQ消息过滤机制](./subfile/_10RocketMQ消息过滤机制.md)
+
+[RocketMQ延迟消息](./subfile/_11RocketMQ延迟消息.md)
