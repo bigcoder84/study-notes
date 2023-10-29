@@ -21,3 +21,7 @@
 [RocketMQ消息发送流程](./subfile/_4RocketMQ消息发送流程.md)
 
 [RocketMQ消息存储流程](./subfile/_5RocketMQ消息存储流程.md)
+
+[RocketMQ消息消费失败后的重试机制](./subfile/_8RocketMQ重试机制.md)
+
+[RocketMQ消息过滤机制](./subfile/_10RocketMQ消息过滤机制.md)
