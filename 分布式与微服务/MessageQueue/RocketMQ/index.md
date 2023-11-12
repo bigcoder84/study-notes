@@ -27,3 +27,5 @@
 [RocketMQ消息过滤机制](./subfile/_10RocketMQ消息过滤机制.md)
 
 [RocketMQ延迟消息](./subfile/_11RocketMQ延迟消息.md)
+
+[RocketMQ主从同步原理](./subfile/_12RocketMQ主从同步原理.md)
