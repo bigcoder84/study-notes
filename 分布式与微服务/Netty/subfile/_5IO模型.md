@@ -73,11 +73,11 @@ TCP/IP协议栈维护着两个缓冲区：send buffer和recv buffer，它们合�
 
 如果使用Blocking I/O模型：
 
-1. 当设置为blocking i/o模型，httpd从①到③都是被阻塞的。
+1. 当设置为blocking i/o模型，httpd从1到3都是被阻塞的。
 2. 只有当数据复制到app buffer完成后，或者发生了错误，httpd才被唤醒处理它app buffer中的数据。
 3. cpu会经过两次上下文切换：用户空间到内核空间再到用户空间，第一次是发起系统调用的切换，第二次是内核将数据拷贝到app buffer完成后的切换。
-4. 由于②阶段的拷贝是不需要CPU参与的，所以在②阶段准备数据的过程中，cpu可以去处理其它进程的任务。
-5. ③阶段的数据复制需要CPU参与，将httpd阻塞。
+4. 由于2阶段的拷贝是不需要CPU参与的，所以在2阶段准备数据的过程中，cpu可以去处理其它进程的任务。
+5. 3阶段的数据复制需要CPU参与，将httpd阻塞。
 6. 这是最省事、最简单的IO模式。
 
 ![](../images/5.jpg)
@@ -94,7 +94,7 @@ When we set a socket to be nonblocking, we are telling the kernel "when an I/O o
 
 3. 直到kernel buffer中数据准备完成，再去轮询时不再返回EWOULDBLOCK，而是将httpd阻塞，以等待数据复制到app buffer。
 
-4. httpd在①到②阶段不被阻塞，但是会不断去发送read()轮询。在③被阻塞，将cpu交给内核把数据copy到app buffer。
+4. httpd在1到2阶段不被阻塞，但是会不断去发送read()轮询。在3被阻塞，将cpu交给内核把数据copy到app buffer。
 
 ![](../images/6.jpg)
 

@@ -28,4 +28,8 @@
 
 [RocketMQ延迟消息](./subfile/_11RocketMQ延迟消息.md)
 
-[RocketMQ主从同步原理](./subfile/_12RocketMQ主从同步原理.md)
+[RocketMQ顺序消息](./subfile/_12RocketMQ顺序消息.md)
+
+[RocketMQ事务消息](./subfile/_13RocketMQ事务消息.md)
+
+[RocketMQ主从同步原理](./subfile/_14RocketMQ主从同步原理.md)
