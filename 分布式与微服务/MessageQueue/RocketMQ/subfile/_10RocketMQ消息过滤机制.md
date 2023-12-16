@@ -144,7 +144,7 @@ public class Consumer {
 
 消费者去broker拉取消息时,先经过broker过滤一次，在经过消费者过滤一次
 
-1. 如果是 TAG 过滤。broker要先根据ConsumeQueue 中 Tag HashCode过滤一次，消费者在根据 Tag 值过滤一次。因为 ConsumeQueue 为了便于检索，文件中每一个条目都是定长20字节，所以条目在最后八个字节存储的是消息 Tag 的 HashCode，而不是hash值。这样broker在拉取磁盘中的消息时，只需要对比 ConsumeQueue中 的Tag HashCode，而不需要解析 CommitLog 中的 Tag 值，如果发生Hash冲突，则交给消费者客户端过滤消息中的Tag值。
+1. 如果是 TAG 过滤。broker要先根据ConsumeQueue 中 Tag HashCode过滤一次，消费者在根据 Tag 值过滤一次。因为 ConsumeQueue 为了便于检索，文件中每一个条目都是定长20字节，所以条目在最后八个字节存储的是消息 Tag 的 HashCode，而不是 Tag 值。这样broker在拉取磁盘中的消息时，只需要对比 ConsumeQueue中 的Tag HashCode，而不需要解析 CommitLog 中的 Tag 值，如果发生Hash冲突，则交给消费者客户端过滤消息中的Tag值。
 2. 如果是 SQL92 过滤。则全部由 broker 过滤。因为 SQL 过滤的是消息中的属性值，所以必须反序列化 CommitLog 中的属性值，既然在broker已经进行了精确匹配，那么客户端自然可以省去这个步骤了。
 
 ## 三. 消费者启动注册订阅信息到broker
