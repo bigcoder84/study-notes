@@ -33,3 +33,7 @@
 [RocketMQ事务消息](./subfile/_13RocketMQ事务消息.md)
 
 [RocketMQ主从同步原理](./subfile/_14RocketMQ主从同步原理.md)
+
+[RocketMQ读写分离](./subfile/_15RocketMQ读写分离.md)
+
+[RocketMQ消息轨迹](./subfile/_16RocketMQ消息轨迹.md)
