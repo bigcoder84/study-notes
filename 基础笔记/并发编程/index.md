@@ -24,6 +24,8 @@
 
 [synchronized锁升级过程](./subfile/_30synchronized锁升级过程.md)
 
+[Java21新特性-虚拟线程](./subfile/_34Java21新特性-虚拟线程.md)
+
 ## 并发工具类
 
 [CountDownLatch](./subfile/_9CountDownLatch.md)
