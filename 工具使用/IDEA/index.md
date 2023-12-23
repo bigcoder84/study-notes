@@ -60,6 +60,8 @@
 
 [IDEA导入插件项目](./subfile/_21IDEA导入插件项目.md)
 
+[IDEA插件开发-Gradle工程项目](./subfile/_24IDEA插件开发-Gradle工程项目.md)
+
 
 
 ## 三. WebStorm
