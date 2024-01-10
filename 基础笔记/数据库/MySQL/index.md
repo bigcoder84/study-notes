@@ -54,6 +54,8 @@
 
 [窗口函数](./subfile/_33窗口函数.md)
 
+[MySQL无锁DDL工具](./subfile/_34MySQL无锁DDL工具.md)
+
 ## 二. MySQL高可用
 
 [MySQL三大日志(binlog、redo log和undo log)详解](./subfile/_18RedoLog和UndoLog到底是什么.md)
