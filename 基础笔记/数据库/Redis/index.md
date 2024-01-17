@@ -34,6 +34,8 @@
 
 [RedLock分布式锁实现原理](./subfile/_23RedLock分布式锁实现原理.md)
 
+[Redis线程模型](./subfile/_24Redis线程模型.md)
+
 ## 二. 底层原理
 
 ### 2.1 底层数据结构
