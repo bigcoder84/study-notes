@@ -1,8 +1,10 @@
 # 深度解析 Raft 分布式一致性协议
 
-> 本文转载至：[浅谈 Raft 分布式一致性协议｜图解 Raft - 白泽来了 - 博客园 (cnblogs.com)](https://www.cnblogs.com/YLTFY1998/p/16600755.html)
+> 本文参考转载至：[浅谈 Raft 分布式一致性协议｜图解 Raft - 白泽来了 - 博客园 (cnblogs.com)](https://www.cnblogs.com/YLTFY1998/p/16600755.html)
 >
 > [深度解析 Raft 分布式一致性协议 - 掘金 (juejin.cn)](https://juejin.cn/post/6907151199141625870)
+>
+> [raft-zh_cn/raft-zh_cn.md at master · maemual/raft-zh_cn (github.com)](https://github.com/maemual/raft-zh_cn/blob/master/raft-zh_cn.md#541-选举限制)
 
 本篇文章将模拟一个KV数据读写服务，从提供单一节点读写服务，到结合分布式一致性协议（**Raft**）后，逐步扩展为一个分布式的，满足一致性读写需求的读写服务的过程。
 
@@ -489,6 +491,8 @@ Candidate 想要赢得选举成为 leader，必须得到集群大多数节点的
 为了避免这种错误，我们需要添加一个额外的限制：
 
 **Leader 只允许 commit 包含当前 term 的日志。**
+
+> Raft论文：Raft 永远不会通过计算副本数目的方式去提交一个之前任期内的日志条目。只有领导人当前任期里的日志条目通过计算副本数目可以被提交；一旦当前任期的日志条目以这种方式被提交，那么由于日志匹配特性，之前的日志条目也都会被间接的提交。在某些情况下，领导人可以安全的知道一个老的日志条目是否已经被提交（例如，该条目是否存储到所有服务器上），但是 Raft 为了简化问题使用一种更加保守的方法。
 
 针对上述场景，问题发生在阶段c，即使作为 term4 leader 的 S1 将 (term2, index2) 复制给了大多数节点，它也不能直接将其 commit，而是必须等待 term4 的日志到来并成功复制后，一并进行 commit。
 
