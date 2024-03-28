@@ -100,7 +100,7 @@ git config --global alias.branch-d "branch --sort committerdate --format '%(comm
 还可以这样配置：
 
 ```shell
-git config --global alias.branch-d "for-each-ref --sort=-committerdate refs/heads --format='%(authordate:short) %(color:red)%(objectname:short) %(color:yellow)%(refname:short)%(color:reset) (%(color:green)%(committerdate:relative)%(color:reset))'"
+git config --global alias.branch-d "for-each-ref --sort=-committerdate refs/heads --format='%(authordate:short) %(color:red)%(objectname:short) %(color:yellow)%(refname:short)%(color:reset) (%(color:green)%(committerdate:relative)%(color:reset)) %(authorname)'"
 ```
 
 效果：
