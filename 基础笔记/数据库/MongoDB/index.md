@@ -11,3 +11,5 @@
 [MongoDB索引](./subfile/_5MongoDB索引.md)
 
 [MongoTemplate使用](./subfile/_6MongoTemplate使用.md)
+
+[MongoDB复制集原理](./subfile/_7MongoDB复制集原理.md)
