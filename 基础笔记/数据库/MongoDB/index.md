@@ -9,3 +9,5 @@
 [MongoDB的聚合操作](./subfile/_4MongoDB的聚合操作.md)
 
 [MongoDB索引](./subfile/_5MongoDB索引.md)
+
+[MongoTemplate使用](./subfile/_6MongoTemplate使用.md)

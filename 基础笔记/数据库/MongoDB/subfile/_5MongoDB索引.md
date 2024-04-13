@@ -233,3 +233,5 @@ db.people.createIndex( { zipcode: 1}, {background: true, sparse: true } )
 这样，可以在后台创建一个稀疏索引；
 
 需要注意的是，在后台创建索引的同时其它操作仍然可以进行；但有一个限制，那就是当前用于创建该索引的 connection 或 session 会被阻塞直到索引创建成功为止；所以，在后台创建索引的过程当中，若要继续对该索引进行操作，需要新建一个链接才可以；
+
+> 本文参考至：[快速掌握mongoDB(三)——mongoDB的索引详解 - 捞月亮的猴子 - 博客园 (cnblogs.com)](https://www.cnblogs.com/wyy1234/p/11032163.html)
