@@ -2,19 +2,35 @@
 
 ## 一. MongoDB复制简介
 
-本章节首先会给大家简单介绍一些MongoDB复制的一些基本概念，便于大家对后面内容的理解。
+本章节首先会给大家简单介绍一些MongoDB复制集的一些基本概念，便于大家对后面内容的理解。
+
+### 1.1 复制集的作用
+
+- MongoDB 复制集的主要意义在于实现服务高可用，它的现实依赖于两个方面的功能：
+  - 数据写入时将数据迅速复制到另一个独立的节点上
+  - 在接受写入的节点发生故障时自动选举出一个新的替代节点
+- 在实现高可用的同时，复制集实现了其他几个附加作用：
+  - 数据分发：将数据从一个区域复制到另一个区域，减少另一个区域的读延迟
+  - 读写分离：不同类型的压力分别在不同的节点上执行
+  - 异地容灾：在数据中心故障的时候快速切换到异地
 
 ### 1.1 基本介绍
 
-MongoDB有副本集及主从复制两种模式，今天给大家介绍的是副本集模式，因为主从模式在MongoDB 3.6也彻底废弃不使用了。MongoDB副本集有Primary、Secondary、Arbiter三种角色。今天给大家介绍的是Primary与Secondary数据同步的内部原理。MongoDB副本集架构如下所示：
+MongoDB有副本集及主从复制两种模式，今天给大家介绍的是副本集模式，因为主从模式在MongoDB 3.6也彻底废弃不使用了。
+
+MongoDB副本集有Primary、Secondary、Arbiter三种角色。今天给大家介绍的是Primary与Secondary数据同步的内部原理。MongoDB副本集架构如下所示：
 
 ![](../images/1.jpg)
 
 > 在 MongoDB 的副本集中，Arbiter（仲裁者）角色的节点并不是必须的，但通常情况下会建议至少有一个 Arbiter 节点。Arbiter 节点不存储数据，它的作用是帮助解决选举过程中的投票平局。当一个副本集中的节点数为偶数时，可能会出现投票平局的情况，此时 Arbiter 节点可以投出决定性的一票来解决这个问题。
+>
+> 为什么会有Arbiter：
+>
+> 有些场景下为了节省存储空间，没必要让复制集中所有的节点都进行数据复制，但是又需要奇数个节点解决投票平局的问题。
 
 ### 1.2 MongoDB Oplog
 
-MongoDB Oplog 是 MongoDB Primary 和 Secondary 在复制建立期间和建立完成之后的复制介质，就是 Primary 中所有的写入操作都会记录到 MongoDB Oplog 中，然后从库会来主库一直拉取Oplog并应用到自己的数据库中。这里的Oplog是MongoDB local数据库的一个集合，它是Capped collection，通俗意思就是它是固定大小，循环使用的。如下图：
+MongoDB Oplog 是 MongoDB Primary 和 Secondary 在复制建立期间和建立完成之后的复制介质，Primary 中所有的写入操作都会记录到 MongoDB Oplog 中，从节点通过在主节点上打开一个 `tailable` 游标不断获取新进入主节点的 `oplog`，并在自己的数据节点上回放，以此保持跟主节点的数据一致。这里的Oplog是MongoDB local数据库的一个集合，它是Capped collection，通俗意思就是它是固定大小，循环使用的。如下图：
 
 ![](../images/2.jpg)
 
@@ -186,140 +202,44 @@ MongoDB从库会在副本集其他节点通过以下条件筛选符合自己的�
 
 ## 四. MongoDB的高可用
 
-上面我们介绍MongoDB复制的数据同步，我们知道除了数据同步，复制还有一个重要的地方就是高可用，一般的数据库是需要我们自己去定制方案或者采用第三方的开源方案。MongoDB则是自己在内部已经实现了高可用方案。下面我就给大家详细介绍一下MongoDB的高可用。
+上面我们介绍MongoDB复制的数据同步，我们知道除了数据同步，复制还有一个重要的地方就是高可用，一般的数据库是需要我们自己去定制方案或者采用第三方的开源方案。MongoDB则是自己在内部已经实现了高可用方案。
 
-### 4.1 触发切换场景
+### 4.1 通过选举完成故障恢复
 
-首先我们看那些情况会触发MongoDB执行主从切换。
+- 具有投票权的节点之前两两互相发送心跳
+- 当 5 次心跳未收到时判断为节点失联
+- 如果失联的是主节点，从节点会发起选举，选出新的主节点
+- 如果失联的是从节点则不会产生新的选举
+- 选举基于[RAFT一致性算法](https://raft.github.io/)实现，选举成功的必要条件是大多数投票节点存活
+- 复制集中最多可以有 50 个节点，但具有投票权的节点最多 7 个
 
-1. 新初始化一套副本集
+![](../images/21.png)
 
-2. 从库不能连接到主库（默认超过10s，可通过heartbeatTimeoutSecs参数控制），从库发起选举
+### 4.2 影响选举的因素
 
-3. 主库主动放弃primary 角色
+- 整个集群中必须有大多数节点存活
+- 被选举为主节点的节点必须满足：
+  - 能够与多数节点建立连接
+  - 具有较新的 `oplog`
+  - 具有较高的优先级（如果有配置）
 
-   - 主动执行rs.stepdown 命令
+### 4.3 常见选项
 
-   - 主库与大部分节点都无法通信的情况下
+复制集在部署的时候有以下常见的选项可以进行配置：
 
-   - 修改副本集配置的时候（在Mongo 2.6版本会触发，其他版本待确定）
+- 是否具有投票权（v 参数）：有则参与投票
+- 优先级（priority 参数）：优先级越高的节点越优先成为主节点。优先级为0的节点无法成为主节点
+- 隐藏（hidden 参数）：复制数据，但对应用不可见。隐藏节点可以具有投票权，但优先级必须为0
+- 延迟（slaveDelay 参数）：复制 n 秒之前的数据，保持与主节点的时间差
 
-修改以下配置的时候：
+### 4.4 复制集注意事项
 
-- _id
-- votes
-- priotity
-- arbiterOnly
-- slaveDelay
-- hidden
-- buildIndexes
-
-4. 移除从库的时候（在MongoDB 2.6会触发，MongoDB 3.4不会，其他版本待确定）
-
-### 4.2 心跳机制
-
-通过上面触发切换的场景，我们了解到MongoDB的心跳信息是MongoDB判断对方是否存活的重要条件，当达到一定的条件时，MongoDB主库或者从库就会触发切换。下面我给大家详细介绍一下心跳机制，MongoDB 副本集心跳机制图如下：
-
-![](../images/20.png)
-
-我们知道MongoDB副本集所有节点都是相互保持心跳的，然后心跳频率默认是2秒一次，也可以通过heartbeatIntervalMillis来进行控制。在新节点加入进来的时候，副本集中所有的节点需要与新节点建立心跳，那心跳信息具体是什么内容呢？
-
-心跳信息内容：
-
-```c
-BSONObjBuilder cmdBuilder;
-cmdBuilder.append("replSetHeartbeat", setName);
-cmdBuilder.append("v", myCfgVersion);
-cmdBuilder.append("pv", 1);
-cmdBuilder.append("checkEmpty", checkEmpty);
-cmdBuilder.append("from", from);
-if (me &gt; -1) {
-cmdBuilder.append("fromId", me);
-}  
-```
-
-注：上述代码摘抄MongoDB 源码中构建心跳信息片段。
-
-具体在MongoDB日志中表现如下：
-
-```txt
-command admin.$cmd command: replSetHeartbeat { replSetHeartbeat: "shard1", v: 21, pv: 1, checkEmpty: false, from: "10.13.32.244:40011", fromId: 3 } ntoreturn:1 keyUpdates:0
-```
-
-那副本集所有节点默认都是每2秒给其他剩余的节点发送上述信息，在其他节点收到信息后会调用ReplSetCommand命令来处理心跳信息，处理完成会返回如下信息：
-
-```c
-result.append("set", theReplSet-&gt;name());
-MemberState currentState = theReplSet-&gt;state();
-result.append("state", currentState.s);  // 当前节点状态
-if (currentState == MemberState::RS_PRIMARY) {
-    result.appendDate("electionTime", theReplSet-&gt;getElectionTime().asDate());
-}
-result.append("e", theReplSet-&gt;iAmElectable());  //是否可以参与选举
-result.append("hbmsg", theReplSet-&gt;hbmsg());
-result.append("time", (long long) time(0));
-result.appendDate("opTime", theReplSet-&gt;lastOpTimeWritten.asDate());
-const Member *syncTarget = replset::BackgroundSync::get()-&gt;getSyncTarget();
-if (syncTarget) {
-    result.append("syncingTo", syncTarget-&gt;fullName());
-}
-
-int v = theReplSet-&gt;config().version;
-result.append("v", v);
-if( v &gt; cmdObj["v"].Int() )
-    result &lt;&lt; &quot;config&quot; &lt;config().asBson();
-```
-
-### 4.3 切换流程
-
-前面我们了解了触发切换的场景以及MongoDB副本集节点之前的心跳机制。下面我们来看切换的具体流程：
-
-1. 从库无法连接到主库，或者主库放弃Primary角色。
-2. 从库会根据心跳消息获取当前该节点的角色并与之前进行对比
-3. 如果角色发生改变就开始执行msgCheckNewState方法
-4. 在msgCheckNewState 方法中最终调用electSelf 方法（会有一些判断来决定是否最终调用electSelf方法）
-5. electSelf 方法最终向副本集其他节点发送replSetElect命令来请求投票。
-
-命令如下：
-
-```shell
-BSONObj electCmd = BSON(
-"replSetElect" << 1 <<
-"set" << rs.name() <<
-"who" << me.fullName() <<
-"whoid" << me.hbinfo().id() <<
-"cfgver" <version <<
-"round" << OID::gen() /* this is just for diagnostics */
-);
-```
-
-具体日志表现如下：
-
-```txt
-2017-12-14T10:13:26.917+0800 [conn27669] run command admin.$cmd { replSetElect: 1, set: “shard1”, who: “10.13.32.244:40015”, whoid: 4, cfgver: 27, round: ObjectId(‘5a31de4601fbde95ae38b4d2’) }
-```
-
-6. 其他副本集收到replSetElect会对比cfgver信息，会确认发送该命令的节点是否在副本集中，确认该节点的优先级是否是该副本集所有节点中优先级最大的。最后满足条件才会给该节点发送投票信息。
-7. 发起投票的节点最后会统计所得票数大于副本集可参与投票数量的一半，则抢占成功，成为新的Primary。
-8. 其他从库如果发现自己的同步源角色发生变化，则会触发重新选取同步源。
-
-### 4.4 Rollback
-
-我们知道在发生切换的时候是有可能造成数据丢失的，主要是因为主库宕机，但是新写入的数据还没有来得及同步到从库中，这个时候就会发生数据丢失的情况。
-
-那针对这种情况，MongoDB增加了回滚的机制。在主库恢复后重新加入到复制集中，这个时候老主库会与同步源对比oplog信息，这时候分为以下两种情况：
-
-1. 在同步源中没有找到比老主库新的oplog信息。
-2. 同步源最新一条oplog信息跟老主库的optime和oplog的hash内容不同。
-
-针对上述两种情况MongoDB会进行回滚，回滚的过程就是逆向对比oplog的信息，直到在老主库和同步源中找到对应的oplog，然后将这期间的oplog全部记录到rollback目录里的文件中，如果但是出现以下情况会终止回滚：
-
-- 对比老主库的optime和同步源的optime，如果超过了30分钟，那么放弃回滚。
-- 在回滚的过程中，如果发现单条oplog超过512M，则放弃回滚。
-- 如果有dropDatabase操作，则放弃回滚。
-- 最终生成的回滚记录超过300M，也会放弃回滚。
-
-上述我们已经知道了MongoDB的回滚原理，但是我们在生产环境中怎么避免回滚操作呢，因为毕竟回滚操作很麻烦，而且针对有时序性的业务逻辑也是不可接受的。那MongoDB也提供了对应的方案，就是WriteConcern，这里就不细说了，有兴趣的朋友可以仔细了解。其实这也是在CAP中做出一个选择。
+- 关于硬件
+  - 因为正常的复制集节点都有可能成为主节点，它们的地位是一样的，因此硬件配置上必须一致
+  - 为了保证节点不会同时宕机，各节点使用的硬件必须具有独立性
+- 关于软件
+  - 复制集各节点软件版本必须一致，以避免出现不可预知的问题
+- 增加节点不会增加系统写性能
 
 ## 五. MongoDB复制总结
 
