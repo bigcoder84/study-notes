@@ -52,3 +52,5 @@ writeConcern 可以决定写操作到达多少个节点才算成功，journal �
 
 - true: 写操作落到 journal 文件中才算成功。
 - false: 写操作到达内存即算作成功。
+
+> 本文转载至：[MongoDB 写操作事务 | 一代键客 (zhangquan.me)](https://zhangquan.me/2023/02/16/mongodb-xie-cao-zuo-shi-wu/)
