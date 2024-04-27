@@ -13,3 +13,5 @@
 [MongoTemplate使用](./subfile/_6MongoTemplate使用.md)
 
 [MongoDB复制集原理](./subfile/_7MongoDB复制集原理.md)
+
+[MongoDB写关注](./subfile/_8MongoDB写关注.md)
