@@ -32,17 +32,15 @@
 
 [分布式事务](./分布式与微服务/分布式事务/index.md)
 
+[消息中间件](./分布式与微服务/Dubbo/index.md)
+
 [Dubbo](./分布式与微服务/Dubbo/index.md)
 
 [SpringCloud](./分布式与微服务/SpringCloud/index.md)
 
 [Zookeeper](./分布式与微服务/Zookeeper/index.md)
 
-[MessageQueue](./分布式与微服务/MessageQueue/index.md)
-
 [Redisson](./分布式与微服务/Redisson/index.md)
-
-[Solr](./分布式与微服务/Solr/index.md)
 
 [Netty](./分布式与微服务/Netty/index.md)
 
@@ -61,6 +59,8 @@
 [SQLServer](./基础笔记/数据库/SQLServer/index.md)
 
 [Redis](./基础笔记/数据库/Redis/index.md)
+
+[MongoDB](./基础笔记/数据库/MongoDB/index.md)
 
 ## 项目经验
 
@@ -103,4 +103,3 @@
 [Python笔记](./基础笔记/Python/index.md)
 
 [项目部署](./其他/项目部署/index.md)
-
