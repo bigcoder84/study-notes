@@ -20,4 +20,6 @@
 
 [MongoDB Change Stream](./subfile/_11ChangeStream.md)
 
-[MongoDB分片集群原理](./subfile/_12MongoDB分片集群设计.md)
+[MongoDB分片集群原理](./subfile/_12MongoDB分片集群原理.md)
+
+[MongoDB分片集群设计](./subfile/_13MongoDB分片集群设计.md)
