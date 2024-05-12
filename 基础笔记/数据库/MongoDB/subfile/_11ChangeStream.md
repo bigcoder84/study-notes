@@ -70,4 +70,160 @@ MongoDB Oplog中的内容及字段介绍：
 
 ## 四. SpringBoot 使用 Change Stream
 
+### 4.1 环境准备
+
+使用 ChangeStream 需要开启 MongoDB 的 oplog，单节点 MongoDB 默认不开启 oplog。
+
+### 4.2 SpringBoot 接入 MongoDB Change Stream
+
+第一步：引入Maven
+
+```xml
+<dependency>
+    <artifactId>spring-boot-starter-test</artifactId>
+    <artifactId>spring-boot-starter</artifactId>
+</dependency>
+```
+
+第二步：核心配置
+
+```yaml
+server:
+  port: 8080
+spring:
+  data:
+    mongodb:
+      uri: mongodb://10.10.10.12:27017/test
+```
+
+第三步：编写实体类
+
+```java
+package cn.bigcoder.mongo.mongodemo.model;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import java.util.Date;
+import lombok.Data;
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.MongoId;
+
+/**
+ * @author: Jindong.Tian
+ * @date: 2024-05-12
+ **/
+@Document(collection="students")
+@Data
+public class Student {
+
+    /**
+     * 使用 @MongoID 能更清晰的指定 _id 主键
+     */
+    @MongoId
+    private String id;
+    private String name;
+    private String sex;
+    private Integer age;
+    @JsonFormat(pattern = "yyyy-MM-dd", timezone = "GMT+8")
+    private Date birthday;
+}
+```
+
+第四步：编写Oplog监听类
+
+MongoMessageListener 类 ，顾名思义，该类用于监听特定数据库下的集合数据变化使用的，在实际开发中，该类的作用也是非常重要的，类似于许多中间件的客户端监听程序，当监听到数据变化后，做出后续的业务响应，比如，数据入库、推送消息到kafka、发送相关的事件等等
+
+```java
+package cn.bigcoder.mongo.mongodemo.listener;
+
+import cn.bigcoder.mongo.mongodemo.model.Student;
+import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.model.changestream.OperationType;
+import org.bson.Document;
+import org.springframework.data.mongodb.core.messaging.Message;
+import org.springframework.data.mongodb.core.messaging.MessageListener;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyObjMessageListener implements MessageListener<ChangeStreamDocument<Document>, Student> {
+
+
+    @Override
+    public void onMessage(Message<ChangeStreamDocument<Document>, Student> message) {
+        Student obj = message.getBody();
+        OperationType operationType = message.getRaw().getOperationType();
+        System.out.println("操作类型为 :" + operationType);
+        System.out.println(obj);
+    }
+}
+```
+
+第五步：配置监听容器
+
+```java
+package cn.bigcoder.mongo.mongodemo.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.messaging.DefaultMessageListenerContainer;
+import org.springframework.data.mongodb.core.messaging.MessageListenerContainer;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+@Configuration
+public class MongoConfig {
+    @Bean
+    MessageListenerContainer messageListenerContainer(MongoTemplate mongoTemplate){
+        Executor executor = Executors.newFixedThreadPool(5);
+        return new DefaultMessageListenerContainer(mongoTemplate,executor){
+            @Override
+            public boolean isAutoStartup(){
+                return true;
+            }
+        };
+    }
+}
+```
+
+第六步：注册监听器
+
+注册监听器时可以指定需要监听的操作类型。
+
+```java
+package cn.bigcoder.mongo.mongodemo.config;
+
+import cn.bigcoder.mongo.mongodemo.listener.MyObjMessageListener;
+import cn.bigcoder.mongo.mongodemo.model.Student;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.messaging.ChangeStreamRequest;
+import org.springframework.data.mongodb.core.messaging.MessageListenerContainer;
+import org.springframework.data.mongodb.core.query.Criteria;
+
+@Configuration
+public class ChangeStreamConfig implements CommandLineRunner {
+
+    @Autowired
+    private MyObjMessageListener mongoMessageListener;
+    @Autowired
+    private MessageListenerContainer messageListenerContainer;
+
+    @Override
+    public void run(String... args) {
+        ChangeStreamRequest<Student> request = ChangeStreamRequest.builder(mongoMessageListener).collection("students")
+                .filter(Aggregation.newAggregation(
+                        Aggregation.match(Criteria.where("operationType").in("insert", "update", "replace")))).build();
+        messageListenerContainer.register(request, Student.class);
+    }
+}
+```
+
+第七步：测试
+
+启动服务后，向数据库中插入一条数据：
+
+![](../images/48.png)
+
+
 
