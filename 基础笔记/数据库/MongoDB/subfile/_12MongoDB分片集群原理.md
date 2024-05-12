@@ -110,7 +110,27 @@ hash 是按某个字段值进行 hash，这样写入的时候就可以把文档�
 
 通过给分片打标签的方式，可以把地域化的数据组织到当地的分片上。
 
-## 七. 总结
+## 七.分片键的约束
+
+ShardKey 必须是一个索引。非空集合须在 ShardCollection 前创建索引；空集合 ShardCollection 自动创建索引
+
+- 4.4 版本之前：
+
+  - ShardKey 大小不能超过 512 Bytes；
+
+  - 仅支持单字段的哈希分片键；
+  - Document 中必须包含 ShardKey；
+  - ShardKey 包含的 Field 不可以修改。
+
+- 4.4 版本之后: 
+  - ShardKey 大小无限制；
+  - 支持复合哈希分片键；
+  - Document 中可以不包含 ShardKey，插入时被当做 Null 处理；
+  - 为 ShardKey 添加后缀 refineCollectionShardKey 命令，可以修改 ShardKey 包含的 Field；
+
+而在 4.2 版本之前，ShardKey 对应的值不可以修改；4.2 版本之后，如果 ShardKey 为非_ID 字段，那么可以修改 ShardKey 对应的值。
+
+## 八. 总结
 
 - 分片集群可以有效解决性能瓶颈及系统扩容问题
 - 分片额外消耗较多，成本高，管理复杂，能不分片尽量不要分片
