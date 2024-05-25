@@ -51,3 +51,5 @@
 [SpringBoot自动配置之条件注解](./subfile/_22SpringBoot自动配置之条件注解.md)
 
 [SpringBoot SPI机制](./subfile/_21SpringBoot的SPI机制.md)
+
+[SpringBoot集成Apollo源码分析](./subfile/_26SpringBoot集成Apollo源码分析.md)
