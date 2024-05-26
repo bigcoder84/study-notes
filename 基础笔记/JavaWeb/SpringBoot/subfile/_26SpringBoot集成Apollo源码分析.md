@@ -1051,11 +1051,224 @@ public class RemoteConfigLongPollService {
 
 2. 发送属性变更通知，注意在这里就不像 `Resporsitory` 层发送的是整个仓库的变更事件，而发送的是某一个属性变更的事件。Repository配置变更事件监听是实现 `RepositoryChangeListener`，属性变更事件监听是实现 `ConfigChangeListener`
 
+## 三. Apollo如何实现Spring Bean配置属性的实时更新
+
+在 SpringBoot 中使用 Apollo 客户端一般都需要启用 `@EnableApolloConfig` 注解：
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@Documented
+@Import(ApolloConfigRegistrar.class)
+public @interface EnableApolloConfig {
+  /**
+   * Apollo namespaces to inject configuration into Spring Property Sources.
+   */
+  String[] value() default {ConfigConsts.NAMESPACE_APPLICATION};
+
+  /**
+   * The order of the apollo config, default is {@link Ordered#LOWEST_PRECEDENCE}, which is Integer.MAX_VALUE.
+   * If there are properties with the same name in different apollo configs, the apollo config with smaller order wins.
+   * @return
+   */
+  int order() default Ordered.LOWEST_PRECEDENCE;
+}
+```
+
+`@EnableApolloConfig` 通过 `@Import` 注解注入了 `ApolloConfigRegistrar` 类，该类是Apollo组件注入的入口：
+
+```java
+public class ApolloConfigRegistrar implements ImportBeanDefinitionRegistrar, EnvironmentAware {
+
+  private final ApolloConfigRegistrarHelper helper = ServiceBootstrap.loadPrimary(ApolloConfigRegistrarHelper.class);
+
+  @Override
+  public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
+    helper.registerBeanDefinitions(importingClassMetadata, registry);
+  }
+
+  @Override
+  public void setEnvironment(Environment environment) {
+    this.helper.setEnvironment(environment);
+  }
+
+}
+```
+
+该类实现了两个扩展点：
+
+- EnvironmentAware：凡注册到Spring容器内的bean，实现了EnvironmentAware接口重写setEnvironment方法后，在工程启动时可以获得application.properties的配置文件配置的属性值。
+- ImportBeanDefinitionRegistrar：该扩展点作用是通过自定义的方式直接向容器中注册bean。实现ImportBeanDefinitionRegistrar接口，在重写的registerBeanDefinitions方法中定义的Bean，就和使用xml中定义Bean效果是一样的。ImportBeanDefinitionRegistrar是Spring框架提供的一种机制，允许通过api代码向容器批量注册BeanDefinition。它实现了BeanFactoryPostProcessor接口，可以在所有bean定义加载到容器之后，bean实例化之前，对bean定义进行修改。使用ImportBeanDefinitionRegistrar，我们可以向容器中批量导入bean，而不需要在配置文件中逐个配置。
+
+`ApolloConfigRegistrar#setEnvironment` 将 `Environment` 暂存下来；`ApolloConfigRegistrar#registerBeanDefinitions` 中调用 `ApolloConfigRegistrarHelper.registerBeanDefinitions` 注册了一系列Spring扩展点实例至Ioc容器：
+
+```java
+  // com.ctrip.framework.apollo.spring.spi.DefaultApolloConfigRegistrarHelper#registerBeanDefinitions
+  @Override
+  public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
+    AnnotationAttributes attributes = AnnotationAttributes
+        .fromMap(importingClassMetadata.getAnnotationAttributes(EnableApolloConfig.class.getName()));
+    final String[] namespaces = attributes.getStringArray("value");
+    final int order = attributes.getNumber("order");
+    final String[] resolvedNamespaces = this.resolveNamespaces(namespaces);
+    PropertySourcesProcessor.addNamespaces(Lists.newArrayList(resolvedNamespaces), order);
+
+    Map<String, Object> propertySourcesPlaceholderPropertyValues = new HashMap<>();
+    // to make sure the default PropertySourcesPlaceholderConfigurer's priority is higher than PropertyPlaceholderConfigurer
+    propertySourcesPlaceholderPropertyValues.put("order", 0);
+
+    // PropertySourcesPlaceholderConfigurer是 SpringBoot 框架自身的占位符处理配置，占位符的处理主要是将 ${apollo.value} 这样的字符串解析出 关键字 apollo.value，再使用这个 key 通过 PropertySourcesPropertyResolver 从 PropertySource 中找到对应的属性值替换掉占位符
+    BeanRegistrationUtil.registerBeanDefinitionIfNotExists(registry, PropertySourcesPlaceholderConfigurer.class,
+            propertySourcesPlaceholderPropertyValues);
+    BeanRegistrationUtil.registerBeanDefinitionIfNotExists(registry, AutoUpdateConfigChangeListener.class);
+    // 用于拉取 @EnableApolloConfig 配置的 namespace 的远程配置
+    BeanRegistrationUtil.registerBeanDefinitionIfNotExists(registry, PropertySourcesProcessor.class);
+    // 用于处理 Apollo 的专用注解
+    BeanRegistrationUtil.registerBeanDefinitionIfNotExists(registry, ApolloAnnotationProcessor.class);
+    // 用于处理 @Value 注解标注的类成员变量和对象方法
+    BeanRegistrationUtil.registerBeanDefinitionIfNotExists(registry, SpringValueProcessor.class);
+    // 用于处理 XML 文件中的占位符
+    BeanRegistrationUtil.registerBeanDefinitionIfNotExists(registry, SpringValueDefinitionProcessor.class);
+  }
+```
+
+`PropertySourcesProcessor` 是 Apollo 最关键的组件之一，并且其实例化优先级也是最高的，`PropertySourcesProcessor#postProcessBeanFactory()` 会在该类实例化的时候被回调，该方法的处理如下：
+
+```java
+  // com.ctrip.framework.apollo.spring.config.PropertySourcesProcessor#postProcessBeanFactory
+
+  @Override
+  public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+    this.configUtil = ApolloInjector.getInstance(ConfigUtil.class);
+    // 调用 PropertySourcesProcessor#initializePropertySources() 拉取远程 namespace 配置
+    initializePropertySources();
+    // 调用 PropertySourcesProcessor#initializeAutoUpdatePropertiesFeature() 给所有缓存在本地的 Config 配置添加监听器
+    initializeAutoUpdatePropertiesFeature(beanFactory);
+  }
+```
+
+1. 调用 `PropertySourcesProcessor#initializePropertySources()` 拉取远程 namespace 配置：
+
+2. 调用 `PropertySourcesProcessor#initializeAutoUpdatePropertiesFeature()` 给所有缓存在本地的 Config 配置添加监听器
+
+   ```java
+    // com.ctrip.framework.apollo.spring.config.PropertySourcesProcessor#initializeAutoUpdatePropertiesFeature 
+    private void initializeAutoUpdatePropertiesFeature(ConfigurableListableBeanFactory beanFactory) {
+       if (!AUTO_UPDATE_INITIALIZED_BEAN_FACTORIES.add(beanFactory)) {
+         return;
+       }
+       
+       // 当收到配置变更回调后，会发送 ApolloConfigChangeEvent 事件
+       ConfigChangeListener configChangeEventPublisher = changeEvent ->
+           applicationEventPublisher.publishEvent(new ApolloConfigChangeEvent(changeEvent));
+   
+       List<ConfigPropertySource> configPropertySources = configPropertySourceFactory.getAllConfigPropertySources();
+       for (ConfigPropertySource configPropertySource : configPropertySources) {
+         // 将配置变更监听器注册进 DefaultConfig中
+         configPropertySource.addChangeListener(configChangeEventPublisher);
+       }
+     }
+   ```
+
+   `ConfigPropertySource#addChangeListener()` 方法如下，在上文中分析过 `ConfigPropertySource` 包装类，我们知道这里的 `this.source.addChangeListener(listener)` 实际调用的是 `DefaultConfig#addChangeListener()` 方法。在上文中我们了解`DefaultConfig` 收到来自 `LocalFileConfigRepository` 配置变更后，会计算出具体的属性变更信息，并回调`ConfigChangeListener#onChange` 方法，而在这里的定义中，`onChange` 方法会发送一个 `ApolloConfigChangeEvent` 类型的Spring事件：
+
+   ```java
+   ConfigChangeListener configChangeEventPublisher = changeEvent ->
+           applicationEventPublisher.publishEvent(new ApolloConfigChangeEvent(changeEvent));
+   ```
+
+在 `DefaultApolloConfigRegistrarHelper#registerBeanDefinitions` 会注册 `AutoUpdateConfigChangeListener` Bean进入Ioc容器，而该监听器就是用于监听 `ApolloConfigChangeEvent` 事件，当属性发生变更调用 `AutoUpdateConfigChangeListener#onChange` 方法：
+
+```java
+ // com.ctrip.framework.apollo.spring.property.AutoUpdateConfigChangeListener#onChange
+ @Override
+  public void onChange(ConfigChangeEvent changeEvent) {
+    Set<String> keys = changeEvent.changedKeys();
+    if (CollectionUtils.isEmpty(keys)) {
+      return;
+    }
+    for (String key : keys) {
+      // 1. check whether the changed key is relevant
+      Collection<SpringValue> targetValues = springValueRegistry.get(beanFactory, key);
+      if (targetValues == null || targetValues.isEmpty()) {
+        continue;
+      }
+
+      // 2. update the value
+      for (SpringValue val : targetValues) {
+        updateSpringValue(val);
+      }
+    }
+  }
+```
+
+`onChange` 方法会调用 `updateSpringValue` 更新对应Bean的属性值：
+
+```java
+  // com.ctrip.framework.apollo.spring.property.AutoUpdateConfigChangeListener#updateSpringValue
+  private void updateSpringValue(SpringValue springValue) {
+    try {
+      Object value = resolvePropertyValue(springValue);
+      springValue.update(value);
+
+      logger.info("Auto update apollo changed value successfully, new value: {}, {}", value,
+          springValue);
+    } catch (Throwable ex) {
+      logger.error("Auto update apollo changed value failed, {}", springValue.toString(), ex);
+    }
+  }
+```
+
+1. 首先调用 `AutoUpdateConfigChangeListener#resolvePropertyValue()` 方法借助 SpringBoot 的组件将 @Value 中配置的占位符替换为 PropertySource 中的对应 key 的属性值，此处涉及到 Spring 创建 Bean 对象时的属性注入机制，比较复杂，暂不作深入分析。
+2. 调用 `SpringValue#update()`方法实际完成属性值的更新。
+
+`SpringValue#update()`方法其实就是使用反射机制运行时修改 Bean 对象中的成员变量，至此自动更新完成：
+
+```java
+ // com.ctrip.framework.apollo.spring.property.SpringValue#update 
+ public void update(Object newVal) throws IllegalAccessException, InvocationTargetException {
+    if (isField()) {
+      injectField(newVal);
+    } else {
+      injectMethod(newVal);
+    }
+  }
+
+  private void injectField(Object newVal) throws IllegalAccessException {
+    Object bean = beanRef.get();
+    if (bean == null) {
+      return;
+    }
+    boolean accessible = field.isAccessible();
+    field.setAccessible(true);
+    field.set(bean, newVal);
+    field.setAccessible(accessible);
+  }
+```
+
+## 四. 总结
+
+Apollo 启动时会在 `ApolloApplicationContextInitializer` 扩展点开始加载远端配置，而Apollo客户端获取配置采用多层设计 `DefaultConfig`->`LocalFileConfigRepository`->`RemoteConfigRepository`，最终由 `RemoteConfigRepository` 完成远端配置拉取
+
+每一层的作用各不一样：
+
+- `RemoteConfigRepository` 负责拉取远端配置并通知 `LocalFileConfigRepository` 更新配置。
+- `LocalFileConfigRepository` 负责将远端配置缓存至本地文件，设计这一层主要是为了在Apollo Server 不可用时保证业务服务的可用性。当 `LocalFileConfigRepository` 配置发生变更时负责通知 `DefaultConfig` 更新配置。
+- `DefaultConfig` 负责缓存Apollo配置信息在内存中，当 `DefaultConfig` 配置发生变更时，会回调 `AutoUpdateConfigChangeListener#onChange` 方法更新Java Bean 中的属性。
+
+Apollo 客户端为了能够实时更新 Apollo Server 中的配置，使用下列手段来实现服务端配置变更的感知：
+
+- 客户端和服务端保持了一个长连接（通过Http Long Polling实现），从而能第一时间获得配置更新的推送（`RemoteConfigRepository`）
+
+- 客户端还会定时从Apollo配置中心服务端拉取应用的最新配置。
+
+  - 这是一个fallback机制，为了防止推送机制失效导致配置不更新。客户端定时拉取会上报本地版本，所以一般情况下，对于定时拉取的操作，服务端都会返回304 - Not Modified
+
+  - 定时频率默认为每5分钟拉取一次，客户端也可以通过在运行时指定 `System Property：apollo.refreshInterval` 来覆盖，单位为分钟
 
 
 
-
-> 本文参考：
+> 参考文章：
 >
 > [Apollo 客户端集成 SpringBoot 的源码分析(1)-启动时配置获取_spring 无法实例化apolloapplicationcontextinitializer的解决-CSDN博客](https://blog.csdn.net/weixin_45505313/article/details/117994726)
 >
@@ -1066,4 +1279,6 @@ public class RemoteConfigLongPollService {
 > [apollo client 自动更新深入解析 - 掘金 (juejin.cn)](https://juejin.cn/post/7087374731136991240#heading-6)
 >
 > [Apollo核心源码解析（二）：Apollo Client轮询配置（ConfigRepository与RemoteConfigLongPollService）、配置中心通用设计模型_apollo客户端和服务端保持长连接的源码-CSDN博客](https://blog.csdn.net/qq_40378034/article/details/114778207)
+>
+> [SpringBoot快速入门-ImportBeanDefinitionRegistrar详解 – 编程技术之美-IT之美 (itzhimei.com)](https://www.itzhimei.com/archives/2607.html)
 
