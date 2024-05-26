@@ -666,48 +666,8 @@ public abstract class AbstractConfigRepository implements ConfigRepository {
      }
    ```
 
-2. 如果配置发生变更，回调 `LocalFileConfigRepository.onRepositoryChange`方法，从而将最新配置同步到 `LocalFileConfigRepository`。而 `LocalFileConfigRepository` 在更新完本地文件缓存配置后，同样会回调 `DefaultConfig.onRepositoryChange` 同步内存缓存。
+2. 如果配置发生变更，回调 `LocalFileConfigRepository.onRepositoryChange`方法，从而将最新配置同步到 `LocalFileConfigRepository`。而 `LocalFileConfigRepository` 在更新完本地文件缓存配置后，同样会回调 `DefaultConfig.onRepositoryChange` 同步内存缓存，具体源码我们在后文分析。
 
-   ```java
-     // LocalFileConfigRepository.onRepositoryChange
-     @Override
-     public void onRepositoryChange(String namespace, Properties newProperties) {
-       if (newProperties.equals(m_fileProperties)) {
-         return;
-       }
-       Properties newFileProperties = propertiesFactory.getPropertiesInstance();
-       newFileProperties.putAll(newProperties);
-       // 将最新配置写入本地文件
-       updateFileProperties(newFileProperties, m_upstream.getSourceType());
-       // 回调 DefaultConfig.onRepositoryChange 方法
-       this.fireRepositoryChange(namespace, newProperties);
-     }
-   
-    //DefaultConfig.onRepositoryChange：
-     @Override
-     public synchronized void onRepositoryChange(String namespace, Properties newProperties) {
-       if (newProperties.equals(m_configProperties.get())) {
-         return;
-       }
-   
-       ConfigSourceType sourceType = m_configRepository.getSourceType();
-       Properties newConfigProperties = propertiesFactory.getPropertiesInstance();
-       newConfigProperties.putAll(newProperties);
-   
-       Map<String, ConfigChange> actualChanges = updateAndCalcConfigChanges(newConfigProperties,
-           sourceType);
-   
-       //check double checked result
-       if (actualChanges.isEmpty()) {
-         return;
-       }
-   
-       // 发送 属性变更给注册的 ConfigChangeListener
-       this.fireConfigChange(m_namespace, actualChanges);
-   
-       Tracer.logEvent("Apollo.Client.ConfigChanges", m_namespace);
-     }
-   ```
 
 ***
 
@@ -739,24 +699,357 @@ public abstract class AbstractConfigRepository implements ConfigRepository {
 **scheduleLongPollingRefresh()**：
 
 ```java
+  // com.ctrip.framework.apollo.internals.RemoteConfigRepository#scheduleLongPollingRefresh
   private void scheduleLongPollingRefresh() {
     //将自己注册到RemoteConfigLongPollService中,实现配置更新的实时通知
     //当RemoteConfigLongPollService长轮询到该RemoteConfigRepository的Namespace下的配置更新时,会回调onLongPollNotified()方法
     remoteConfigLongPollService.submit(m_namespace, this);
   }
+
+  // com.ctrip.framework.apollo.internals.RemoteConfigRepository#onLongPollNotified
+  public void onLongPollNotified(ServiceDTO longPollNotifiedServiceDto, ApolloNotificationMessages remoteMessages) {
+    //设置长轮询到配置更新的Config Service 下次同步配置时,优先读取该服务
+    m_longPollServiceDto.set(longPollNotifiedServiceDto);
+    m_remoteMessages.set(remoteMessages);
+    // 提交同步任务
+    m_executorService.submit(new Runnable() {
+      @Override
+      public void run() {
+        // 设置是否强制拉取缓存的标记为true
+        m_configNeedForceRefresh.set(true);
+        //尝试同步配置
+        trySync();
+      }
+    });
+  }  
 ```
 
+#### 2.4.2 RemoteConfigLongPollService
 
+`RemoteConfigLongPollService` 远程配置长轮询服务。负责长轮询 Apollo Server 的配置变更通知 `/notifications/v2` 接口。当有新的通知时，触发 `RemoteConfigRepository.onLongPollNotified`，立即轮询 Apollo Server 的配置读取`/configs/{appId}/{clusterName}/{namespace:.+}`接口。
 
+**构造方法**：
 
+```java
+public class RemoteConfigLongPollService {
+  private static final Logger logger = LoggerFactory.getLogger(RemoteConfigLongPollService.class);
+  private static final Joiner STRING_JOINER = Joiner.on(ConfigConsts.CLUSTER_NAMESPACE_SEPARATOR);
+  private static final Joiner.MapJoiner MAP_JOINER = Joiner.on("&").withKeyValueSeparator("=");
+  private static final Escaper queryParamEscaper = UrlEscapers.urlFormParameterEscaper();
+  private static final long INIT_NOTIFICATION_ID = ConfigConsts.NOTIFICATION_ID_PLACEHOLDER;
+  //90 seconds, should be longer than server side's long polling timeout, which is now 60 seconds
+  private static final int LONG_POLLING_READ_TIMEOUT = 90 * 1000;
+  /**
+   * 长轮询ExecutorService
+   */
+  private final ExecutorService m_longPollingService;
+  /**
+   * 是否停止长轮询的标识
+   */
+  private final AtomicBoolean m_longPollingStopped;
+  /**
+   * 失败定时重试策略
+   */
+  private SchedulePolicy m_longPollFailSchedulePolicyInSecond;
+  /**
+   * 长轮询的RateLimiter
+   */
+  private RateLimiter m_longPollRateLimiter;
+  /**
+   * 是否长轮询已经开始的标识
+   */
+  private final AtomicBoolean m_longPollStarted;
+  /**
+   * 长轮询的Namespace Multimap缓存
+   * key:namespace的名字
+   * value：RemoteConfigRepository集合
+   */
+  private final Multimap<String, RemoteConfigRepository> m_longPollNamespaces;
+  /**
+   * 通知编号Map缓存
+   * key:namespace的名字
+   * value:最新的通知编号
+   */
+  private final ConcurrentMap<String, Long> m_notifications;
+  /**
+   * 通知消息Map缓存
+   * key:namespace的名字
+   * value:ApolloNotificationMessages 对象
+   */
+  private final Map<String, ApolloNotificationMessages> m_remoteNotificationMessages;//namespaceName -> watchedKey -> notificationId
+  private Type m_responseType;
+  private static final Gson GSON = new Gson();
+  private ConfigUtil m_configUtil;
+  private HttpClient m_httpClient;
+  private ConfigServiceLocator m_serviceLocator;
+  private final ConfigServiceLoadBalancerClient configServiceLoadBalancerClient = ServiceBootstrap.loadPrimary(
+      ConfigServiceLoadBalancerClient.class);
 
-#### 2.4.2 LocalFileConfigRepository
+  /**
+   * Constructor.
+   */
+  public RemoteConfigLongPollService() {
+    m_longPollFailSchedulePolicyInSecond = new ExponentialSchedulePolicy(1, 120); //in second
+    m_longPollingStopped = new AtomicBoolean(false);
+    m_longPollingService = Executors.newSingleThreadExecutor(
+        ApolloThreadFactory.create("RemoteConfigLongPollService", true));
+    m_longPollStarted = new AtomicBoolean(false);
+    m_longPollNamespaces =
+        Multimaps.synchronizedSetMultimap(HashMultimap.<String, RemoteConfigRepository>create());
+    m_notifications = Maps.newConcurrentMap();
+    m_remoteNotificationMessages = Maps.newConcurrentMap();
+    m_responseType = new TypeToken<List<ApolloConfigNotification>>() {
+    }.getType();
+    m_configUtil = ApolloInjector.getInstance(ConfigUtil.class);
+    m_httpClient = ApolloInjector.getInstance(HttpClient.class);
+    m_serviceLocator = ApolloInjector.getInstance(ConfigServiceLocator.class);
+    m_longPollRateLimiter = RateLimiter.create(m_configUtil.getLongPollQPS());
+  }
+}
+```
 
+**submit**：
 
+```java
+  // com.ctrip.framework.apollo.internals.RemoteConfigLongPollService#submit
+  public boolean submit(String namespace, RemoteConfigRepository remoteConfigRepository) {
+    // 将远程仓库缓存下来
+    boolean added = m_longPollNamespaces.put(namespace, remoteConfigRepository);
+    m_notifications.putIfAbsent(namespace, INIT_NOTIFICATION_ID);
+    if (!m_longPollStarted.get()) {
+      // 若未启动长轮询定时任务,进行启动
+      startLongPolling();
+    }
+    return added;
+  }
+```
 
+**startLongPolling**：
 
+```java
+  // com.ctrip.framework.apollo.internals.RemoteConfigLongPollService#startLongPolling
+  private void startLongPolling() {
+    // CAS设置 m_longPollStarted 为 true，代表长轮询已启动
+    if (!m_longPollStarted.compareAndSet(false, true)) {
+      //already started
+      return;
+    }
+    try {
+      final String appId = m_configUtil.getAppId();
+      final String cluster = m_configUtil.getCluster();
+      final String dataCenter = m_configUtil.getDataCenter();
+      final String secret = m_configUtil.getAccessKeySecret();
+      // 获得长轮询任务的初始化延迟时间,单位毫秒
+      final long longPollingInitialDelayInMills = m_configUtil.getLongPollingInitialDelayInMills();
+      // 提交长轮询任务 该任务会持续且循环执行
+      m_longPollingService.submit(new Runnable() {
+        @Override
+        public void run() {
+          if (longPollingInitialDelayInMills > 0) {
+            try {
+              logger.debug("Long polling will start in {} ms.", longPollingInitialDelayInMills);
+              TimeUnit.MILLISECONDS.sleep(longPollingInitialDelayInMills);
+            } catch (InterruptedException e) {
+              //ignore
+            }
+          }
+          // 执行长轮询
+          doLongPollingRefresh(appId, cluster, dataCenter, secret);
+        }
+      });
+    } catch (Throwable ex) {
+      m_longPollStarted.set(false);
+      ApolloConfigException exception =
+          new ApolloConfigException("Schedule long polling refresh failed", ex);
+      Tracer.logError(exception);
+      logger.warn(ExceptionUtil.getDetailMessage(exception));
+    }
+  }
 
+```
 
+**doLongPollingRefresh**:
+
+```java
+  // com.ctrip.framework.apollo.internals.RemoteConfigLongPollService#doLongPollingRefresh
+  private void doLongPollingRefresh(String appId, String cluster, String dataCenter, String secret) {
+    ServiceDTO lastServiceDto = null;
+    // 循环执行,直到停止或线程中断
+    while (!m_longPollingStopped.get() && !Thread.currentThread().isInterrupted()) {
+      if (!m_longPollRateLimiter.tryAcquire(5, TimeUnit.SECONDS)) {
+        //wait at most 5 seconds
+        try {
+          // 若被限流，则等待5s
+          TimeUnit.SECONDS.sleep(5);
+        } catch (InterruptedException e) {
+        }
+      }
+      Transaction transaction = Tracer.newTransaction("Apollo.ConfigService", "pollNotification");
+      String url = null;
+      try {
+        // 获得Apollo Server的地址
+        if (lastServiceDto == null) {
+          lastServiceDto = this.resolveConfigService();
+        }
+
+        // 组装长轮询通知变更的地址
+        url =
+            assembleLongPollRefreshUrl(lastServiceDto.getHomepageUrl(), appId, cluster, dataCenter,
+                m_notifications);
+
+        logger.debug("Long polling from {}", url);
+
+        // 创建HttpRequest对象,并设置超时时间
+        HttpRequest request = new HttpRequest(url);
+        request.setReadTimeout(LONG_POLLING_READ_TIMEOUT);
+        if (!StringUtils.isBlank(secret)) {
+          Map<String, String> headers = Signature.buildHttpHeaders(url, appId, secret);
+          request.setHeaders(headers);
+        }
+
+        transaction.addData("Url", url);
+
+        // 发起请求,返回HttpResponse对象
+        final HttpResponse<List<ApolloConfigNotification>> response =
+            m_httpClient.doGet(request, m_responseType);
+
+        logger.debug("Long polling response: {}, url: {}", response.getStatusCode(), url);
+        // 有新的通知,刷新本地的缓存
+        if (response.getStatusCode() == 200 && response.getBody() != null) {
+          updateNotifications(response.getBody());
+          updateRemoteNotifications(response.getBody());
+          transaction.addData("Result", response.getBody().toString());
+          // 通知对应的RemoteConfigRepository们
+          notify(lastServiceDto, response.getBody());
+        }
+
+        //try to load balance
+        // 无新的通知,重置连接的Config Service的地址,下次请求不同的Config Service,实现负载均衡
+        if (response.getStatusCode() == 304 && ThreadLocalRandom.current().nextBoolean()) {
+          lastServiceDto = null;
+        }
+
+        // 标记成功
+        m_longPollFailSchedulePolicyInSecond.success();
+        transaction.addData("StatusCode", response.getStatusCode());
+        transaction.setStatus(Transaction.SUCCESS);
+      } catch (Throwable ex) {
+        lastServiceDto = null;
+        Tracer.logEvent("ApolloConfigException", ExceptionUtil.getDetailMessage(ex));
+        transaction.setStatus(ex);
+        long sleepTimeInSecond = m_longPollFailSchedulePolicyInSecond.fail();
+        logger.warn(
+            "Long polling failed, will retry in {} seconds. appId: {}, cluster: {}, namespaces: {}, long polling url: {}, reason: {}",
+            sleepTimeInSecond, appId, cluster, assembleNamespaces(), url, ExceptionUtil.getDetailMessage(ex));
+        try {
+          TimeUnit.SECONDS.sleep(sleepTimeInSecond);
+        } catch (InterruptedException ie) {
+          //ignore
+        }
+      } finally {
+        transaction.complete();
+      }
+    }
+  }
+```
+
+**notify**：
+
+```java
+  private void notify(ServiceDTO lastServiceDto, List<ApolloConfigNotification> notifications) {
+    if (notifications == null || notifications.isEmpty()) {
+      return;
+    }
+    for (ApolloConfigNotification notification : notifications) {
+      String namespaceName = notification.getNamespaceName();
+      // 创建新的RemoteConfigRepository数组，避免并发问题
+      List<RemoteConfigRepository> toBeNotified =
+          Lists.newArrayList(m_longPollNamespaces.get(namespaceName));
+      // 获得远程的ApolloNotificationMessages对象并克隆
+      ApolloNotificationMessages originalMessages = m_remoteNotificationMessages.get(namespaceName);
+      ApolloNotificationMessages remoteMessages = originalMessages == null ? null : originalMessages.clone();
+      //since .properties are filtered out by default, so we need to check if there is any listener for it
+      toBeNotified.addAll(m_longPollNamespaces
+          .get(String.format("%s.%s", namespaceName, ConfigFileFormat.Properties.getValue())));
+      // 循环RemoteConfigRepository进行通知
+      for (RemoteConfigRepository remoteConfigRepository : toBeNotified) {
+        try {
+          // 回调 RemoteConfigRepository.onLongPollNotified 方法，让其重新拉取最新的配置
+          remoteConfigRepository.onLongPollNotified(lastServiceDto, remoteMessages);
+        } catch (Throwable ex) {
+          Tracer.logError(ex);
+        }
+      }
+    }
+  }
+```
+
+至此 `RemoteConfigRepository` 从远端拉取配置的整个流程就已经分析完毕，Spring启动流程创建 `RemoteConfigRepository` 对象时会尝试第一次拉取namespace对应的配置，拉取完后会创建定时拉取任务和长轮询任务，长轮询任务调用 `RemoteConfigLongPollService#startLongPolling` 来实现，若服务端配置发生变更，则会回调 `RemoteConfigRepository#onLongPollNotified` 方法，在这个方法中会调用 `RemoteConfigRepository#sync` 方法重新拉取对应 namespace 的远端配置。
+
+#### 2.4.3 LocalFileConfigRepository
+
+前文我们提到当服务端配置发生变更后，`RemoteConfigRepository` 会收到配置变更通知并调用 `sync` 方法同步配置，若配置发生变更，则会继续回调 `LocalFileConfigRepository#onRepositoryChange`：
+
+```java
+// LocalFileConfigRepository.onRepositoryChange
+  @Override
+  public void onRepositoryChange(String namespace, Properties newProperties) {
+    if (newProperties.equals(m_fileProperties)) {
+      return;
+    }
+    Properties newFileProperties = propertiesFactory.getPropertiesInstance();
+    newFileProperties.putAll(newProperties);
+    // 将最新配置写入本地文件
+    updateFileProperties(newFileProperties, m_upstream.getSourceType());
+    // 回调 DefaultConfig.onRepositoryChange 方法
+    this.fireRepositoryChange(namespace, newProperties);
+  }
+```
+
+#### 2.4.4 DefaultConfig
+
+当 `LocalFileConfigRepository` 收到 `RemoteConfigRepository` 的配置变更通知并更新本地配置文件后，会继续回调 `DefaultConfig#onRepositoryChange`：
+
+```java
+ // com.ctrip.framework.apollo.internals.DefaultConfig#onRepositoryChange
+
+  @Override
+  public synchronized void onRepositoryChange(String namespace, Properties newProperties) {
+    // 如果属性配置未发生变更，则直接退出
+    if (newProperties.equals(m_configProperties.get())) {
+      return;
+    }
+    // 获取配置源类型，默认情况下 这里是 LocalFileConfigRepository
+    ConfigSourceType sourceType = m_configRepository.getSourceType();
+    Properties newConfigProperties = propertiesFactory.getPropertiesInstance();
+    newConfigProperties.putAll(newProperties);
+
+    // 更新配置缓存，并计算实际发生变更的key， key为发生变更的配置key，value是发生变更的配置信息
+    Map<String, ConfigChange> actualChanges = updateAndCalcConfigChanges(newConfigProperties,
+        sourceType);
+
+    //check double checked result
+    if (actualChanges.isEmpty()) {
+      // 如果未发生属性变更，则直接退出
+      return;
+    }
+
+    // 发送 属性变更给注册的 ConfigChangeListener
+    this.fireConfigChange(m_namespace, actualChanges);
+
+    Tracer.logEvent("Apollo.Client.ConfigChanges", m_namespace);
+  }
+```
+
+整体流程：
+
+1. 更新配置缓存，并计算实际发生变更的key，key为发生变更的配置key，value是发生变更的配置信息：
+
+   例如我们变更 `test.hello` 配置以及新增一个 `test.hello3` 配置：
+
+   ![](../images/57.png)
+
+2. 发送属性变更通知，注意在这里就不像 `Resporsitory` 层发送的是整个仓库的变更事件，而发送的是某一个属性变更的事件。Repository配置变更事件监听是实现 `RepositoryChangeListener`，属性变更事件监听是实现 `ConfigChangeListener`
 
 
 
@@ -765,6 +1058,8 @@ public abstract class AbstractConfigRepository implements ConfigRepository {
 > 本文参考：
 >
 > [Apollo 客户端集成 SpringBoot 的源码分析(1)-启动时配置获取_spring 无法实例化apolloapplicationcontextinitializer的解决-CSDN博客](https://blog.csdn.net/weixin_45505313/article/details/117994726)
+>
+> [Apollo 客户端集成 SpringBoot 的源码分析(2)-配置属性的注入更新-CSDN博客](https://nathan.blog.csdn.net/article/details/118068175)
 >
 > [Spring Boot 启动生命周期分析，每个组件的执行时序，扩展点分析等【建议收藏】（持续更新，见到一个分析一个） - 掘金 (juejin.cn)](https://juejin.cn/post/6950163739026931749)
 >
