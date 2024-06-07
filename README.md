@@ -100,6 +100,8 @@
 
 ## 其他
 
-[Python笔记](./基础笔记/Python/index.md)
+[Python](./其他/Python/index.md)
+
+[Golang](./其他/Go/index.md)
 
 [项目部署](./其他/项目部署/index.md)
