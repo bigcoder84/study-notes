@@ -56,8 +56,6 @@
 
 [MySQL](./基础笔记/数据库/MySQL/index.md)
 
-[SQLServer](./基础笔记/数据库/SQLServer/index.md)
-
 [Redis](./基础笔记/数据库/Redis/index.md)
 
 [MongoDB](./基础笔记/数据库/MongoDB/index.md)
@@ -78,21 +76,11 @@
 
 [Linux](./工具使用/操作系统/Linux/CentOS/index.md)
 
-[Windows](./工具使用/操作系统/Windows/index.md)
-
 [Mockito](./工具使用/Mockito/index.md)
 
 [Nginx](./工具使用/Nginx/index.md)
 
 [Maven](./工具使用/Maven/index.md)
-
-[Swagger](./工具使用/Swagger/index.md)
-
-[Jenkins](./工具使用/Jenkins/index.md)
-
-[IDEA](./工具使用/IDEA/index.md)
-
-[VMware](./工具使用/VMware系统安装笔记/index.md)
 
 [Hexo](./工具使用/Hexo/index.md)
 
@@ -100,8 +88,8 @@
 
 ## 其他
 
-[Python](./其他/Python/index.md)
+[Python](./Python/index.md)
 
-[Golang](./其他/Go/index.md)
+[Golang](./GoLang/基础语法/index.md)
 
 [项目部署](./其他/项目部署/index.md)
