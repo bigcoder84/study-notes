@@ -1,5 +1,7 @@
 # Sentinel
 
-[基础入门](./subfile/_1基础入门.md)
+[快速入门](./subfile/_1基础入门.md)
 
 [JavaWeb适配Sentinel](./subfile/_2JavaWeb适配Sentinel.md)
+
+[Sentinel整Nacos实现配置持久化](./subfile/_3Sentinel整Nacos实现配置持久化.md)
