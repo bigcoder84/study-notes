@@ -77,7 +77,7 @@ public class SentinelRuleConfiguration implements ApplicationListener<ContextRef
     // nacos dataId
     private static final String dataId = "sentinel-demo";
 
-//    private static final String NACOS_NAMESPACE_ID = "sentinel-config";
+    private static final String NACOS_NAMESPACE_ID = "SENTINEL";
 
     @Override
     public void onApplicationEvent(ContextRefreshedEvent event) {
@@ -98,20 +98,21 @@ public class SentinelRuleConfiguration implements ApplicationListener<ContextRef
 
 ```java
 import com.alibaba.nacos.api.NacosFactory;
+import com.alibaba.nacos.api.PropertyKeyConst;
 import com.alibaba.nacos.api.config.ConfigService;
+import java.util.Properties;
 
-/**
- * Nacos config sender for demo.
- *
- * @author Eric Zhao
- */
+
 public class NacosConfigSender {
 
     public static void main(String[] args) throws Exception {
-        // nacos地址
-        final String remoteAddress = "10.10.10.12:8848";
         final String groupId = "SENTINEL_GROUP";
-        final String dataId = "sentinel-demo";
+        final String dataId = "sentinel-demo-flow-rules";
+        // 创建ConfigService实例
+        Properties properties = new Properties();
+        properties.put(PropertyKeyConst.SERVER_ADDR, "10.10.10.12:8848");
+        // 指定namespace
+        properties.put(PropertyKeyConst.NAMESPACE, "SENTINEL");
         final String rule = "[\n"
             + "  {\n"
             + "    \"resource\": \"GET:/user/getById\",\n"
@@ -122,10 +123,11 @@ public class NacosConfigSender {
             + "    \"strategy\": 0\n"
             + "  }\n"
             + "]";
-        ConfigService configService = NacosFactory.createConfigService(remoteAddress);
+        ConfigService configService = NacosFactory.createConfigService(properties);
         System.out.println(configService.publishConfig(dataId, groupId, rule));
     }
 }
+
 ```
 
 执行完后，Nacos中就会出现对应的配置：
@@ -163,6 +165,10 @@ public class NacosConfigSender {
 首先通过git拉取下载源码，导入idea工程：
 
 [https://github.com/alibaba/Sentinel](https://github.com/alibaba/Sentinel)
+
+本文源码修改基于 Sentinel 1.8.8 版本，所有修改的源码可参考：
+
+[https://github.com/bigcoder84/Sentinel](https://github.com/bigcoder84/Sentinel)
 
 #### 4.1.1 流控规则接口
 
@@ -426,7 +432,7 @@ public class FlowControllerV2 {
 
 到这里所有流控规则相关的后端接口都已经改造完毕，我们需要接着改造前端页面，将页面请求的接口全部换成V2新接口。
 
-#### 4.2.6 修改前端路由配置（sidebar.html）
+#### 4.2.6 修改前端“流控规则”路由配置（sidebar.html）
 
 找到 `resources/app/scripts/directives/sidebar/sidebar.html` 文件，该文件是用来渲染左侧路由的：
 
@@ -468,3 +474,152 @@ public class FlowControllerV2 {
       })
 ```
 
+#### 4.2.7 修改前端“簇点链路”中流控配置的接口
+
+根据 `app/scripts/directives/sidebar/sidebar.html` 触点链路路由调用js方法可知，最终路由转发到了 `app/views/identity.html` 页面：
+
+```html
+<!-- app/scripts/directives/sidebar/sidebar.html -->
+<li ui-sref-active="active" ng-if="!entry.isGateway">
+  <a ui-sref="dashboard.identity({app: entry.app})">
+    <i class="glyphicon glyphicon-list-alt"></i>&nbsp;&nbsp;簇点链路</a>
+</li>
+```
+
+```js
+// app/scripts/app.js
+.state('dashboard.identity', {
+  templateUrl: 'app/views/identity.html',
+  url: '/identity/:app',
+  controller: 'IdentityCtl',
+  resolve: {
+    loadMyFiles: ['$ocLazyLoad', function ($ocLazyLoad) {
+      return $ocLazyLoad.load({
+        name: 'sentinelDashboardApp',
+        files: [
+          'app/scripts/controllers/identity.js',
+        ]
+      });
+    }]
+  }
+})
+```
+
+在 `app/views/identity.html` 页面中，我们需要将“流控”弹窗的保存按钮调用的接口换成V2版本，
+
+![](../images/18.png)
+
+`addNewFlowRule` 方法在 `app/scripts/controllers/identity.js` 文件中：
+
+```java
+    $scope.addNewFlowRule = function (resource) {
+      if (!$scope.macInputModel) {
+        return;
+      }
+      var mac = $scope.macInputModel.split(':');
+      flowRuleDialogScope = $scope.$new(true);
+      flowRuleDialogScope.currentRule = {
+        enable: false,
+        strategy: 0,
+        grade: 1,
+        controlBehavior: 0,
+        resource: resource,
+        limitApp: 'default',
+        clusterMode: false,
+        clusterConfig: {
+            thresholdType: 0
+        },
+        app: $scope.app,
+        ip: mac[0],
+        port: mac[1]
+      };
+
+      flowRuleDialogScope.flowRuleDialog = {
+        title: '新增流控规则',
+        type: 'add',
+        confirmBtnText: '新增',
+        saveAndContinueBtnText: '新增并继续添加',
+        showAdvanceButton: true
+      };
+      // $scope.flowRuleDialog = {
+      //     showAdvanceButton : true
+      // };
+      flowRuleDialogScope.saveRule = saveFlowRule;
+      flowRuleDialogScope.saveRuleAndContinue = saveFlowRuleAndContinue;
+      flowRuleDialogScope.onOpenAdvanceClick = function () {
+        flowRuleDialogScope.flowRuleDialog.showAdvanceButton = false;
+      };
+      flowRuleDialogScope.onCloseAdvanceClick = function () {
+        flowRuleDialogScope.flowRuleDialog.showAdvanceButton = true;
+      };
+
+      flowRuleDialog = ngDialog.open({
+        template: '/app/views/dialog/flow-rule-dialog.html',
+        width: 680,
+        overlay: true,
+        scope: flowRuleDialogScope
+      });
+    };
+```
+
+在这个方法中，会调用 `saveFlowRule` 方法保存流控规则：
+
+```java
+    function saveFlowRule() {
+      if (!FlowService.checkRuleValid(flowRuleDialogScope.currentRule)) {
+        return;
+      }
+      FlowService.newRule(flowRuleDialogScope.currentRule).success(function (data) {
+        if (data.code === 0) {
+          flowRuleDialog.close();
+          let url = '/dashboard/flow/' + $scope.app;
+          $location.path(url);
+        } else {
+          alert('失败：' + data.msg);
+        }
+      }).error((data, header, config, status) => {
+          alert('未知错误');
+      });
+    }
+```
+
+在这个方法中，会调用 `FlowService.newRule` 方法发送HTTP请求新建规则，成功后会将页面重定向至 ` '/dashboard/flow/' + $scope.app`，所以我们需要改两个地方：
+
+1. 将FlowService改成V2版本
+
+   ![](../images/20.png)
+
+2. 将重定向页面跳转至 ` '/dashboard/v2/flow/' + $scope.app`![](../images/19.png)
+
+#### 4.3.8 重新打包项目
+
+进入 `sentinel-dashboard` 目录，执行下列命令重新打包：
+
+```shell
+mvn clean package -Dmaven.test.skip
+```
+
+### 4.3 测试
+
+![](../images/2.gif)
+
+可以看到修改后的Dashboard成功将配置写入Nacos中，Nacos配置发生变更，也同时通知了订阅这些配置的客户端，使得业务服务能实时更新流控配置，即使业务服务重启，之前仍能正常从Nacos中拉取配置。
+
+## 五. 总结
+
+本文详细介绍了如何利用Nacos实现Sentinel Dashboard配置的持久化，解决了业务服务重启后配置丢失的问题。通过以下几个步骤，我们成功实现了配置的动态管理和持久化存储：
+
+1. **引入Nacos依赖**：在项目中添加了`sentinel-datasource-nacos`依赖，为后续集成打下基础。
+2. **配置自动加载**：通过实现`ReadableDataSource`接口，配置了规则自动从Nacos加载到Sentinel的流程。
+3. **Nacos配置写入**：通过编写`NacosConfigSender`类，实现了向Nacos写入配置的功能。
+4. **Dashboard源码改造**：针对Dashboard存在的问题，通过修改前后端源码，实现了配置的持久化存储和同步更新。
+
+通过这一系列的改造，我们不仅提高了Sentinel Dashboard的可用性和稳定性，还增强了其在生产环境中的实用性。现在，即使在业务服务重启的情况下，配置也不会丢失，确保了服务的连续性和一致性。
+
+本文只是讲解了“流控规则”持久化的源码修改过程，如果其它模块也有持久化的需求，也可以参考此过程进行相应的源码修改。
+
+> 本文参考至：
+>
+> [dynamic-rule-configuration | Sentinel (sentinelguard.io)](https://sentinelguard.io/zh-cn/docs/dynamic-rule-configuration.html)
+>
+> [Sentinel Dashboard（基于1.8.1）流控规则持久化到Nacos——涉及部分Sentinel Dashboard源码改造 - JJian - 博客园 (cnblogs.com)](https://www.cnblogs.com/jian0110/p/14139044.html)
