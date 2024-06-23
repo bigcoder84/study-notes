@@ -70,6 +70,8 @@
 
 [MySQL是怎样运行的-InnoDB数据页结构](./subfile/_35MySQL是怎样运行的-InnoDB数据页结构.md)
 
+[为什么常说MySQL单表数据量建议在2kw行内](./subfile/_36为什么常说MySQL单表数据量建议在2kw行内.md)
+
 [MySQL是怎样运行的-单表访问](./subfile/_27MySQL是怎样运行的-单表访问.md)
 
 [MySQL是怎样运行的-连接查询原理](./subfile/_28MySQL是怎样运行的-连接查询原理.md)
