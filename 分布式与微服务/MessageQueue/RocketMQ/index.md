@@ -37,3 +37,5 @@
 [RocketMQ读写分离](./subfile/_15RocketMQ读写分离.md)
 
 [RocketMQ消息轨迹](./subfile/_16RocketMQ消息轨迹.md)
+
+[RocketMQ基于Raft协议的主从切换原理](./subfile/_17RocketMQ基于Raft协议的主从切换原理.md)
