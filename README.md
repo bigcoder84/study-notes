@@ -32,7 +32,7 @@
 
 [分布式事务](./分布式与微服务/分布式事务/index.md)
 
-[消息中间件](./分布式与微服务/Dubbo/index.md)
+[消息中间件](./分布式与微服务/MessageQueue/index.md)
 
 [Dubbo](./分布式与微服务/Dubbo/index.md)
 
