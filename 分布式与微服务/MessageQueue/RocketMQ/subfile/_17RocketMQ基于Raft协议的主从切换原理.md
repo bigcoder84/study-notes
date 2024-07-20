@@ -1004,5 +1004,233 @@ private List<CompletableFuture<VoteResponse>> voteForQuorumResponses(long term, 
 
 ![](../images/64.png)
 
+## 三. RocketMQ DLedger 存储实现
 
+### 3.1 存储实现核心类
+
+介绍完Raft选主实现原理，我们现在来看看Raft第二部分“日志复制”的实现原理。下面先介绍一次Raft存储的核心实现类：
+
+- DLedgerStore：存储抽象类，该类有如下核心抽象方法：
+  - getMemberState： 获取节点状态机
+  - appendAsLeader：向主节点追加日志（数据）
+  - appendAsFollower：向从节点广播日志（数据）
+  - get：根据日志下标查找日志
+  - getLedgerEndTerm：获取Leader节点当前最大的投票轮次
+  - getLedgerEndIndex：获取Leader节点下一条日志写入的日志序号
+  - truncate：删除日志
+  - getFirstLogOfTargetTerm：从endIndex开始，向前追溯targetTerm任期的第一个日志
+  - updateLedgerEndIndexAndTerm：更新 Leader 节点维护的ledgerEndIndex和ledgerEndTerm
+  - startup：启动存储管理器
+  - shutdown：关闭存储管理器
+
+- DLedgerMemoryStore：DLedger基于内存实现的日志存储实现类。
+- DLedgerMmapFileStore：基于文件内存映射机制的存储实现，核心属性如下：
+  - ledgerBeforeBeginIndex：日志的起始序号
+  - ledgerBeforeBeginTerm：日志起始的投票轮次
+  - ledgerEndIndex：下一条日志下标（序号）
+  - ledgerEndTerm：当前最大的投票轮次
+- DLedgerConfig：DLedger的配置信息
+
+RocketMQ DLedger的上述核心类与RocketMQ存储模块的对应关系
+
+| RocketMQ存储模块                          | DLedger存储模块                        | 描述                       |
+| ----------------------------------------- | -------------------------------------- | -------------------------- |
+| MappedFile                                | DefaultMmapFile                        | 表示一个物理文件           |
+| MappedFileQueue                           | MmapFileList                           | 表示逻辑上连续多个物理文件 |
+| DefaultMessageStore                       | DLedgerMmapFileStore                   | 存储实现类                 |
+| CommitLog#FlushCommitLogService           | DLedgerMmapFileStore#FlushDataService  | 实现文件刷盘机制           |
+| DefaultMessageStore#CleanCommitLogService | DLedgerMmapFileStore#CleanSpaceService | 清理过期文件               |
+
+### 3.2 数据存储协议
+
+RocketMQ DLedger数据存储协议如下图：
+
+![](../images/65.png)
+
+
+
+1. magic：魔数，4字节。
+
+2. size：条目总长度，包含header（协议头）+body（消息体），占4字节。
+
+3. index：当前条目的日志序号，占8字节。
+4. term：条目所属的投票轮次，占8字节。
+5. pos：条目的物理偏移量，类似CommitLog文件的物理偏移量，占8字节。
+6. channel：保留字段，当前版本未使用，占4字节。
+7. chain crc：当前版本未使用，占4字节。
+8. body crc：消息体的CRC校验和，用来区分数据是否损坏，占4字节。
+9. body size：用来存储消息体的长度，占4个字节。
+10. body：消息体的内容。
+
+RocketMQ DLedger 中日志实例用 `DLedgerEntry` 表示：
+
+```java
+public class DLedgerEntry {
+
+    public final static int POS_OFFSET = 4 + 4 + 8 + 8;
+    public final static int HEADER_SIZE = POS_OFFSET + 8 + 4 + 4 + 4;
+    public final static int BODY_OFFSET = HEADER_SIZE + 4;
+
+    private int magic = DLedgerEntryType.NORMAL.getMagic();
+    private int size;
+    private long index;
+    private long term;
+    private long pos; //used to validate data
+    private int channel; //reserved
+    private int chainCrc; //like the block chain, this crc indicates any modification before this entry.
+    private int bodyCrc; //the crc of the body
+    private byte[] body;
+}
+```
+
+解码流程参考：io.openmessaging.storage.dledger.entry.DLedgerEntryCoder#decode(java.nio.ByteBuffer, boolean)：
+
+```java
+    public static DLedgerEntry decode(ByteBuffer byteBuffer, boolean readBody) {
+        DLedgerEntry entry = new DLedgerEntry();
+        entry.setMagic(byteBuffer.getInt());
+        entry.setSize(byteBuffer.getInt());
+        entry.setIndex(byteBuffer.getLong());
+        entry.setTerm(byteBuffer.getLong());
+        entry.setPos(byteBuffer.getLong());
+        entry.setChannel(byteBuffer.getInt());
+        entry.setChainCrc(byteBuffer.getInt());
+        entry.setBodyCrc(byteBuffer.getInt());
+        int bodySize = byteBuffer.getInt();
+        if (readBody && bodySize < entry.getSize()) {
+            byte[] body = new byte[bodySize];
+            byteBuffer.get(body);
+            entry.setBody(body);
+        }
+        return entry;
+    }
+```
+
+### 3.3 索引存储协议
+
+RocketMQ DLedger索引的存储协议如下图：
+
+![](../images/66.png)
+
+存储协议中各个字段的含义如下。
+
+1. magic：魔数。
+2. pos：条目的物理偏移量，类似CommitLog文件的物理偏移量，占8字节。
+3. size：条目长度。
+4. index：当前条目的日志序号，占8字节。
+5. term：条目所属的投票轮次，占8字节。
+
+RocketMQ DLedger 中索引实例用 `DLedgerIndexEntry` 表示：
+
+```java
+public class DLedgerIndexEntry {
+
+    private int magic;
+
+    private long position;
+
+    private int size;
+
+    private long index;
+
+    private long term;
+}
+```
+
+解码流程参考：io.openmessaging.storage.dledger.entry.DLedgerEntryCoder#decodeIndex：
+
+```java
+    public static DLedgerIndexEntry decodeIndex(ByteBuffer byteBuffer) {
+        DLedgerIndexEntry indexEntry = new DLedgerIndexEntry();
+        indexEntry.setMagic(byteBuffer.getInt());
+        indexEntry.setPosition(byteBuffer.getLong());
+        indexEntry.setSize(byteBuffer.getInt());
+        indexEntry.setIndex(byteBuffer.getLong());
+        indexEntry.setTerm(byteBuffer.getLong());
+        return indexEntry;
+    }
+```
+
+## 四. RocketMQ DLedger主从切换之日志追加
+
+Raft协议负责组主要包含两个步骤：Leader选举和日志复制。使用Raft协议的集群在向外提供服务之前需要先在集群中进行Leader选举，推举一个主节点接受客户端的读写请求。Raft协议负责组的其他节点只需要复制数据，不对外提供服务。当Leader节点接受客户端的写请求后，先将数据存储在Leader节点上，然后将日志数据广播给它的从节点，只有超过半数的节点都成功存储了该日志，Leader节点才会向客户端返回写入成功。
+
+### 4.1 日志追加流程概述
+
+Leader节点处理日志写入请求的入口为DLedgerServer的handleAppend()方法：
+
+```java
+    // io.openmessaging.storage.dledger.DLedgerServer#handleAppend
+
+	@Override
+    public CompletableFuture<AppendEntryResponse> handleAppend(AppendEntryRequest request) throws IOException {
+        try {
+            // 如果请求目的节点不是当前节点，返回错误
+            PreConditions.check(memberState.getSelfId().equals(request.getRemoteId()), DLedgerResponseCode.UNKNOWN_MEMBER, "%s != %s", request.getRemoteId(), memberState.getSelfId());
+            // 如果请求的集群不是当前节点所在的集群，则返回错误
+            PreConditions.check(memberState.getGroup().equals(request.getGroup()), DLedgerResponseCode.UNKNOWN_GROUP, "%s != %s", request.getGroup(), memberState.getGroup());
+            // 如果当前节点不是leader节点，则抛出异常
+            PreConditions.check(memberState.isLeader(), DLedgerResponseCode.NOT_LEADER);
+            PreConditions.check(memberState.getTransferee() == null, DLedgerResponseCode.LEADER_TRANSFERRING);
+            long currTerm = memberState.currTerm();
+            // 消息的追加是一个异步的过程，会将内容暂存到内存队列中。首先检查内存队列是否已满，如果已满则向客户端返回错误码，表示本次发送失败。如果未满，
+            // 则先将数据追加到Leader节点的PageCache中，然后转发到Leader的所有从节点，最后Leader节点等待从节点日志复制结果。
+            if (dLedgerEntryPusher.isPendingFull(currTerm)) {
+                AppendEntryResponse appendEntryResponse = new AppendEntryResponse();
+                appendEntryResponse.setGroup(memberState.getGroup());
+                appendEntryResponse.setCode(DLedgerResponseCode.LEADER_PENDING_FULL.getCode());
+                appendEntryResponse.setTerm(currTerm);
+                appendEntryResponse.setLeaderId(memberState.getSelfId());
+                return AppendFuture.newCompletedFuture(-1, appendEntryResponse);
+            }
+            AppendFuture<AppendEntryResponse> future;
+            if (request instanceof BatchAppendEntryRequest) {
+                BatchAppendEntryRequest batchRequest = (BatchAppendEntryRequest) request;
+                if (batchRequest.getBatchMsgs() == null || batchRequest.getBatchMsgs().isEmpty()) {
+                    throw new DLedgerException(DLedgerResponseCode.REQUEST_WITH_EMPTY_BODYS, "BatchAppendEntryRequest" +
+                        " with empty bodys");
+                }
+                // 将消息追加到Leader节点中
+                future = appendAsLeader(batchRequest.getBatchMsgs());
+            } else {
+                // 将消息追加到Leader节点中
+                future = appendAsLeader(request.getBody());
+            }
+            return future;
+        } catch (DLedgerException e) {
+            LOGGER.error("[{}][HandleAppend] failed", memberState.getSelfId(), e);
+            AppendEntryResponse response = new AppendEntryResponse();
+            response.copyBaseInfo(request);
+            response.setCode(e.getCode().getCode());
+            response.setLeaderId(memberState.getLeaderId());
+            return AppendFuture.newCompletedFuture(-1, response);
+        }
+    }
+```
+
+第一步：验证请求的合理性。
+
+1. 如果请求目的节点不是当前节点，返回错误。
+2. 如果请求的集群不是当前节点所在的集群，则返回错误。
+3. 如果当前节点不是leader节点，则抛出异常。
+
+第二步：消息的追加是一个异步过程，会将内容暂存到内存队列中。首先检查内存队列是否已满，如果已满则向客户端返回错误码，表示本次消息发送失败。如果队列未满，则先将数据追加到Leader节点的PageCache中，然后转发给Leader的所有从节点，最后Leader节点等待从节点日志复制的结果。
+
+### 4.2 判断Push队列是否已满
+
+```java
+    /**
+     * 判断队列是否已满
+     *
+     * @param currTerm
+     * @return
+     */
+    public boolean isPendingFull(long currTerm) {
+        checkTermForPendingMap(currTerm, "isPendingFull");
+        // 每一个投票轮次积压的日志数量默认不超过10000条，可通过配置改变该值
+        return pendingClosure.get(currTerm).size() > dLedgerConfig.getMaxPendingRequestsNum();
+    }
+```
+
+pendingClosure 中存储着
 
