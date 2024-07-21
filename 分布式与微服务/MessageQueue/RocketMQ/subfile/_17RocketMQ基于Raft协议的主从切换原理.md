@@ -1,6 +1,8 @@
 # RocketMQ基于Raft协议的主从切换原理
 
-> 本文代码注释参考：[bigcoder84/dledger](https://github.com/bigcoder84/dledger)
+> 本文所涉及的注释源码：[bigcoder84/dledger](https://github.com/bigcoder84/dledger)
+>
+> 参考转载至：《RocketMQ技术内幕 第二版》
 
 RocketMQ 4.5版本之前，可以采用主从架构进行集群部署，但是如果 master 节点挂掉，不能自动在集群中选举出新的 master 节点，需要人工介入，在4.5版本之后提供了 DLedger 模式，DLedger 是 Open Messaging 发布的一个基于 Raft 协议实现的Java类库，可以方便引用到系统中，满足其高可用、高可靠、强一致的需求，其中在 RocketMQ 中作为消息 Broker 存储高可用实现的一种解决方案。使用Raft算法，如果 master 节点出现故障，可以自动选举出新的 master 进行切换。
 
@@ -26,7 +28,49 @@ Raft是一个分布式领域的一致性协议，只是一个方法论，需要�
 
 客户端向DLedger集群发起一个写数据请求，Leader节点收到写请求后先将数据存入Leader节点，然后将数据广播给它所有的从节点。从节点收到Leader节点的数据推送后对数据进行存储，然后向主节点汇报存储的结果。Leader节点会对该日志的存储结果进行仲裁，如果超过集群数量的一半都成功存储了该数据，则向客户端返回写入成功，否则向客户端返回写入失败。
 
-## 二. RocketMQ DLedger Leader选举流程
+## 二. DLeger是什么
+
+DLedger 定位是一个工业级的 Java Library，可以友好地嵌入各类 Java 系统中，满足其高可用、高可靠、强一致的需求，和这一定位比较接近的是 [Ratis](https://github.com/apache/incubator-ratis)。
+
+Ratis 是一个典型的"日志 + 状态机"的实现，虽然其状态机可以自定义，却仍然不满足消息领域的需求。 在消息领域，如果根据日志再去构建“消息状态机”，就会产生 Double IO 的问题，造成极大的资源浪费，因此，在消息领域，是不需要状态机的，日志和消息应该是合二为一。
+相比于 Ratis，DLedger 只提供日志的实现，只拥有日志写入和读出的接口，且对顺序读出和随机读出做了优化，充分适应消息系统消峰填谷的需求。
+
+DLedger 的纯粹日志写入和读出，使其精简而健壮，总代码不超过4000行，测试覆盖率高达70%。而且这种原子化的设计，使其不仅可以充分适应消息系统，也可以基于这些日志去构建自己的状态机，从而适应更广泛的场景。
+
+综上所述，DLedger 是一个基于 Raft 实现的、高可靠、高可用、强一致的 Commitlog 存储 Library。
+
+DLedger 的实现大体可以分为以下两个部分： 
+
+1.选举 Leader 
+
+2.复制日志 
+
+其整体架构如下图：
+
+![](../images/67.png)
+
+后文我们将详细介绍 DLedger 的实现细节以及它是如何整合进RocketMQ中使得RocketMQ集群也能拥有分布式强一致性集群模式。
+
+### 2.1 DLedger应用
+
+在 Apache RocketMQ 中，DLedger 不仅被直接用来当做消息存储，也被用来实现一个嵌入式的 KV 系统，以存储元数据信息。
+
+#### 2.1.1 DLedger 作为 RocketMQ 的消息存储
+
+![](../images/68.png)
+
+1. DLedgerCommitlog 用来代替现有的 Commitlog 存储实际消息内容，它通过包装一个 DLedgerServer 来实现复制；
+2. 依靠 DLedger 的直接存取日志的特点，消费消息时，直接从 DLedger 读取日志内容作为消息返回给客户端；
+3. 依靠 DLedger 的 Raft 选举功能，通过 RoleChangeHandler 把角色变更透传给 RocketMQ 的Broker，从而达到主备自动切换的目标；
+
+#### 2.1.2 利用 DLedger 实现一个高可用的嵌入式 KV 存储
+
+![](../images/69.png)
+
+1. DLedger 用来存储 KV 的增删改日志；
+2. 通过将日志一条条 Apply 到本地 Map，比如 HashMap 或者 第三方 的 RocksDB等；
+
+## 三. RocketMQ DLedger Leader选举流程
 
 RocketMQ 实现Raft协议Leader选举，其代码并不在 RocketMQ 工程中，而是在 openmessaging 标准中。
 
@@ -50,7 +94,7 @@ DLedger选主模块中主要涉及如下类：
 
 - DLedgerServer：基于Raft协议的集群内节点的封装类。
 
-### 2.1 DLedgerLeaderElector核心类及核心属性
+### 3.1 DLedgerLeaderElector核心类及核心属性
 
 ```java
 /**
@@ -141,7 +185,7 @@ public class DLedgerLeaderElector {
 }
 ```
 
-### 2.2 选举状态管理器初始化
+### 3.2 选举状态管理器初始化
 
 通过DLedgerLeaderElector的startup()方法启动状态管理机：
 
@@ -235,11 +279,11 @@ StateMaintainer状态机的实现要点就是 “无限死循环”调用doWork(
 2. Follower：从节点，该状态下会开启定时器，尝试进入Candidate状态，以便发起投票选举，一旦收到主节点的心跳包，则重置定时器。
 3. Candidate：候选者，该状态下的节点会发起投票，尝试选择自己为主节点，选举成功后，不会存在该状态下的节点。
 
-### 2.3 选举状态机状态流转
+### 3.3 选举状态机状态流转
 
 MemberState的初始化，发现其初始状态为Candidate。接下来深入学习maintainAsCandidate()方法，以此探究实现原理。
 
-#### 2.3.1 maintainAsCandidate
+#### 3.3.1 maintainAsCandidate
 
 根据状态机的流转代码可知，当集群中节点的状态为Candidate时会执行该方法，处于该状态的节点会发起投票请求。
 
@@ -527,7 +571,7 @@ if (parseResult == VoteResponse.ParseResult.PASSED) {
 
 maintainAsCandidate()方法的流程就介绍到这里了，下面介绍maintainAsLeader()方法。
 
-#### 2.3.2 maintainAsLeader
+#### 3.3.2 maintainAsLeader
 
 经过 maintainAsCandidate 投票选举被其他节点选举为Leader后， 在该状态下会执行maintainAsLeader()方法，其他节点的状态还是Candidate，并在计时器过期后，又尝试发起选举。接下来重点分析成为Leader节点后，该节点会做些什么。
 
@@ -562,7 +606,7 @@ Leader状态的节点主要按固定频率向集群内的其他节点发送心�
 3. 记录本次发送心跳包的时间戳。
 4. 调用sendHeartbeats()方法向集群内的从节点发送心跳包。该方法我们在后文详细介绍。
 
-#### 2.3.3 maintainAsFollower
+#### 3.3.3 maintainAsFollower
 
 Candidate状态的节点在收到Leader节点发送的心跳包后，状态变更为Follower，我们先来看在Follower状态下，节点会做些什么：
 
@@ -590,7 +634,7 @@ private void maintainAsFollower() {
 
 上面3个方法就是状态机在当前状态下执行的处理逻辑，主要是结合当前实际的运行情况将状态机进行驱动，例如调用changeRoleToCandidate() 方法将自身状态变更为 Candidate，调用 changeRoleToLeader() 方法将状态变更为 Leader，调用 changeRoleToFollower() 方法将状态变更为 Follower。这3个方法的实现类似，接下来以 changeRoleToLeader() 方法为例进行讲解。
 
-#### 2.3.4 changeRoleToLeader
+#### 3.3.4 changeRoleToLeader
 
 当状态机从Candidate状态变更为Leader节点后会调用该方法，即当处于Candidate状态的节点在得到集群内超过半数节点的支持后将进入该状态，我们来看该方法的实现细节：
 
@@ -615,11 +659,11 @@ public void changeRoleToLeader(long term) {
 
 选举状态机状态的流转就介绍到这里，在上面的流程中我们忽略了两个重要的过程：发起投票请求与投票请求响应、发送心跳包与心跳包响应，接下来重点介绍这两个过程
 
-### 2.4 发送投票请求与处理投票请求
+### 3.4 发送投票请求与处理投票请求
 
 节点的状态为Candidate时会向集群内的其他节点发起投票请求（个人认为理解为拉票更好），向对方询问是否愿意选举“我”为Leader，对端节点会根据自己的情况对其投赞成票或拒绝票，如果投拒绝票，还会给出拒绝的原因，具体由voteForQuorumResponses()、handleVote()这两个方法实现，接下来我们分别对这两个方法进行详细分析
 
-#### 2.4.1 voteForQuorumResponses（发起投票请求）
+#### 3.4.1 voteForQuorumResponses（发起投票请求）
 
 ```java
 // io.openmessaging.storage.dledger.DLedgerLeaderElector#voteForQuorumResponses
@@ -670,7 +714,7 @@ private List<CompletableFuture<VoteResponse>> voteForQuorumResponses(long term, 
 
 遍历集群内的所有节点，依次构建投票请求并通过网络异步发送到对端节点，发起投票节点会默认为自己投上一票，投票逻辑被封装在handleVote()方法中。
 
-#### 2.4.2 handleVote(响应投票请求)
+#### 3.4.2 handleVote(响应投票请求)
 
 因为一个节点可能会收到多个节点的“拉票”请求，存在并发问 题，所以需要引入synchronized机制，锁定状态机memberState对象。接下来我们详细了解其实现逻辑：
 
@@ -762,11 +806,11 @@ private List<CompletableFuture<VoteResponse>> voteForQuorumResponses(long term, 
 7. 如果发起投票节点的ledgerEndTerm等于当前节点的ledgerEndTerm，并且ledgerEndIndex大于等于发起投票节点的ledgerEndIndex，因为这意味着当前节点的日志虽然和发起投票节点在同一轮次，但是当前节点的日志比投票发起者的更新，所以拒绝拉票。
 8. 如果以上校验都通过，则将自己的这一票投给这一个投票发起者。
 
-### 2.5 发送心跳包与处理心跳包
+### 3.5 发送心跳包与处理心跳包
 
 经过几轮投票，其中一个节点会被推举出来成为Leader节点。Leader节点为了维持其领导地位，会定时向从节点发送心跳包，接下来我们重点看心跳包的发送与响应
 
-#### 2.5.1 sendHeartbeats
+#### 3.5.1 sendHeartbeats
 
 ```java
 // io.openmessaging.storage.dledger.DLedgerLeaderElector#sendHeartbeats
@@ -912,7 +956,7 @@ private List<CompletableFuture<VoteResponse>> voteForQuorumResponses(long term, 
 4. 如果leader变成了其他节点，则将当前节点状态更改为Candidate。
 5. 最近成功发送心跳的时间戳超过最大允许的间隔时间，则将当前节点状态更改为Candidate。
 
-#### 2.5.2 handleHeartBeat
+#### 3.5.2 handleHeartBeat
 
 该方法是从节点在收到主节点的心跳包后的响应逻辑。
 
@@ -998,15 +1042,15 @@ private List<CompletableFuture<VoteResponse>> voteForQuorumResponses(long term, 
    3. 如果当前从节点的维护的主节点ID与发送心跳包的节点ID不同， 说明集群中存在另外一个Leader节点，则返回INCONSISTENT_LEADER，对端节点将进入Candidate状态
 3. 如果心跳中的任期大于当前节点的任期，则将自己的状态更改为Candidate，并进入新的任期选举状态，并返回TERM_NOT_READY，这样主节点可能会立即再发一次心跳。
 
-### 2.6 整体流程
+### 3.6 整体流程
 
 至此，我们从源码的角度分析了DLedger是如何实现Raft选主功能的，以及如何在一个节点发生宕机后进行主从切换。
 
 ![](../images/64.png)
 
-## 三. RocketMQ DLedger 存储实现
+## 四. RocketMQ DLedger 存储实现
 
-### 3.1 存储实现核心类
+### 4.1 存储实现核心类
 
 介绍完Raft选主实现原理，我们现在来看看Raft第二部分“日志复制”的实现原理。下面先介绍一次Raft存储的核心实现类：
 
@@ -1041,7 +1085,7 @@ RocketMQ DLedger的上述核心类与RocketMQ存储模块的对应关系
 | CommitLog#FlushCommitLogService           | DLedgerMmapFileStore#FlushDataService  | 实现文件刷盘机制           |
 | DefaultMessageStore#CleanCommitLogService | DLedgerMmapFileStore#CleanSpaceService | 清理过期文件               |
 
-### 3.2 数据存储协议
+### 4.2 数据存储协议
 
 RocketMQ DLedger数据存储协议如下图：
 
@@ -1106,7 +1150,7 @@ public class DLedgerEntry {
     }
 ```
 
-### 3.3 索引存储协议
+### 4.3 索引存储协议
 
 RocketMQ DLedger索引的存储协议如下图：
 
@@ -1119,6 +1163,12 @@ RocketMQ DLedger索引的存储协议如下图：
 3. size：条目长度。
 4. index：当前条目的日志序号，占8字节。
 5. term：条目所属的投票轮次，占8字节。
+
+**索引条目采用定长的方式进行的存储，目的是为了加速日志条目的查找的速度**。
+
+我们假设一种场景需要查询 index 下标对应的日志数据，由于日志条目时变长的，如果没有索引文件，我们需要在索引文件上一个一个条目的去遍历查找，这样的效率很低。
+
+有了索引文件后，我们可以通过 `index * 32` 找到Index所对应的索引存储的物理偏移量，这样我们可以轻松获取日志索引中存储的索引所处理的物理偏移量pos，然后通过日志的物理偏移量就可以直接获取到日志记录了。
 
 RocketMQ DLedger 中索引实例用 `DLedgerIndexEntry` 表示：
 
@@ -1151,11 +1201,11 @@ public class DLedgerIndexEntry {
     }
 ```
 
-## 四. RocketMQ DLedger主从切换之日志追加
+## 五. RocketMQ DLedger主从切换之日志追加
 
 Raft协议负责组主要包含两个步骤：Leader选举和日志复制。使用Raft协议的集群在向外提供服务之前需要先在集群中进行Leader选举，推举一个主节点接受客户端的读写请求。Raft协议负责组的其他节点只需要复制数据，不对外提供服务。当Leader节点接受客户端的写请求后，先将数据存储在Leader节点上，然后将日志数据广播给它的从节点，只有超过半数的节点都成功存储了该日志，Leader节点才会向客户端返回写入成功。
 
-### 4.1 日志追加流程概述
+### 5.1 日志追加流程概述
 
 Leader节点处理日志写入请求的入口为DLedgerServer的handleAppend()方法：
 
@@ -1216,21 +1266,883 @@ Leader节点处理日志写入请求的入口为DLedgerServer的handleAppend()�
 
 第二步：消息的追加是一个异步过程，会将内容暂存到内存队列中。首先检查内存队列是否已满，如果已满则向客户端返回错误码，表示本次消息发送失败。如果队列未满，则先将数据追加到Leader节点的PageCache中，然后转发给Leader的所有从节点，最后Leader节点等待从节点日志复制的结果。
 
-### 4.2 判断Push队列是否已满
-
 ```java
-    /**
-     * 判断队列是否已满
-     *
-     * @param currTerm
-     * @return
-     */
-    public boolean isPendingFull(long currTerm) {
-        checkTermForPendingMap(currTerm, "isPendingFull");
-        // 每一个投票轮次积压的日志数量默认不超过10000条，可通过配置改变该值
-        return pendingClosure.get(currTerm).size() > dLedgerConfig.getMaxPendingRequestsNum();
+	// io.openmessaging.storage.dledger.DLedgerServer#appendAsLeader(java.util.List<byte[]>)
+	public AppendFuture<AppendEntryResponse> appendAsLeader(List<byte[]> bodies) throws DLedgerException {
+        // 判断当前节点是否是Leader，如果不是则报错
+        PreConditions.check(memberState.isLeader(), DLedgerResponseCode.NOT_LEADER);
+        // 消息不能为空
+        if (bodies.size() == 0) {
+            return AppendFuture.newCompletedFuture(-1, null);
+        }
+        AppendFuture<AppendEntryResponse> future;
+        StopWatch watch = StopWatch.createStarted();
+        DLedgerEntry entry = new DLedgerEntry();
+        long totalBytes = 0;
+        if (bodies.size() > 1) {
+            long[] positions = new long[bodies.size()];
+            // 追加多个消息
+            for (int i = 0; i < bodies.size(); i++) {
+                totalBytes += bodies.get(i).length;
+                DLedgerEntry dLedgerEntry = new DLedgerEntry();
+                dLedgerEntry.setBody(bodies.get(i));
+                entry = dLedgerStore.appendAsLeader(dLedgerEntry);
+                positions[i] = entry.getPos();
+            }
+            // only wait last entry ack is ok
+            future = new BatchAppendFuture<>(positions);
+        } else {
+            DLedgerEntry dLedgerEntry = new DLedgerEntry();
+            totalBytes += bodies.get(0).length;
+            dLedgerEntry.setBody(bodies.get(0));
+            // 底层调用 appendAsLeader 追加日志
+            entry = dLedgerStore.appendAsLeader(dLedgerEntry);
+            future = new AppendFuture<>();
+        }
+        final DLedgerEntry finalResEntry = entry;
+        final AppendFuture<AppendEntryResponse> finalFuture = future;
+        final long totalBytesFinal = totalBytes;
+        finalFuture.handle((r, e) -> {
+            if (e == null && r.getCode() == DLedgerResponseCode.SUCCESS.getCode()) {
+                Attributes attributes = DLedgerMetricsManager.newAttributesBuilder().build();
+                // 监控上报
+                DLedgerMetricsManager.appendEntryLatency.record(watch.getTime(TimeUnit.MICROSECONDS), attributes);
+                DLedgerMetricsManager.appendEntryBatchCount.record(bodies.size(), attributes);
+                DLedgerMetricsManager.appendEntryBatchBytes.record(totalBytesFinal, attributes);
+            }
+            return r;
+        });
+        Closure closure = new Closure() {
+            @Override
+            public void done(Status status) {
+                AppendEntryResponse response = new AppendEntryResponse();
+                response.setGroup(DLedgerServer.this.memberState.getGroup());
+                response.setTerm(DLedgerServer.this.memberState.currTerm());
+                response.setIndex(finalResEntry.getIndex());
+                response.setLeaderId(DLedgerServer.this.memberState.getLeaderId());
+                response.setPos(finalResEntry.getPos());
+                response.setCode(status.code.getCode());
+                finalFuture.complete(response);
+            }
+        };
+        dLedgerEntryPusher.appendClosure(closure, finalResEntry.getTerm(), finalResEntry.getIndex());
+        return finalFuture;
     }
 ```
 
-pendingClosure 中存储着
+日志追加时会有两种模式：单条追加和批量追加。`appendAsLeader` 方法主要将两种模式的追加进行统一封装，最后调用 `DLedgerStore#appendAsLeader` 将日志存储到指定位置。
+
+### 5.2 Leader节点日志存储
+
+Leader节点的数据存储主要由DLedgerStore的appendAsLeader() 方法实现。DLedger提供了基于内存和基于文件两种持久化实现，本节重点关注基于文件的存储实现方法，其实现类为 DLedgerMmapFileStore。
+
+```java
+    // io.openmessaging.storage.dledger.store.file.DLedgerMmapFileStore#appendAsLeader
+
+    @Override
+    public DLedgerEntry appendAsLeader(DLedgerEntry entry) {
+        // 第一步：判断当前节点是否是Leader，如果不是则报错
+        PreConditions.check(memberState.isLeader(), DLedgerResponseCode.NOT_LEADER);
+        // 第二步：判断磁盘是否已满
+        PreConditions.check(!isDiskFull, DLedgerResponseCode.DISK_FULL);
+        // 从本地线程变量中获取一个存储数据用的ByteBuffer和一个存储索引用的ByteBuffer。存储数据用的ByteBuffer大小为4MB，存储索引用的ByteBuffer大小为64B。
+        ByteBuffer dataBuffer = localEntryBuffer.get();
+        ByteBuffer indexBuffer = localIndexBuffer.get();
+        // 对客户端发来的日志进行编码，并将编码后的日志数据写入ByteBuffer中。
+        DLedgerEntryCoder.encode(entry, dataBuffer);
+        int entrySize = dataBuffer.remaining();
+        // 锁定状态机
+        synchronized (memberState) {
+            // 再一次判断是否是Leader节点
+            PreConditions.check(memberState.isLeader(), DLedgerResponseCode.NOT_LEADER, null);
+            PreConditions.check(memberState.getTransferee() == null, DLedgerResponseCode.LEADER_TRANSFERRING, null);
+            // 为当前日志条目设置序号、投票轮次等信息
+            long nextIndex = ledgerEndIndex + 1;
+            entry.setIndex(nextIndex);
+            entry.setTerm(memberState.currTerm());
+            // 将当前日志（包括序号、投票轮次等）写入索引ByteBuffer中。
+            DLedgerEntryCoder.setIndexTerm(dataBuffer, nextIndex, memberState.currTerm(), entry.getMagic());
+            // 计算消息的起始物理偏移量，与CommitLog文件的物理偏移量设计思想相同
+            long prePos = dataFileList.preAppend(dataBuffer.remaining());
+            entry.setPos(prePos);
+            PreConditions.check(prePos != -1, DLedgerResponseCode.DISK_ERROR, null);
+            // 将该偏移量写入数据ByteBuffer中
+            DLedgerEntryCoder.setPos(dataBuffer, prePos);
+            for (AppendHook writeHook : appendHooks) {
+                writeHook.doHook(entry, dataBuffer.slice(), DLedgerEntry.BODY_OFFSET);
+            }
+            // 调用DataFileList的append方法，将日志追加到PageCache中，此时数据还没有刷写到硬盘中。
+            long dataPos = dataFileList.append(dataBuffer.array(), 0, dataBuffer.remaining());
+            PreConditions.check(dataPos != -1, DLedgerResponseCode.DISK_ERROR, null);
+            PreConditions.check(dataPos == prePos, DLedgerResponseCode.DISK_ERROR, null);
+            DLedgerEntryCoder.encodeIndex(dataPos, entrySize, DLedgerEntryType.NORMAL.getMagic(), nextIndex, memberState.currTerm(), indexBuffer);
+            // 将索引的ByteBuffer写入PageCache中
+            long indexPos = indexFileList.append(indexBuffer.array(), 0, indexBuffer.remaining(), false);
+            PreConditions.check(indexPos == entry.getIndex() * INDEX_UNIT_SIZE, DLedgerResponseCode.DISK_ERROR, null);
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.info("[{}] Append as Leader {} {}", memberState.getSelfId(), entry.getIndex(), entry.getBody().length);
+            }
+            // 日志序号+1
+            ledgerEndIndex++;
+            // 记录当前最大的投票轮次
+            ledgerEndTerm = memberState.currTerm();
+            updateLedgerEndIndexAndTerm();
+            return entry;
+        }
+    }
+```
+
+在该方法中，主要执行以下逻辑：
+
+1. **检查Leader状态**：首先，方法检查当前节点是否是集群中的Leader节点，如果不是则抛出错误。
+2. **检查磁盘空间**：接着，检查磁盘是否已满，如果已满则抛出错误。
+3. **获取缓冲区**：从本地线程变量中获取用于存储数据和索引的ByteBuffer，数据缓冲区大小为4MB，索引缓冲区大小为64B。
+4. **编码日志条目**：将传入的日志条目进行编码，并写入数据ByteBuffer中。
+5. **设置日志条目信息**：在同步块中，再次检查Leader状态，确保没有发生领导者转移。然后为日志条目设置索引、投票轮次等信息。
+6. **计算物理偏移量**：计算日志条目的起始物理偏移量，并设置到日志条目中。
+7. **执行写入钩子**：如果有注册的写入钩子（AppendHook），则执行这些钩子。
+8. **追加数据到PageCache**：将编码后的数据追加到PageCache中，需要注意此时数据尚未写入硬盘。
+9. **编码索引信息**：将索引信息编码，包括数据位置、日志大小、日志类型、索引和投票轮次。
+10. **写入索引到PageCache**：将索引信息追加到索引文件列表的PageCache中。
+11. **日志和索引位置检查**：检查索引写入的位置是否正确。
+12. **更新日志存储状态**：更新日志的结束索引和投票轮次，并将这些信息持久化。
+13. **返回日志条目**：最后，方法返回追加的日志条目。
+
+日志追加到Leader节点的PageCache后，将异步转发给它所有的从节点，然后等待各从节点的反馈，并对这些反馈结果进行仲裁，只有集群内超过半数的节点存储了该条日志，Leader节点才可以向客户端返回日志写入成功，日志的复制将在后面详细介绍，在介绍Leader节点如何等待从节点复制、响应ACK之前，我们再介绍一下与存储相关的两个核心方法：DataFileList的preAppend()与append()方法。
+
+#### 5.2.1 DataFileList#preAppend
+
+DataFileList的preAppend()方法为预写入，主要是根据当前日志的长度计算该条日志的物理偏移量：
+
+```java
+    // io.openmessaging.storage.dledger.store.file.MmapFileList#preAppend(int, boolean)
+
+    /**
+     * 日志预写入，主要是根据当前日志的长度计算该条日志的物理偏移量，该方法主要处理写入动作处于文件末尾的场景。
+     * 因为会存在日志写入时，当前文件容纳不下的情况，如果出现这种情况会新建一个新的文件，并返回新文件的起始位置作为写入位置。
+     *
+     * @param len 需要申请的长度
+     * @param useBlank 是否需要填充
+     * @return
+     */
+    public long preAppend(int len, boolean useBlank) {
+        // 获取逻辑文件中最后一个物理文件
+        MmapFile mappedFile = getLastMappedFile();
+        if (null == mappedFile || mappedFile.isFull()) {
+            mappedFile = getLastMappedFile(0);
+        }
+        if (null == mappedFile) {
+            LOGGER.error("Create mapped file for {}", storePath);
+            return -1;
+        }
+        int blank = useBlank ? MIN_BLANK_LEN : 0;
+        if (len + blank > mappedFile.getFileSize() - mappedFile.getWrotePosition()) {
+            // 如果当前文件剩余空间已不足以存放一条消息
+            if (blank < MIN_BLANK_LEN) {
+                // 如果当前文件剩余的空间少于MIN_BLANK_LEN，将返回-1，表 示存储错误，需要人工干预，正常情况下是不会出现这种情况的，
+                // 因为写入一条消息之前会确保能容纳待写入的消息，并且还需要空余MIN_BLANK_LEN个字节，因为一个独立的物理文件，
+                // 默认会填充文件结尾魔数（BLANK_MAGIC_CODE）。
+                LOGGER.error("Blank {} should ge {}", blank, MIN_BLANK_LEN);
+                return -1;
+            } else {
+                // 如果空余空间大于MIN_BLANK_LEN，会首先写入文件结尾魔数（4字节），然后将该文件剩余的字节数写入接下来的4个字节，表示该文件全部用完。
+                // 后面创建一个新文件，使得当前日志能够写入新的文件中。
+                ByteBuffer byteBuffer = ByteBuffer.allocate(mappedFile.getFileSize() - mappedFile.getWrotePosition());
+                byteBuffer.putInt(BLANK_MAGIC_CODE);
+                byteBuffer.putInt(mappedFile.getFileSize() - mappedFile.getWrotePosition());
+                if (mappedFile.appendMessage(byteBuffer.array())) {
+                    //need to set the wrote position
+                    // 将写指针置入文件末尾，这样在下一次调用 getLastMappedFile 方法时就会创建一个新的文件
+                    mappedFile.setWrotePosition(mappedFile.getFileSize());
+                } else {
+                    LOGGER.error("Append blank error for {}", storePath);
+                    return -1;
+                }
+                // 如果文件以写满，这里会创建一个新的文件，
+                mappedFile = getLastMappedFile(0);
+                if (null == mappedFile) {
+                    LOGGER.error("Create mapped file for {}", storePath);
+                    return -1;
+                }
+            }
+        }
+        // 如果当前文件有剩余的空间容纳当前日志，则返回待写入消息的物理起始偏移量
+        return mappedFile.getFileFromOffset() + mappedFile.getWrotePosition();
+    }
+
+```
+
+1. 如果当前文件剩余的空间少于MIN_BLANK_LEN，将返回-1，表示存储错误，需要人工干预，正常情况下是不会出现这种情况的，因为写入一条消息之前会确保能容纳待写入的消息，并且还需要空余 MIN_BLANK_LEN 个字节，因为一个独立的物理文件，默认会填充文件结尾魔数（BLANK_MAGIC_CODE）。
+2. 如果空余空间大于MIN_BLANK_LEN，会首先写入文件结尾魔数（4字节），然后将该文件剩余的字节数写入接下来的4个字节，表示该文件全部用完。然后创建一个新的文件，并返回新文件的起始位置，表示这条日志写入新文件起始位置。
+
+#### 5.2.2 DataFileList#append
+
+```java
+    
+	//io.openmessaging.storage.dledger.store.file.MmapFileList#append(byte[], int, int, boolean)
+	public long append(byte[] data, int pos, int len, boolean useBlank) {
+        if (preAppend(len, useBlank) == -1) {
+            return -1;
+        }
+        MmapFile mappedFile = getLastMappedFile();
+        long currPosition = mappedFile.getFileFromOffset() + mappedFile.getWrotePosition();
+        // 追加数据至文件末尾
+        if (!mappedFile.appendMessage(data, pos, len)) {
+            LOGGER.error("Append error for {}", storePath);
+            return -1;
+        }
+        return currPosition;
+    }
+
+
+	// io.openmessaging.storage.dledger.store.file.DefaultMmapFile#appendMessage(byte[], int, int)
+    /**
+     * Content of data from offset to offset + length will be written to file.
+     *
+     * @param offset The offset of the subarray to be used.
+     * @param length The length of the subarray to be used.
+     */
+    @Override
+    public boolean appendMessage(final byte[] data, final int offset, final int length) {
+        int currentPos = this.wrotePosition;
+
+        if ((currentPos + length) <= this.fileSize) {
+            ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
+            byteBuffer.position(currentPos);
+            byteBuffer.put(data, offset, length);
+            WROTE_POSITION_UPDATER.addAndGet(this, length);
+            return true;
+        }
+        return false;
+    }
+```
+
+## 六. RocketMQ DLedger 主从切换之日志复制
+
+Leader节点首先将客户端发送过来的日志按照指定格式存储在Leader节点上，但此时并不会向客户端返回写入成功，而是需要将日志转发给它的所有从节点，只有超过半数的节点都存储了该条日志，Leader节点才会向客户端返回日志写入成功。
+
+日志的复制主要包括如下3个步骤：
+
+1. Leader节点将日志推送到从节点。
+2. 从节点收到Leader节点推送的日志并存储，然后向Leader节点汇报日志复制结果。
+3. Leader节点对日志复制进行仲裁，如果成功存储该条日志的节点超过半数，则向客户端返回写入成功。
+
+### 6.1 日志复制设计理念
+
+#### 6.1.1 日志编号
+
+为了方便对日志进行管理与辨别，Raft协议对每条日志进行编号，每一条消息到达主节点时会生成一个全局唯一的递增号，这样可以根据日志序号来快速判断日志中的数据在主从复制过程中是否保持一致，在 DLedger 的实现中对应 DLedgerMemoryStore 中的 ledgerBeforeBeginIndex、ledgerEndIndex，分别表示当前节点最小的日志序号与最大的日志序号，下一条日志的序号为ledgerEndIndex+1。
+
+#### 6.1.2 日志追加与提交机制
+
+Leader节点收到客户端的数据写入请求后，先通过解析请求提取数据，构建日志对象，并生成日志序号，用seq表示。然后将日志存储到Leader节点内，将日志广播（推送）给其所有从节点。这个过程存在网络延时，如果客户端向主节点查询日志序号为seq的日志，日志已经存储在Leader节点中了，直接返回给客户端显然是有问题的，这是因为网络等原因导致从节点未能正常存储该日志，导致数据不一致，该如何避免出现这个问题呢？
+
+为了解决上述问题，DLedger引入了已提交指针（committedIndex）。当主节点收到客户端的请求时，先将数据进行存储，此时数据是未提交的，这一过程被称为日志追加（已在第四节中介绍了），此时该条日志对客户端不可见，只有当集群内超过半数的节点都将日志追加完成后，才会更新committedIndex指针，该条日志才会向客户端返回写入成功。一条日志被提交成功的充分必要条件是已超过集群内半数节点成功追加日志。
+
+#### 6.1.3 保证日志一致性
+
+一个拥有3个节点的Raft集群，只需要主节点和其中一个从节点成功追加日志，就可以认为是成功提交了日志，客户端即可通过主节点访问该日志。因为部分数据存在延迟，所以在DLedger的实现中，读写请求都将由Leader节点负责。那么落后的从节点如何再次跟上集群的进度呢？
+
+DLedger的实现思路是按照日志序号向从节点源源不断地转发日志，从节点接收日志后，将这些待追加的数据放入一个待写队列。从节点并不是从挂起队列中处理一个个追加请求的，而是先查找从节点当前已追加的最大日志序号，用ledgerEndIndex表示，然后尝试追加ledgerEndIndex+1的日志，根据日志序号从待写队列中查找日志，如果该队列不为空，并且待写日志不在待写队列中，说明从节点未接收到这条日志，发生了数据缺失。从节点在响应主节点的append请求时会告知数据不一致，然后主节点的日志转发线程状态变更为COMPARE，向该从节点发送COMPARE命令，用来比较主从节点的数据差异。根据比较出的差异重新从主节点同步数据或删除从节点上多余的数据，最终达到一致。同时，主节点也会对推送超时的消息发起重推，尽最大可能帮助从节点及时更新到主节点的数据。
+
+### 6.2 日志复制类设计体系
+
+![](../images/70.png)
+
+DledgerEntryPusher 是 DLedger 日志转发与处理核心类，该类构建如下3个对象，每一个对象对应一个线程，复制处理不同的事情：
+
+1. EntryDispatcher：日志转发线程，当前节点为主节点时追加。
+
+2. QuorumAckChecker：日志追加ACK投票仲裁线程，当前节点为主节点时激活。
+3. EntryHandler：日志接收处理线程，当节点为从节点时激活。
+
+DLedger的日志复制使用推送模式，其核心入口为DLedgerEntryPusher，下面逐一介绍上述核心类及核心属性：
+
+```java
+public class DLedgerEntryPusher {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(DLedgerEntryPusher.class);
+
+    /**
+     * 多副本相关配置。
+     */
+    private final DLedgerConfig dLedgerConfig;
+    /**
+     * 存储实现类。
+     */
+    private final DLedgerStore dLedgerStore;
+    /**
+     * 节点状态机。
+     */
+    private final MemberState memberState;
+    /**
+     * RPC 服务实现类，用于集群内的其他节点进行网络通讯。
+     */
+    private final DLedgerRpcService dLedgerRpcService;
+
+    /**
+     * 每个节点基于投票轮次的当前水位线标记。
+     * 用于记录从节点已复制的日志序号
+     */
+    private final Map<Long/*term*/, ConcurrentMap<String/*peer id*/, Long/*match index*/>> peerWaterMarksByTerm = new ConcurrentHashMap<>();
+
+    /**
+     * 正在处理的 apend 请求的回调函数。放在这里的index所指向的日志是待确认的日志，也就是说客户端目前正处在阻塞状态，等待从节点接收日志。
+     *
+     * 当日志写入Leader节点后，会异步将日志发送给Follower节点，当集群中大多数节点成功写入该日志后，会回调这里暂存的回调函数，从而返回客户端成功写入的状态。
+     */
+    private final Map<Long/*term*/, ConcurrentMap<Long/*index*/, Closure/*upper callback*/>> pendingClosure = new ConcurrentHashMap<>();
+
+    /**
+     * 从节点上开启的线程，用于接收主节点的 push 请求（append、commit）。
+     */
+    private final EntryHandler entryHandler;
+    /**
+     * 日志追加ACK投票仲裁线程，用于判断日志是否可提交，当前节点为主节点时激活
+     */
+    private final QuorumAckChecker quorumAckChecker;
+    /**
+     * 日志请求转发器，负责向从节点转发日志，主节点为每一个从节点构建一个EntryDispatcher，EntryDispatcher是一个线程
+     */
+    private final Map<String/*peer id*/, EntryDispatcher/*entry dispatcher for each peer*/> dispatcherMap = new HashMap<>();
+    /**
+     * 当前节点的ID
+     */
+    private final String selfId;
+    /**
+     * 通过任务队列修改状态机状态，保证所有修改状态机状态的任务按顺序执行
+     */
+    private StateMachineCaller fsmCaller;
+}
+```
+
+通常了解一个类需要从其构造函数开始，我们先看一下DLedgerEntryPusher的构造函数：
+
+```java
+    public DLedgerEntryPusher(DLedgerConfig dLedgerConfig, MemberState memberState, DLedgerStore dLedgerStore,
+        DLedgerRpcService dLedgerRpcService) {
+        this.dLedgerConfig = dLedgerConfig;
+        this.selfId = this.dLedgerConfig.getSelfId();
+        this.memberState = memberState;
+        this.dLedgerStore = dLedgerStore;
+        this.dLedgerRpcService = dLedgerRpcService;
+        // 为每一个Follower节点创建一个EntryDispatcher线程，复制向Follower节点推送日志
+        for (String peer : memberState.getPeerMap().keySet()) {
+            if (!peer.equals(memberState.getSelfId())) {
+                dispatcherMap.put(peer, new EntryDispatcher(peer, LOGGER));
+            }
+        }
+        this.entryHandler = new EntryHandler(LOGGER);
+        this.quorumAckChecker = new QuorumAckChecker(LOGGER);
+    }
+```
+
+这里主要是根据集群的配置，为每一个从节点创建一个 EntryDispatcher 转发线程，即每一个从节点的日志转发相互不干扰。
+
+接下来我们看一下 `startup` 方法：
+
+```java
+    // io.openmessaging.storage.dledger.DLedgerEntryPusher#startup
+	public void startup() {
+        // 启动 EntryHandler，负责接受Leader节点推送的日志，如果节点不是Follower节点现成也会启动，但是不会执行任何逻辑，直到身份变成Follower节点。
+        entryHandler.start();
+        // 启动 日志追加ACK投票仲裁线程，用于判断日志是否可提交，当前节点为Leader节点时激活
+        quorumAckChecker.start();
+        // 启动 日志分发线程，用于向Follower节点推送日志，当前节点为Leader节点时激活
+        for (EntryDispatcher dispatcher : dispatcherMap.values()) {
+            dispatcher.start();
+        }
+    }
+```
+
+在 EntryDispatcher 启动时会启动三类线程：
+
+- EntryDispatcher：日志请求转发器，负责向从节点转发日志，主节点为每一个从节点构建一个 EntryDispatcher 线程，每个从节点独立发送互不干扰；
+- QuorumAckChecker：日志追加ACK投票仲裁线程，用于判断日志是否可提交，当前节点为主节点时激活；
+- EntryHandler：从节点上开启的线程，用于接收主节点的 push 请求（append、commit）；
+
+需要注意的是由于节点身份的不同所生效的线程类型也并不相同，你如如果是Follower节点，那就只有 EntryHandler 现成生效，没有生效的线程会间隔1ms进行空转，这样做的目的是当节点身份发生变化时能及时反应。
+
+### 6.3 日志转发（Leader向Follower发送日志）
+
+#### 6.3.1 EntryDispatcher核心属性
+
+日志转发由 EntryDispatcher 实现，EntryDispatcher 有如下核心属性：
+
+```java
+    private class EntryDispatcher extends ShutdownAbleThread {
+
+        /**
+         * 向从节点发送命令的类型
+         */
+        private final AtomicReference<EntryDispatcherState> type = new AtomicReference<>(EntryDispatcherState.COMPARE);
+        /**
+         * 上一次发送commit请求的时间戳。
+         */
+        private long lastPushCommitTimeMs = -1;
+        /**
+         * 目标节点ID
+         */
+        private final String peerId;
+
+        /**
+         * 已写入的日志序号
+         */
+        private long writeIndex = DLedgerEntryPusher.this.dLedgerStore.getLedgerEndIndex() + 1;
+
+        /**
+         * the index of the last entry to be pushed to this peer(initialized to -1)
+         */
+        private long matchIndex = -1;
+
+        private final int maxPendingSize = 1000;
+        /**
+         * Leader节点当前的投票轮次
+         */
+        private long term = -1;
+        /**
+         * Leader节点ID
+         */
+        private String leaderId = null;
+        /**
+         * 上次检测泄露的时间，所谓泄露，指的是挂起的日志请求数量超过了maxPendingSize。
+         */
+        private long lastCheckLeakTimeMs = System.currentTimeMillis();
+
+        /**
+         * 记录日志的挂起时间，key表示日志的序列（entryIndex），value表示挂起时间戳。
+         */
+        private final ConcurrentMap<Long/*index*/, Pair<Long/*send timestamp*/, Integer/*entries count in req*/>> pendingMap = new ConcurrentHashMap<>();
+        /**
+         * 需要批量push的日志数据
+         */
+        private final PushEntryRequest batchAppendEntryRequest = new PushEntryRequest();
+
+        private long lastAppendEntryRequestSendTimeMs = -1;
+
+        /**
+         * 配额。
+         */
+        private final Quota quota = new Quota(dLedgerConfig.getPeerPushQuota());
+     
+        .........
+    }
+```
+
+#### 6.3.2 推送请求类型
+
+在详细介绍日志转发流程之前，先介绍一下主节点向从节点发送推送请求的类型，在 PushEntryRequest.Type 中定义，可选值如下：
+
+```java
+    // io.openmessaging.storage.dledger.protocol.PushEntryRequest.Type
+	public enum Type {
+        APPEND,
+        COMMIT,
+        COMPARE,
+        TRUNCATE,
+        INSTALL_SNAPSHOT
+    }
+```
+
+1. APPEND：将日志条目追加到从节点。
+2. COMMIT：通常Leader节点会将提交的索引附加到append请求， 如果append请求很少且分散，Leader节点将发送一个单独的请求来通 知从节点提交索引。
+3. COMPARE：如果Leader节点发生变化，新的Leader节点需要与它的从节点日志条目进行比较，以便截断从节点多余的数据。
+4. TRUNCATE：如果Leader节点通过索引完成日志对比后，发现从节点存在多余的数据（未提交的数据），则 Leader 节点将发送 TRUNCATE给它的从节点，删除多余的数据，实现主从节点数据一致性。
+5. INSTALL_SNAPSHOT：将从节点数据存入快照。
+
+#### 6.3.3 日志转发入口
+
+EntryDispatcher 是一个线程类，继承自 ShutdownAbleThread，其 run() 方法会循环执行 doWork() 方法：
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#doWork
+        @Override
+        public void doWork() {
+            try {
+                // 检查当前节点状态
+                if (checkNotLeaderAndFreshState()) {
+                    waitForRunning(1);
+                    return;
+                }
+                switch (type.get()) {
+                    // 根据类型，做不同的操作
+                    case COMPARE:
+                        doCompare();
+                        break;
+                    case TRUNCATE:
+                        doTruncate();
+                        break;
+                    case APPEND:
+                        doAppend();
+                        break;
+                    case INSTALL_SNAPSHOT:
+                        doInstallSnapshot();
+                        break;
+                    case COMMIT:
+                        doCommit();
+                        break;
+                }
+                waitForRunning(1);
+            } catch (Throwable t) {
+                DLedgerEntryPusher.LOGGER.error("[Push-{}]Error in {} writeIndex={} matchIndex={}", peerId, getName(), writeIndex, matchIndex, t);
+                changeState(EntryDispatcherState.COMPARE);
+                DLedgerUtils.sleep(500);
+            }
+        }
+```
+
+该方法主要完成如下两件事。
+
+1. 检查当前节点的状态，确定当前节点状态是否可以发送 append、compare、truncate 请求。
+
+2. 根据当前转发器的状态向从节点发送 append、compare、truncate 请求。
+
+checkAndFreshState()方法不只是简单地检测一下状态，而是会根据运行状态改变日志转发器的状态，从而驱动转发器是发送 append 请求还是发送compare请求，下面详细看一下该方法的实现细节：
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#checkNotLeaderAndFreshState
+        private boolean checkNotLeaderAndFreshState() {
+            if (!memberState.isLeader()) {
+                // 如果当前节点的状态不是Leader则直接返回。
+                return true;
+            }
+            if (term != memberState.currTerm() || leaderId == null || !leaderId.equals(memberState.getLeaderId())) {
+                // 如果日志转发器（EntryDispatcher）的投票轮次为空或与状态机的投票轮次不相等，
+                // 将日志转发器的term、leaderId与状态机同步，即发送compare请求。这种情况通常
+                // 是由于集群触发了重新选举，当前节点刚被选举成 Leader节点。
+                synchronized (memberState) {
+                    if (!memberState.isLeader()) {
+                        return true;
+                    }
+                    PreConditions.check(memberState.getSelfId().equals(memberState.getLeaderId()), DLedgerResponseCode.UNKNOWN);
+                    logger.info("[Push-{}->{}]Update term: {} and leaderId: {} to new term: {}, new leaderId: {}", selfId, peerId, term, leaderId, memberState.currTerm(), memberState.getLeaderId());
+                    term = memberState.currTerm();
+                    leaderId = memberState.getSelfId();
+                    // 改变日志转发器的状态，该方法非常重要
+                    changeState(EntryDispatcherState.COMPARE);
+                }
+            }
+            return false;
+        }
+```
+
+如果当前节点的状态不是Leader则直接返回；如果日志转发器（EntryDispatcher）的投票轮次为空或与状态机的投票轮次不相等，这种情况通常是由于集群触发了重新选举，当前节点刚被选举成 Leader节点，此时需要将日志转发器的term、leaderId与状态机同步，然后将同步模式改为Compare，目的是让新上任的Leader节点寻找自己与Follower节点的共识点在哪，说白了就是找到其他 Follower 节点多余未提交的的日志Index，为后续 truncate 请求做铺垫。
+
+changeState改变日志转发器的状态，该方法非常重要，我们来看一下状态转换过程中需要处理的核心逻辑：
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#changeState
+        private synchronized void changeState(EntryDispatcherState target) {
+            logger.info("[Push-{}]Change state from {} to {}, matchIndex: {}, writeIndex: {}", peerId, type.get(), target, matchIndex, writeIndex);
+            switch (target) {
+                case APPEND:
+                    resetBatchAppendEntryRequest();
+                    break;
+                case COMPARE:
+                    if (this.type.compareAndSet(EntryDispatcherState.APPEND, EntryDispatcherState.COMPARE)) {
+                        writeIndex = dLedgerStore.getLedgerEndIndex() + 1;
+                        pendingMap.clear();
+                    }
+                    break;
+                default:
+                    break;
+            }
+            type.set(target);
+        }
+```
+
+#### 6.3.4 compare操作
+
+日志转发器EntryDispatcher的初始状态为 COMPARE，当一个节点被选举为Leader后，日志转发器的状态同样会先设置为COMPARE，Leader节点先向从节点发送该请求的目的是比较主、从节点之间数据的差异，以此确保发送主从切换时不会丢失数据，并且重新确定待转发的日志序号。
+
+通过EntryDispatcher的doWork()方法可知，如果节点状态为COMPARE，会调用 doCompare() 方法。doCompare()方法内部代码都是while(true)包裹，在查看其代码时注意其退出条件:
+
+```java
+       // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#doCompare 
+        /**
+         * 该方法用于Leader节点向从节点发送Compare请求，目的是为了找到与从节点的共识点，
+         * 也就是找到从节点未提交的日志Index，从而实现删除从节点未提交的数据。
+         *
+         * @throws Exception
+         */
+        private void doCompare() throws Exception {
+            // 注意这里是while(true)，所以需要注意循环退出条件
+            while (true) {
+                if (checkNotLeaderAndFreshState()) {
+                    break;
+                }
+                // 判断请求类型是否为Compare，如果不是则退出循环
+                if (this.type.get() != EntryDispatcherState.COMPARE) {
+                    break;
+                }
+                // ledgerEndIndex== -1 表示Leader中没有存储数据，是一个新的集群，所以无需比较主从是否一致
+                if (dLedgerStore.getLedgerEndIndex() == -1) {
+                    break;
+                }
+
+                // compare process start from the [nextIndex -1]
+                PushEntryRequest request;
+                // compareIndex 代表正在比对的索引下标，对比前一条日志，term 和 index 是否一致
+                long compareIndex = writeIndex - 1;
+                long compareTerm = -1;
+                if (compareIndex < dLedgerStore.getLedgerBeforeBeginIndex()) {
+                    // 需要比较的条目已被压缩删除，只需更改状态即可安装快照
+                    changeState(EntryDispatcherState.INSTALL_SNAPSHOT);
+                    return;
+                } else if (compareIndex == dLedgerStore.getLedgerBeforeBeginIndex()) {
+                    compareTerm = dLedgerStore.getLedgerBeforeBeginTerm();
+                    request = buildCompareOrTruncatePushRequest(compareTerm, compareIndex, PushEntryRequest.Type.COMPARE);
+                } else {
+                    // 获取正在比对的日志信息
+                    DLedgerEntry entry = dLedgerStore.get(compareIndex);
+                    PreConditions.check(entry != null, DLedgerResponseCode.INTERNAL_ERROR, "compareIndex=%d", compareIndex);
+                    // 正在比对的日志所处的选举轮次
+                    compareTerm = entry.getTerm();
+                    request = buildCompareOrTruncatePushRequest(compareTerm, entry.getIndex(), PushEntryRequest.Type.COMPARE);
+                }
+                CompletableFuture<PushEntryResponse> responseFuture = dLedgerRpcService.push(request);
+                PushEntryResponse response = responseFuture.get(3, TimeUnit.SECONDS);
+                PreConditions.check(response != null, DLedgerResponseCode.INTERNAL_ERROR, "compareIndex=%d", compareIndex);
+                PreConditions.check(response.getCode() == DLedgerResponseCode.INCONSISTENT_STATE.getCode() || response.getCode() == DLedgerResponseCode.SUCCESS.getCode()
+                    , DLedgerResponseCode.valueOf(response.getCode()), "compareIndex=%d", compareIndex);
+
+                // fast backup algorithm to locate the match index
+                if (response.getCode() == DLedgerResponseCode.SUCCESS.getCode()) {
+                    // 证明找到了与Follower节点的共识点
+                    matchIndex = compareIndex;
+                    // 此时更新这个Follower节点的水位线
+                    updatePeerWaterMark(compareTerm, peerId, matchIndex);
+                    // 将发送模式改成truncate，以将从节点的未提交的日志删除
+                    changeState(EntryDispatcherState.TRUNCATE);
+                    return;
+                }
+
+                // 证明在compareIndex日志上，Follower与当前Leader所处选举轮次并不一致，证明从节点这条日志是需要被删除，然后才会将主节点已提交的日志再次同步到follower上
+                if (response.getXTerm() != -1) {
+                    // response.getXTerm() != -1 代表当前对比index 所处的任期和Leader节点不一致，
+                    // 此时 response.getXIndex() 返回的是当前对比任期在从节点结束的位置，所以将指针移到从节点在当前轮次的结束处，再次进行对比。
+                    writeIndex = response.getXIndex();
+                } else {
+                    // response.getXTerm() == -1 代表从节点上的 leaderEndIndex 比当前对比的index小，
+                    // 则把对比指针，移到从节点末尾的 leaderEndIndex上
+                    writeIndex = response.getEndIndex() + 1;
+                }
+            }
+        }
+```
+
+在该方法中首先是对基本状态做了一些校验:
+
+1. 如果当前节点的状态不是 Leader 则退出循环；
+2. 判断请求类型是否为 Compare，如果不是则退出循环；
+3. ledgerEndIndex== -1 表示Leader中没有存储数据，是一个新的集群，所以无需比较主从是否一致；
+
+然后构建当前正在比对的compareIndex所对应的日志的所处轮次信息，将compareIndex对应的存储轮次发送给Follower节点后，Follower节点会对比自己与Leader在相同的Index上的存储轮次信息是否相同：
+
+- 如果相同则证明此条日志与Leader节点保持一致，返回SUCCESS，此时则证明找到了共识点，将状态改成truncate模式以删除从节点多余日志；
+- 如果不同会有两种情况：
+  - 主节点发送的index在从节点上还不存在，这样从节点会将自己的末尾指针返回给Leader，Leader会从Follower节点的末尾指针重新开始对比；
+  - 主节点发送的index在从节点上存在，但是所处的轮次并不一致，证明从节点这条日志是需要被删除，Follower节点会找到Leader对比轮次所在的最后一个日志索引并返回给Leader，Leader会从这个索引位置继续开始对比，直到找对最终的共识点。
+
+看完Leader端发起Compare请求的流程，我们来看一下Follower端在收到Compare请求的处理流程：
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#handleDoCompare
+        /**
+         * Follower端处理Leader端发起的Compare请求
+         *
+         * @param request
+         * @param future
+         * @return
+         */
+        private CompletableFuture<PushEntryResponse> handleDoCompare(PushEntryRequest request,
+            CompletableFuture<PushEntryResponse> future) {
+            try {
+                PreConditions.check(request.getType() == PushEntryRequest.Type.COMPARE, DLedgerResponseCode.UNKNOWN);
+                // Leader端发来需要对比的日志索引值
+                long preLogIndex = request.getPreLogIndex();
+                // Leader端Index日志所处的任期
+                long preLogTerm = request.getPreLogTerm();
+                if (preLogTerm == -1 && preLogIndex == -1) {
+                    // leader节点日志为空，则直接返回
+                    future.complete(buildResponse(request, DLedgerResponseCode.SUCCESS.getCode()));
+                    return future;
+                }
+                if (dLedgerStore.getLedgerEndIndex() >= preLogIndex) {
+                    long compareTerm = 0;
+                    // 找到指定Index在当前节点的日志中的任期
+                    if (dLedgerStore.getLedgerBeforeBeginIndex() == preLogIndex) {
+                        // 如果查找的Index刚好是当前节点存储的第一条日志，则不用读取磁盘获取日志任期
+                        compareTerm = dLedgerStore.getLedgerBeforeBeginTerm();
+                    } else {
+                        // 从磁盘中读取日志内容，然后获取到日志任期
+                        DLedgerEntry local = dLedgerStore.get(preLogIndex);
+                        compareTerm = local.getTerm();
+                    }
+                    if (compareTerm == preLogTerm) {
+                        // 如果任期相同，则认为Follower节点的日志和Leader节点是相同的，也就证明找到了共识点
+                        future.complete(buildResponse(request, DLedgerResponseCode.SUCCESS.getCode()));
+                        return future;
+                    }
+                    // 如果任期不相同，则从preLogIndex开始，向前追溯compareTerm任期的第一个日志
+                    DLedgerEntry firstEntryWithTargetTerm = dLedgerStore.getFirstLogOfTargetTerm(compareTerm, preLogIndex);
+                    PreConditions.check(firstEntryWithTargetTerm != null, DLedgerResponseCode.INCONSISTENT_STATE);
+                    PushEntryResponse response = buildResponse(request, DLedgerResponseCode.INCONSISTENT_STATE.getCode());
+                    // 设置Leader节点对比的Index在当前节点所处的任期
+                    response.setXTerm(compareTerm);
+                    // 设置Leader节点对比任期，在当前节点最大的index值
+                    response.setXIndex(firstEntryWithTargetTerm.getIndex());
+                    future.complete(response);
+                    return future;
+                }
+                // dLedgerStore.getLedgerEndIndex() < preLogIndex，代表Leader想要对比的日志在当前节点不存咋，则返回当前节点的endIndex
+                PushEntryResponse response = buildResponse(request, DLedgerResponseCode.INCONSISTENT_STATE.getCode());
+                response.setEndIndex(dLedgerStore.getLedgerEndIndex());
+                future.complete(response);
+            } catch (Throwable t) {
+                logger.error("[HandleDoCompare] preLogIndex={}, preLogTerm={}", request.getPreLogIndex(), request.getPreLogTerm(), t);
+                future.complete(buildResponse(request, DLedgerResponseCode.INCONSISTENT_STATE.getCode()));
+            }
+            return future;
+        }
+```
+
+#### 6.3.5 truncate操作
+
+Leader节点在发送compare请求后，得知与从节点的数据存在差异，将向从节点发送truncate请求，指示从节点应该将truncateIndex 及以后的日志删除：
+
+```java
+        //io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#doTruncate 
+        /**
+         * 发起truncate请求，用于删除Follower节点未提交的日志
+         * @throws Exception
+         */
+        private void doTruncate() throws Exception {
+            // 检测当前状态是否为Truncate
+            PreConditions.check(type.get() == EntryDispatcherState.TRUNCATE, DLedgerResponseCode.UNKNOWN);
+            // 删除共识点以后得所有日志，truncateIndex代表删除的起始位置
+            long truncateIndex = matchIndex + 1;
+            logger.info("[Push-{}]Will push data to truncate truncateIndex={}", peerId, truncateIndex);
+            // 构建truncate请求
+            PushEntryRequest truncateRequest = buildCompareOrTruncatePushRequest(-1, truncateIndex, PushEntryRequest.Type.TRUNCATE);
+            // 发送请求，等待Follower响应
+            PushEntryResponse truncateResponse = dLedgerRpcService.push(truncateRequest).get(3, TimeUnit.SECONDS);
+
+            PreConditions.check(truncateResponse != null, DLedgerResponseCode.UNKNOWN, "truncateIndex=%d", truncateIndex);
+            PreConditions.check(truncateResponse.getCode() == DLedgerResponseCode.SUCCESS.getCode(), DLedgerResponseCode.valueOf(truncateResponse.getCode()), "truncateIndex=%d", truncateIndex);
+            // 更新 lastPushCommitTimeMs 时间
+            lastPushCommitTimeMs = System.currentTimeMillis();
+            // 将状态改为Append，Follower节点的多余日志删除完成后，就需要Leader节点同步数据给Follower了
+            changeState(EntryDispatcherState.APPEND);
+        }
+```
+
+该方法的实现比较简单，主节点构建truncate请求包并通过网络向从节点发送请求，从节点在收到请求后会清理多余的数据，使主从节点数据保持一致。日志转发器在处理完truncate请求后，状态将变更为APPEND，开始向从节点转发日志。
+
+同样的我们继续看看Follower端是如何处理 truncate 命令的：
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#handleDoTruncate
+        /**
+         * 该方法时Follower节点收到Leader节点的Truncate请求所执行的方法
+         * @param truncateIndex
+         * @param request
+         * @param future
+         * @return
+         */
+        private CompletableFuture<PushEntryResponse> handleDoTruncate(long truncateIndex, PushEntryRequest request,
+            CompletableFuture<PushEntryResponse> future) {
+            try {
+                logger.info("[HandleDoTruncate] truncateIndex={}", truncateIndex);
+                PreConditions.check(request.getType() == PushEntryRequest.Type.TRUNCATE, DLedgerResponseCode.UNKNOWN);
+                // 删除truncateIndex之后的日志
+                long index = dLedgerStore.truncate(truncateIndex);
+                PreConditions.check(index == truncateIndex - 1, DLedgerResponseCode.INCONSISTENT_STATE);
+                // 删除成功，则返回成功
+                future.complete(buildResponse(request, DLedgerResponseCode.SUCCESS.getCode()));
+                // 更新本地的已提交索引，如果Leader已提交索引大于本地的最大索引，则证明本地的所有日志都处于已提交状态，反之则更新已提交索引为Leader的已提交索引
+                long committedIndex = request.getCommitIndex() <= dLedgerStore.getLedgerEndIndex() ? request.getCommitIndex() : dLedgerStore.getLedgerEndIndex();
+                // 更新状态机中的已提交索引
+                if (DLedgerEntryPusher.this.memberState.followerUpdateCommittedIndex(committedIndex)) {
+                    // todo 该方法待定
+                    DLedgerEntryPusher.this.fsmCaller.onCommitted(committedIndex);
+                }
+            } catch (Throwable t) {
+                logger.error("[HandleDoTruncate] truncateIndex={}", truncateIndex, t);
+                future.complete(buildResponse(request, DLedgerResponseCode.INCONSISTENT_STATE.getCode()));
+            }
+            return future;
+        }
+```
+
+Follower节点在收到Leader节点发来的truncate请求后，会将truncateIndex及以后得所有日志全部删除，并更新本地已提交日志的索引指针。而日志的删除操作是由 `DLedgerMmapFileStore#truncate` 实现的：
+
+```java
+    // io.openmessaging.storage.dledger.store.file.DLedgerMmapFileStore#truncate(long)
+    @Override
+    public long truncate(long truncateIndex) {
+        // 如果需要删除的index在ledgerEndIndex之后，直接返回ledgerEndIndex，不用继续执行删除流程
+        if (truncateIndex > this.ledgerEndIndex) {
+            return this.ledgerEndIndex;
+        }
+        // 获取truncateIndex所对应的日志
+        DLedgerEntry firstTruncateEntry = this.get(truncateIndex);
+        // 获取物理偏移量
+        long truncateStartPos = firstTruncateEntry.getPos();
+        synchronized (this.memberState) {
+            // 加锁后再次比较，如果需要删除的index在ledgerEndIndex之后，直接返回ledgerEndIndex，不用继续执行删除流程
+            if (truncateIndex > this.ledgerEndIndex) {
+                return this.ledgerEndIndex;
+            }
+            //从物理文件中删除指定物理偏移量之后的数据
+            dataFileList.truncateOffset(truncateStartPos);
+            if (dataFileList.getMaxWrotePosition() != truncateStartPos) {
+                LOGGER.warn("[TRUNCATE] truncate for data file error, try to truncate pos: {}, but after truncate, max wrote pos: {}, now try to rebuild", truncateStartPos, dataFileList.getMaxWrotePosition());
+                PreConditions.check(dataFileList.rebuildWithPos(truncateStartPos), DLedgerResponseCode.DISK_ERROR, "rebuild data file truncatePos=%d", truncateStartPos);
+            }
+            // 重置数据文件的写指针
+            reviseDataFileListFlushedWhere(truncateStartPos);
+
+            // 删除索引文件对应的数据
+            long truncateIndexFilePos = truncateIndex * INDEX_UNIT_SIZE;
+            indexFileList.truncateOffset(truncateIndexFilePos);
+            if (indexFileList.getMaxWrotePosition() != truncateIndexFilePos) {
+                LOGGER.warn("[TRUNCATE] truncate for index file error, try to truncate pos: {}, but after truncate, max wrote pos: {}, now try to rebuild", truncateIndexFilePos, indexFileList.getMaxWrotePosition());
+                PreConditions.check(dataFileList.rebuildWithPos(truncateStartPos), DLedgerResponseCode.DISK_ERROR, "rebuild index file truncatePos=%d", truncateIndexFilePos);
+            }
+            // 重置索引文件的写指针
+            reviseIndexFileListFlushedWhere(truncateIndexFilePos);
+
+            // update store end index and its term
+            if (truncateIndex == 0) {
+                // truncateIndex == 0 代表清除所有数据
+                ledgerEndTerm = -1;
+                ledgerEndIndex = -1;
+            } else {
+                // 删除后更新 ledgerEndTerm、ledgerEndIndex
+                SelectMmapBufferResult endIndexBuf = indexFileList.getData((truncateIndex - 1) * INDEX_UNIT_SIZE, INDEX_UNIT_SIZE);
+                ByteBuffer buffer = endIndexBuf.getByteBuffer();
+                DLedgerIndexEntry indexEntry = DLedgerEntryCoder.decodeIndex(buffer);
+                ledgerEndTerm = indexEntry.getTerm();
+                ledgerEndIndex = indexEntry.getIndex();
+            }
+        }
+        LOGGER.info("[TRUNCATE] truncateIndex: {}, after truncate, ledgerEndIndex: {} ledgerEndTerm: {}", truncateIndex, ledgerEndIndex, ledgerEndTerm);
+        return ledgerEndIndex;
+    }
+
+```
+
+#### 6.3.6 append操作
+
+Leader节点在确认主从数据一致后，开始将新的消息转发到从节点。doAppend()方法内部的逻辑被包裹在while(true)中，故在查看其代码时应注意退出条件：
+
+```java
+```
+
+
+
+
+
+## 七. 日志压缩
 
