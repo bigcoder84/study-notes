@@ -1750,7 +1750,7 @@ public class DLedgerEntryPusher {
 4. TRUNCATE：如果Leader节点通过索引完成日志对比后，发现从节点存在多余的数据（未提交的数据），则 Leader 节点将发送 TRUNCATE给它的从节点，删除多余的数据，实现主从节点数据一致性。
 5. INSTALL_SNAPSHOT：将从节点数据存入快照。
 
-#### 6.3.3 日志转发入口
+#### 6.3.3 Leader节点日志转发入口
 
 EntryDispatcher 是一个线程类，继承自 ShutdownAbleThread，其 run() 方法会循环执行 doWork() 方法：
 
@@ -1851,7 +1851,7 @@ changeState改变日志转发器的状态，该方法非常重要，我们来看
         }
 ```
 
-#### 6.3.4 compare操作
+#### 6.3.4 Leader节点发送Compare请求（doCompare）
 
 日志转发器EntryDispatcher的初始状态为 COMPARE，当一个节点被选举为Leader后，日志转发器的状态同样会先设置为COMPARE，Leader节点先向从节点发送该请求的目的是比较主、从节点之间数据的差异，以此确保发送主从切换时不会丢失数据，并且重新确定待转发的日志序号。
 
@@ -1944,7 +1944,479 @@ changeState改变日志转发器的状态，该方法非常重要，我们来看
   - 主节点发送的index在从节点上还不存在，这样从节点会将自己的末尾指针返回给Leader，Leader会从Follower节点的末尾指针重新开始对比；
   - 主节点发送的index在从节点上存在，但是所处的轮次并不一致，证明从节点这条日志是需要被删除，Follower节点会找到Leader对比轮次所在的最后一个日志索引并返回给Leader，Leader会从这个索引位置继续开始对比，直到找对最终的共识点。
 
-看完Leader端发起Compare请求的流程，我们来看一下Follower端在收到Compare请求的处理流程：
+#### 6.3.5 Leader节点发送truncate请求（doTruncate）
+
+Leader节点在发送compare请求后，得知与从节点的数据存在差异，将向从节点发送truncate请求，指示从节点应该将truncateIndex 及以后的日志删除：
+
+```java
+        //io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#doTruncate 
+        /**
+         * 发起truncate请求，用于删除Follower节点未提交的日志
+         * @throws Exception
+         */
+        private void doTruncate() throws Exception {
+            // 检测当前状态是否为Truncate
+            PreConditions.check(type.get() == EntryDispatcherState.TRUNCATE, DLedgerResponseCode.UNKNOWN);
+            // 删除共识点以后得所有日志，truncateIndex代表删除的起始位置
+            long truncateIndex = matchIndex + 1;
+            logger.info("[Push-{}]Will push data to truncate truncateIndex={}", peerId, truncateIndex);
+            // 构建truncate请求
+            PushEntryRequest truncateRequest = buildCompareOrTruncatePushRequest(-1, truncateIndex, PushEntryRequest.Type.TRUNCATE);
+            // 发送请求，等待Follower响应
+            PushEntryResponse truncateResponse = dLedgerRpcService.push(truncateRequest).get(3, TimeUnit.SECONDS);
+
+            PreConditions.check(truncateResponse != null, DLedgerResponseCode.UNKNOWN, "truncateIndex=%d", truncateIndex);
+            PreConditions.check(truncateResponse.getCode() == DLedgerResponseCode.SUCCESS.getCode(), DLedgerResponseCode.valueOf(truncateResponse.getCode()), "truncateIndex=%d", truncateIndex);
+            // 更新 lastPushCommitTimeMs 时间
+            lastPushCommitTimeMs = System.currentTimeMillis();
+            // 将状态改为Append，Follower节点的多余日志删除完成后，就需要Leader节点同步数据给Follower了
+            changeState(EntryDispatcherState.APPEND);
+        }
+```
+
+该方法的实现比较简单，主节点构建truncate请求包并通过网络向从节点发送请求，从节点在收到请求后会清理多余的数据，使主从节点数据保持一致。日志转发器在处理完truncate请求后，状态将变更为APPEND，开始向从节点转发日志。
+
+#### 6.3.6 Leader节点向Follower节点推送日志（doAppend）
+
+Leader节点在确认主从数据一致后，开始将新的消息转发到从节点。doAppend()方法内部的逻辑被包裹在while(true)中，故在查看其代码时应注意退出条件：
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#doAppend
+        private void doAppend() throws Exception {
+            while (true) {
+                if (checkNotLeaderAndFreshState()) {
+                    break;
+                }
+                // 第一步：校验当前状态是否是Append，如果不是则退出循环
+                if (type.get() != EntryDispatcherState.APPEND) {
+                    break;
+                }
+                // 第二步：检查从节点未接收的第一个append请求是否超时，如果超时，则重推
+                doCheckAppendResponse();
+                // 第三步：writeIndex表示当前已追加到从节点的日志序号。通常情况下，主节点向从节点发送append请求时会带上主节点已提交的指针，
+                // 但如果append请求发送不频繁，pending请求超过其队列长度（默认为1万字节）时，会阻止数据的追加，
+                // 此时有可能会出现writeIndex大于leaderEndIndex的情况
+                if (writeIndex > dLedgerStore.getLedgerEndIndex()) {
+                    if (this.batchAppendEntryRequest.getCount() > 0) {
+                        sendBatchAppendEntryRequest();
+                    } else {
+                        doCommit();
+                    }
+                    break;
+                }
+                // check if now not entries in store can be sent
+                if (writeIndex <= dLedgerStore.getLedgerBeforeBeginIndex()) {
+                    logger.info("[Push-{}]The ledgerBeginBeginIndex={} is less than or equal to  writeIndex={}", peerId, dLedgerStore.getLedgerBeforeBeginIndex(), writeIndex);
+                    changeState(EntryDispatcherState.INSTALL_SNAPSHOT);
+                    break;
+                }
+                // 第四步：检测pendingMap（挂起的请求数量）是否发生泄露，正常来说发送给从节点的请求如果成功响应就会从pendingMap中移除，这里是一种兜底操作
+                // 获取当前节点的水位线（已成功append请求的日志序号），如果挂起请求的日志序号小于水位线，则丢弃，并记录最后一次检查的时间戳
+                if (pendingMap.size() >= maxPendingSize || DLedgerUtils.elapsed(lastCheckLeakTimeMs) > 1000) {
+                    long peerWaterMark = getPeerWaterMark(term, peerId);
+                    for (Map.Entry<Long, Pair<Long, Integer>> entry : pendingMap.entrySet()) {
+                        if (entry.getKey() + entry.getValue().getValue() - 1 <= peerWaterMark) {
+                            // 被Follower节点成功接收的日志条目需要从pendingMap中移除
+                            pendingMap.remove(entry.getKey());
+                        }
+                    }
+                    lastCheckLeakTimeMs = System.currentTimeMillis();
+                }
+                if (pendingMap.size() >= maxPendingSize) {
+                    // 第五步：如果挂起的请求数仍然大于阈值，则再次检查这些请求是否超时（默认超时时间为1s），如果超时则会触发重发机制
+                    doCheckAppendResponse();
+                    break;
+                }
+                // 第六步：循环同步数据至从节点，方法内部会优化，会按照配置收集一批需要发送的日志，等到到达发送阈值则一起发送，而不是一条条发送
+                long lastIndexToBeSend = doAppendInner(writeIndex);
+                if (lastIndexToBeSend == -1) {
+                    break;
+                }
+                // 第七步：移动写指针
+                writeIndex = lastIndexToBeSend + 1;
+            }
+        }
+```
+
+- 第一步：再次判断节点状态，确保当前节点是Leader节点并且日志转发器内部的状态为APPEND。
+
+- 第二步：检查从节点未接收的第一个append请求是否超时，如果超时，则重推。
+
+- 第三步：writeIndex表示当前已追加到从节点的日志序号。通常情况下，主节点向从节点发送append请求时会带上主节点已提交的指针，但如果append请求发送不频繁，pending请求超过其队列长度（默认为1万字节）时，会阻止数据的追加，此时有可能会出现writeIndex 大于leaderEndIndex的情况，需要单独发送commit请求，并检查 append 请求响应。
+
+- 第四步：检测pendingMap（挂起的请求数量）是否发生泄露，正常来说发送给从节点的请求如果成功响应就会从pendingMap中移除，这里是一种兜底操作。获取当前节点的水位线（已成功append请求的日志序号），如果挂起请求的日志序号小于水位线，则丢弃，并记录最后一次检查的时间戳。
+
+- 第五步：如果挂起的请求数仍然大于阈值，则再次检查这些请求是否超时（默认超时时间为1s），如果超时则会触发重发机制
+
+- 第六步：循环同步数据至从节点，方法内部会优化，会按照配置收集一批需要发送的日志，等到到达发送阈值则一起发送，而不是一条条发送。
+
+- 第七步：移动写指针。
+
+##### 6.3.6.1 日志推送
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#doAppendInner
+        /**
+         * 将条目追加到follower，将其追加到内存中，直到达到阈值，才会真正发送给Follower
+         *
+         * @param index 从哪个索引追加
+         * @return 最后一个要追加的条目的索引
+         * @throws Exception
+         */
+        private long doAppendInner(long index) throws Exception {
+            // 从磁盘中读取将要发送的日志信息
+            DLedgerEntry entry = getDLedgerEntryForAppend(index);
+            if (null == entry) {
+                // means should install snapshot
+                logger.error("[Push-{}]Get null entry from index={}", peerId, index);
+                changeState(EntryDispatcherState.INSTALL_SNAPSHOT);
+                return -1;
+            }
+            // 流控检查
+            checkQuotaAndWait(entry);
+            batchAppendEntryRequest.addEntry(entry);
+            // 检查此次操作是否真正触发发送动作
+            if (!dLedgerConfig.isEnableBatchAppend() || batchAppendEntryRequest.getTotalSize() >= dLedgerConfig.getMaxBatchAppendSize()
+                || DLedgerUtils.elapsed(this.lastAppendEntryRequestSendTimeMs) >= dLedgerConfig.getMaxBatchAppendIntervalMs()) {
+                // 未开启批量发送 或者 批量发送数量超过阈值 或者 上一次发送时间超过1s
+                // 发送日志
+                sendBatchAppendEntryRequest();
+            }
+            // 返回最后一个要追加的索引
+            return entry.getIndex();
+        }
+```
+
+- 第一步：获取磁盘中读取将要发送的日志信息。
+
+- 第二步：进行日志推送流控检查，如果触发流控，现成就会阻塞等待下一个时间窗口（滑动窗口限流）。
+
+- 第三步：发送日志
+
+```java
+//io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#sendBatchAppendEntryRequest
+		/**
+         * 执行真正的日志发送操作，将Leader节点的日志发送到Follower节点
+         * @throws Exception
+         */
+        private void sendBatchAppendEntryRequest() throws Exception {
+            // 设置committedIndex，这样Follower节点收到Append请求后能够顺道更新自己的committedIndex
+            batchAppendEntryRequest.setCommitIndex(memberState.getCommittedIndex());
+            // 此次批量发送的第一条日志的下标
+            final long firstIndex = batchAppendEntryRequest.getFirstEntryIndex();
+            // 此次批量发送的最后一条日志的下标
+            final long lastIndex = batchAppendEntryRequest.getLastEntryIndex();
+            // 当前发送日志所处的选举轮次
+            final long lastTerm = batchAppendEntryRequest.getLastEntryTerm();
+            // 此次批量发送的日志数量
+            final long entriesCount = batchAppendEntryRequest.getCount();
+            // 此次批量发送的日志大小
+            final long entriesSize = batchAppendEntryRequest.getTotalSize();
+            StopWatch watch = StopWatch.createStarted();
+            // 通过dLedgerRpcService发送日志
+            CompletableFuture<PushEntryResponse> responseFuture = dLedgerRpcService.push(batchAppendEntryRequest);
+            // 将请求加入pendingMap，用于后续检查超时，一旦请求正常返回则删除这条记录
+            pendingMap.put(firstIndex, new Pair<>(System.currentTimeMillis(), batchAppendEntryRequest.getCount()));
+            responseFuture.whenComplete((x, ex) -> {
+                try {
+                    PreConditions.check(ex == null, DLedgerResponseCode.UNKNOWN);
+                    DLedgerResponseCode responseCode = DLedgerResponseCode.valueOf(x.getCode());
+                    switch (responseCode) {
+                        case SUCCESS:
+                            // Follower节点返回成功
+                            // 监控指标上报
+                            Attributes attributes = DLedgerMetricsManager.newAttributesBuilder().put(LABEL_REMOTE_ID, this.peerId).build();
+                            DLedgerMetricsManager.replicateEntryLatency.record(watch.getTime(TimeUnit.MICROSECONDS), attributes);
+                            DLedgerMetricsManager.replicateEntryBatchCount.record(entriesCount, attributes);
+                            DLedgerMetricsManager.replicateEntryBatchBytes.record(entriesSize, attributes);
+                            // 发送成功后，删除挂起请求记录。
+                            pendingMap.remove(firstIndex);
+                            if (lastIndex > matchIndex) {
+                                // 更新 matchIndex
+                                matchIndex = lastIndex;
+                                // 更新当前Follower的水位线
+                                updatePeerWaterMark(lastTerm, peerId, matchIndex);
+                            }
+                            break;
+                        case INCONSISTENT_STATE:
+                            logger.info("[Push-{}]Get INCONSISTENT_STATE when append entries from {} to {} when term is {}", peerId, firstIndex, lastIndex, term);
+                            // 从节点返回INCONSISTENT_STATE，说明Follower节点的日志和Leader节点的不一致，需要重新比较
+                            changeState(EntryDispatcherState.COMPARE);
+                            break;
+                        default:
+                            logger.warn("[Push-{}]Get error response code {} {}", peerId, responseCode, x.baseInfo());
+                            break;
+                    }
+                } catch (Throwable t) {
+                    logger.error("Failed to deal with the callback when append request return", t);
+                }
+            });
+            // 更新 上一次发送commit请求的时间戳。
+            lastPushCommitTimeMs = System.currentTimeMillis();
+            // 清空请求缓存
+            batchAppendEntryRequest.clear();
+        }
+```
+
+##### 6.3.6.2 日志推送的流控机制
+
+```java
+// io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#checkQuotaAndWait
+        /**
+         * 在checkQuotaAndWait方法中，如果当前待发送的日志条目数量超过了最大允许的待发送数量（maxPendingSize），
+         * 则会检查流控。如果触发了流控（validateNow返回true），则会记录警告信息，并根据leftNow方法返回的剩余时间进行等待。
+         * @param entry
+         */
+        private void checkQuotaAndWait(DLedgerEntry entry) {
+            // 如果剩余发送的日志条目数量小于最大允许的待发送日志数量，则跳过流控检查
+            if (dLedgerStore.getLedgerEndIndex() - entry.getIndex() <= maxPendingSize) {
+                return;
+            }
+            // 记录当前时间窗口的日志条目数量。如果当前时间窗口是新的（即timeVec中的记录不是当前秒），则重置该窗口的计数；如果是同一时间窗口，则累加日志条目数量
+            quota.sample(entry.getSize());
+            // 检查当前时间窗口是否已达到最大限制。如果是，则返回true，表示触发了流控。
+            if (quota.validateNow()) {
+                // 计算当前时间窗口剩余的时间（毫秒），如果已达到最大限制，则可能需要等待直到下一个时间窗口开始。
+                long leftNow = quota.leftNow();
+                logger.warn("[Push-{}]Quota exhaust, will sleep {}ms", peerId, leftNow);
+                DLedgerUtils.sleep(leftNow);
+            }
+        }
+```
+
+在前面介绍日志推送流程中，会在通过网络发送之前，调用 `checkQuotaAndWait` 进行一定的流控操作，流控是使用的滑动窗口实现的，在该方法中首先会记录当前时间窗口的日志条目数量。如果当前时间窗口是新的（即timeVec中的记录不是当前秒），则重置该窗口的计数；如果是同一时间窗口，则累加日志条目数量。然后计算当前时间窗口剩余的时间（毫秒），如果已达到最大限制，则可能需要等待直到下一个时间窗口开始。
+
+其中 `Quota` 中核心属性如下：
+
+```java
+public class Quota {
+
+    /**
+     * 在指定时间窗口内允许的最大日志条目数量。
+     */
+    private final int max;
+
+    /**
+     * 一个数组，用于存储每个时间窗口的日志条目数量。
+     */
+    private final int[] samples;
+    /**
+     * 一个数组，记录每个时间窗口的开始时间（秒）。
+     */
+    private final long[] timeVec;
+    /**
+     * 窗口数量
+     */
+    private final int window;
+}
+```
+
+##### 6.3.6.3 日志推送的重试机制
+
+```java
+	/**
+     * Leader节点在向从节点转发日志后，会存储该日志的推送时间戳到pendingMap，
+     * 当pendingMap的积压超过1000ms时会触发重推机制，该逻辑封装在当前方法中
+     * @throws Exception
+     */
+    private void doCheckAppendResponse() throws Exception {
+        // 获取从节点已复制的日志序号
+        long peerWaterMark = getPeerWaterMark(term, peerId);
+        // 尝试获取从节点已复制序号+1的记录，如果能找到，说明从服务下一条需要追加的消息已经存储在主节点中，
+        // 接着在尝试推送，如果该条推送已经超时，默认超时时间为1s，调用doAppendInner重新推送
+        Pair<Long, Integer> pair = pendingMap.get(peerWaterMark + 1);
+        if (pair == null)
+            return;
+        long sendTimeMs = pair.getKey();
+        if (DLedgerUtils.elapsed(sendTimeMs) > dLedgerConfig.getMaxPushTimeOutMs()) {
+            // 发送如果超时，则重置writeIndex指针，重发消息
+            batchAppendEntryRequest.clear();
+            writeIndex = peerWaterMark + 1;
+            logger.warn("[Push-{}]Reset write index to {} for resending the entries which are timeout", peerId, peerWaterMark + 1);
+        }
+    }
+```
+
+如果因网络等原因，主节点在向从节点追加日志时失败，该如何保证从节点与主节点一致呢？从上文我们可以得知，Leader节点在向 从节点转发日志后，会存储该日志的推送时间戳到pendingMap，当pendingMap的积压超过1000ms时会触发重推机制，将writeIndex指针重置为超时的Index上。
+
+#### 6.3.7 日志转发整体流程
+
+![](../images/71.png)
+
+### 6.4 日志复制（Follower节点接收日志并存储）
+
+Leader节点实时向从节点转发消息，从节点接收到日志后进行存储，然后向Leader节点反馈复制进度，从节点的日志接收主要由EntryHandler实现。
+
+#### 6.4.1 EntryHandler核心属性
+
+```java
+    //io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler
+
+	/**
+     * 从节点收到Leader节点推送的日志并存储，然后向Leader节点汇报日志复制结果。
+     * This thread will be activated by the follower.
+     * Accept the push request and order it by the index, then append to ledger store one by one.
+     */
+    private class EntryHandler extends ShutdownAbleThread {
+
+        /**
+         * 上一次检查主服务器是否有推送消息的时间戳。
+         */
+        private long lastCheckFastForwardTimeMs = System.currentTimeMillis();
+
+        /**
+         * append请求处理队列。
+         */
+        ConcurrentMap<Long/*index*/, Pair<PushEntryRequest/*request*/, CompletableFuture<PushEntryResponse/*complete future*/>>> writeRequestMap = new ConcurrentHashMap<>();
+        /**
+         * COMMIT、COMPARE、TRUNCATE相关请求的处理队列。
+         */
+        BlockingQueue<Pair<PushEntryRequest, CompletableFuture<PushEntryResponse>>>
+            compareOrTruncateRequests = new ArrayBlockingQueue<>(1024);
+    }
+```
+
+#### 6.4.2 Follower日志复制入口
+
+从节点收到Leader节点的推送请求后（无论是APPEND、COMMIT、COMPARE、TRUNCATE），由EntryHandler的handlePush()方法执行：
+
+```java
+        // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#handlePush
+        /**
+         * 处理Leader节点发送到当前Follower节点的请求
+         * @param request
+         * @return
+         * @throws Exception
+         */
+        public CompletableFuture<PushEntryResponse> handlePush(PushEntryRequest request) throws Exception {
+            // The timeout should smaller than the remoting layer's request timeout
+            CompletableFuture<PushEntryResponse> future = new TimeoutFuture<>(1000);
+            switch (request.getType()) {
+                case APPEND:
+                    PreConditions.check(request.getCount() > 0, DLedgerResponseCode.UNEXPECTED_ARGUMENT);
+                    long index = request.getFirstEntryIndex();
+                    // 将请求放入队列中，由doWork方法异步处理
+                    Pair<PushEntryRequest, CompletableFuture<PushEntryResponse>> old = writeRequestMap.putIfAbsent(index, new Pair<>(request, future));
+                    if (old != null) {
+                        // 表示重复推送
+                        logger.warn("[MONITOR]The index {} has already existed with {} and curr is {}", index, old.getKey().baseInfo(), request.baseInfo());
+                        future.complete(buildResponse(request, DLedgerResponseCode.REPEATED_PUSH.getCode()));
+                    }
+                    break;
+                case COMMIT:
+                    synchronized (this) {
+                        // 将commit放入请求队列，由doWork方法异步处理
+                        if (!compareOrTruncateRequests.offer(new Pair<>(request, future))) {
+                            logger.warn("compareOrTruncateRequests blockingQueue is full when put commit request");
+                            future.complete(buildResponse(request, DLedgerResponseCode.PUSH_REQUEST_IS_FULL.getCode()));
+                        }
+                    }
+                    break;
+                case COMPARE:
+                case TRUNCATE:
+                    // 如果是compare或truncate请求，则清除append队列中所有的请求
+                    writeRequestMap.clear();
+                    synchronized (this) {
+                        // 并将 compare或truncate 请求放入队列中，由doWork方法异步处理
+                        if (!compareOrTruncateRequests.offer(new Pair<>(request, future))) {
+                            logger.warn("compareOrTruncateRequests blockingQueue is full when put compare or truncate request");
+                            future.complete(buildResponse(request, DLedgerResponseCode.PUSH_REQUEST_IS_FULL.getCode()));
+                        }
+                    }
+                    break;
+                default:
+                    logger.error("[BUG]Unknown type {} from {}", request.getType(), request.baseInfo());
+                    future.complete(buildResponse(request, DLedgerResponseCode.UNEXPECTED_ARGUMENT.getCode()));
+                    break;
+            }
+            wakeup();
+            return future;
+        }
+```
+
+handlePush()方法的主要职责是将处理请求放入队列，由doWork()方法从处理队列中拉取任务进行处理。
+
+1. 如果是append请求，将请求放入writeRequestMap集合，如果已存在该条日志的推送请求，表示Leader重复推送，则返回状态码REPEATED_PUSH。
+2. 如果是commit请求，将请求存入compareOrTruncateRequests 请求处理队列。
+3. 如果是compare或truncate请求，将待追加队列writeRequestMap清空，并将请求放入compareOrTruncateRequests请求队列，由doWork()方法进行异步处理。
+
+#### 6.4.3 EntryHandler任务分发机制
+
+EntryHandler的handlePush()方法主要是接收请求并将其放入队列的处理队列，而doWork()方法是从指定队列中获取待执行任务。
+
+```java
+		// io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#doWork
+        @Override
+        public void doWork() {
+            try {
+                // 第一步：校验是否是Follower节点
+                if (!memberState.isFollower()) {
+                    clearCompareOrTruncateRequestsIfNeed();
+                    waitForRunning(1);
+                    return;
+                }
+                // deal with install snapshot request first
+                Pair<InstallSnapshotRequest, CompletableFuture<InstallSnapshotResponse>> installSnapshotPair = null;
+                this.inflightInstallSnapshotRequestLock.lock();
+                try {
+                    if (inflightInstallSnapshotRequest != null && inflightInstallSnapshotRequest.getKey() != null && inflightInstallSnapshotRequest.getValue() != null) {
+                        installSnapshotPair = inflightInstallSnapshotRequest;
+                        inflightInstallSnapshotRequest = new Pair<>(null, null);
+                    }
+                } finally {
+                    this.inflightInstallSnapshotRequestLock.unlock();
+                }
+                if (installSnapshotPair != null) {
+                    handleDoInstallSnapshot(installSnapshotPair.getKey(), installSnapshotPair.getValue());
+                }
+                // 第二步：处理 TRUNCATE、COMPARE、COMMIT 请求
+                if (compareOrTruncateRequests.peek() != null) {
+                    Pair<PushEntryRequest, CompletableFuture<PushEntryResponse>> pair = compareOrTruncateRequests.poll();
+                    PreConditions.check(pair != null, DLedgerResponseCode.UNKNOWN);
+                    switch (pair.getKey().getType()) {
+                        case TRUNCATE:
+                            handleDoTruncate(pair.getKey().getPreLogIndex(), pair.getKey(), pair.getValue());
+                            break;
+                        case COMPARE:
+                            handleDoCompare(pair.getKey(), pair.getValue());
+                            break;
+                        case COMMIT:
+                            handleDoCommit(pair.getKey().getCommitIndex(), pair.getKey(), pair.getValue());
+                            break;
+                        default:
+                            break;
+                    }
+                    return;
+                }
+                long nextIndex = dLedgerStore.getLedgerEndIndex() + 1;
+                // 从请求队列中获取这一个日志索引所对应的请求
+                Pair<PushEntryRequest, CompletableFuture<PushEntryResponse>> pair = writeRequestMap.remove(nextIndex);
+                if (pair == null) {
+                    // 检查追加请求是否丢失
+                    checkAbnormalFuture(dLedgerStore.getLedgerEndIndex());
+                    // 如果下一个日志索引不在队列中，则证明主节点还没有把这条日志推送过来，此时我们等待
+                    waitForRunning(1);
+                    // 如果这一个索引在队列中不存在，则退出。等待下一次检查
+                    return;
+                }
+                PushEntryRequest request = pair.getKey();
+                // 执行日志追加
+                handleDoAppend(nextIndex, request, pair.getValue());
+            } catch (Throwable t) {
+                DLedgerEntryPusher.LOGGER.error("Error in {}", getName(), t);
+                DLedgerUtils.sleep(100);
+            }
+        }
+    }
+```
+
+- 第一步：如果当前节点的状态不是从节点，则跳出
+- 第二步：如果compareOrTruncateRequests队列不为空，优先处理COMMIT、COMPARE、TRUNCATE等请求。值得注意的是，这里使用的是peek、poll等非阻塞方法，所以队列为空不会阻塞线程使得append请求能够正常处理。
+- 第三步：处理日志追加append请求，根据当前节点 已存储的最大日志序号计算下一条待写日志的日志序号，从待写队列 中获取日志的处理请求。如果能查找到对应日志的追加请求，则执行doAppend()方法追加日志；如果从待写队列中没有找到对应的追加请 求，则调用checkAbnormalFuture检查追加请求是否丢失。
+
+#### 6.4.4 compare请求响应
+
+从上文得知，Leader节点首先会向从节点发送compare请求，以此比较两者的数据是否存在差异，这一步由EntryHandler的handleDoCompare()方法实现
 
 ```java
         // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#handleDoCompare
@@ -2007,39 +2479,16 @@ changeState改变日志转发器的状态，该方法非常重要，我们来看
         }
 ```
 
-#### 6.3.5 truncate操作
+该方法最终目的是为了找到Leader节点和当前Follower节点的共识点，在该方法中会对比Leader端发来的Index对应选举任期和当前Follower节点这个Index对应的选举任期是否相同，会有如下情况：
 
-Leader节点在发送compare请求后，得知与从节点的数据存在差异，将向从节点发送truncate请求，指示从节点应该将truncateIndex 及以后的日志删除：
+1. Leader想要对比的Index在Follower节点不存在：则Follower节点返回当前节点 ledgerEndIndex 给Leader，意思是让Leader节点从我自己的最末尾Index进行对比。
+2. Leader想要对比Index在Follower节点中存在：
+   - Index对应的任期相同：意味着找到了共识点，返回SUCCESS。这样Leader节点就会从这个共识点删除从节点多余的日志，然后重新追加日志。
+   - Index对应的任期不同：从preLogIndex开始，向前追溯从节点Index所处任期的第一个日志。这样Leader节点就会从这个点重新开始对比，这也可以看到日志对比并不是一个日志一个日志依次对比，这样做效率会很低，当遇到任期不一致的情况时，Follower节点就会跳过当前任期，对比前一个任期日志是否一致。
 
-```java
-        //io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryDispatcher#doTruncate 
-        /**
-         * 发起truncate请求，用于删除Follower节点未提交的日志
-         * @throws Exception
-         */
-        private void doTruncate() throws Exception {
-            // 检测当前状态是否为Truncate
-            PreConditions.check(type.get() == EntryDispatcherState.TRUNCATE, DLedgerResponseCode.UNKNOWN);
-            // 删除共识点以后得所有日志，truncateIndex代表删除的起始位置
-            long truncateIndex = matchIndex + 1;
-            logger.info("[Push-{}]Will push data to truncate truncateIndex={}", peerId, truncateIndex);
-            // 构建truncate请求
-            PushEntryRequest truncateRequest = buildCompareOrTruncatePushRequest(-1, truncateIndex, PushEntryRequest.Type.TRUNCATE);
-            // 发送请求，等待Follower响应
-            PushEntryResponse truncateResponse = dLedgerRpcService.push(truncateRequest).get(3, TimeUnit.SECONDS);
+#### 6.4.5 truncate请求响应
 
-            PreConditions.check(truncateResponse != null, DLedgerResponseCode.UNKNOWN, "truncateIndex=%d", truncateIndex);
-            PreConditions.check(truncateResponse.getCode() == DLedgerResponseCode.SUCCESS.getCode(), DLedgerResponseCode.valueOf(truncateResponse.getCode()), "truncateIndex=%d", truncateIndex);
-            // 更新 lastPushCommitTimeMs 时间
-            lastPushCommitTimeMs = System.currentTimeMillis();
-            // 将状态改为Append，Follower节点的多余日志删除完成后，就需要Leader节点同步数据给Follower了
-            changeState(EntryDispatcherState.APPEND);
-        }
-```
-
-该方法的实现比较简单，主节点构建truncate请求包并通过网络向从节点发送请求，从节点在收到请求后会清理多余的数据，使主从节点数据保持一致。日志转发器在处理完truncate请求后，状态将变更为APPEND，开始向从节点转发日志。
-
-同样的我们继续看看Follower端是如何处理 truncate 命令的：
+Leader节点与从节点进行数据对比后，如果发现数据有差异，将计算出需要截断的日志序号，发送truncate请求给从节点，从节点对多余的日志进行截断:
 
 ```java
         // io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#handleDoTruncate
@@ -2133,16 +2582,238 @@ Follower节点在收到Leader节点发来的truncate请求后，会将truncateIn
 
 ```
 
-#### 6.3.6 append操作
+#### 6.4.6 append请求响应
 
-Leader节点在确认主从数据一致后，开始将新的消息转发到从节点。doAppend()方法内部的逻辑被包裹在while(true)中，故在查看其代码时应注意退出条件：
+Leader节点与从节点进行差异对比，截断从节点多余的数据文件后，会实时转发日志到从节点，具体由EntryHandler的handleDoAppend()方法实现：
 
 ```java
+// io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#handleDoAppend
+        private void handleDoAppend(long writeIndex, PushEntryRequest request,
+            CompletableFuture<PushEntryResponse> future) {
+            try {
+                PreConditions.check(writeIndex == request.getFirstEntryIndex(), DLedgerResponseCode.INCONSISTENT_STATE);
+                for (DLedgerEntry entry : request.getEntries()) {
+                    // 将日志信息存储的Follower节点上
+                    dLedgerStore.appendAsFollower(entry, request.getTerm(), request.getLeaderId());
+                }
+                // 返回成功响应。
+                future.complete(buildResponse(request, DLedgerResponseCode.SUCCESS.getCode()));
+                // 计算已提交指针
+                long committedIndex = Math.min(dLedgerStore.getLedgerEndIndex(), request.getCommitIndex());
+                if (DLedgerEntryPusher.this.memberState.followerUpdateCommittedIndex(committedIndex)) {
+                    // 更新已提交指针
+                    DLedgerEntryPusher.this.fsmCaller.onCommitted(committedIndex);
+                }
+            } catch (Throwable t) {
+                logger.error("[HandleDoAppend] writeIndex={}", writeIndex, t);
+                future.complete(buildResponse(request, DLedgerResponseCode.INCONSISTENT_STATE.getCode()));
+            }
+        }
 ```
 
+将从Leader节点的日志追加到从节点，具体调用DLedgerStore的appendAsFollower()方法实现，其实现细节与服务端追加日志的流程基本类似，只是少了日志转发这个流程。然后使用Leader节点的已提交指针更新从节点的已提交指针，即append请求会附带有commit请求的效果。
+
+#### 6.4.7 从节点日志复制异常检测机制
+
+收到Leader节点的append请求后，从节点首先会将这些写入请求 存储在writeRequestMap处理队列中，从节点并不是直接从该队列中获取一个待写入处理请求进行数据追加，而是查找当前节点已存储的最大日志序号leaderEndIndex，然后加1得出下一条待追加的日志序号nextIndex。如果该日志序号在writeRequestMap中不存在日志推送请求，则有可能是因为发生了推送请求丢失，在这种情况下，需要进行异常检测，以便尽快恢复异常，使主节点与从节点最终保持一致性。
+
+```java
+// io.openmessaging.storage.dledger.DLedgerEntryPusher.EntryHandler#checkAbnormalFuture
+     /**
+         * 检查append请求是否丢失leader向follower推送的日志，并记录推送的索引。
+         * 但在以下情况下，推送可能会停止：
+         * 1. 如果追随者异常关闭，其日志结束索引可能会比之前更小。这时，领导者可能会推送快进条目，并一直重试。
+         * 2. 如果最后一个确认应答丢失，并且没有新消息传入，领导者可能会重试推送最后一条消息，但追随者会忽略它。
+         *
+         * @param endIndex
+         */
+        private void checkAbnormalFuture(long endIndex) {
+            if (DLedgerUtils.elapsed(lastCheckFastForwardTimeMs) < 1000) {
+                // 上次检查距离现在不足1s，则跳过检查
+                return;
+            }
+            lastCheckFastForwardTimeMs = System.currentTimeMillis();
+            if (writeRequestMap.isEmpty()) {
+                // 当前没有积压的append的请求，可以证明主节点没有推送新的日志，所以不用检查
+                return;
+            }
+			// 执行检查
+            checkAppendFuture(endIndex);
+        }
+
+
+        /**
+         *
+         * @param endIndex 从节点当前存储的最大日志序号
+         */
+        private void checkAppendFuture(long endIndex) {
+            long minFastForwardIndex = Long.MAX_VALUE;
+            for (Pair<PushEntryRequest, CompletableFuture<PushEntryResponse>> pair : writeRequestMap.values()) {
+                // 批量发送的第一条日志的index
+                long firstEntryIndex = pair.getKey().getFirstEntryIndex();
+                // 批量发送最后一条日志的index
+                long lastEntryIndex = pair.getKey().getLastEntryIndex();
+                // 清除旧的推送请求
+                if (lastEntryIndex <= endIndex) {
+                    try {
+                        for (DLedgerEntry dLedgerEntry : pair.getKey().getEntries()) {
+                            // 如果接收的日志和当前存储的日志所属选举轮次并不一致，则响应INCONSISTENT_STATE错误码
+                            PreConditions.check(dLedgerEntry.equals(dLedgerStore.get(dLedgerEntry.getIndex())), DLedgerResponseCode.INCONSISTENT_STATE);
+                        }
+                        // 否则，响应成功
+                        pair.getValue().complete(buildResponse(pair.getKey(), DLedgerResponseCode.SUCCESS.getCode()));
+                        logger.warn("[PushFallBehind]The leader pushed an batch append entry last index={} smaller than current ledgerEndIndex={}, maybe the last ack is missed", lastEntryIndex, endIndex);
+                    } catch (Throwable t) {
+                        logger.error("[PushFallBehind]The leader pushed an batch append entry last index={} smaller than current ledgerEndIndex={}, maybe the last ack is missed", lastEntryIndex, endIndex, t);
+                        pair.getValue().complete(buildResponse(pair.getKey(), DLedgerResponseCode.INCONSISTENT_STATE.getCode()));
+                    }
+                    // 清除旧的的请求
+                    writeRequestMap.remove(pair.getKey().getFirstEntryIndex());
+                    continue;
+                }
+                // 如果待追加的日志序号等于endIndex+1，即从节点当前存储的最大日志序号加1，表示从节点下一条期望追加的日志Leader节点已经推送过来了
+                if (firstEntryIndex == endIndex + 1) {
+                    return;
+                }
+                // 清除超时的推送请求
+                TimeoutFuture<PushEntryResponse> future = (TimeoutFuture<PushEntryResponse>) pair.getValue();
+                if (!future.isTimeOut()) {
+                    continue;
+                }
+                // 记录最小的推送的索引
+                if (firstEntryIndex < minFastForwardIndex) {
+                    minFastForwardIndex = firstEntryIndex;
+                }
+            }
+            // 主要处理待追加日志的序号大于endIndex+1的情况，可以认为有追加积压
+            if (minFastForwardIndex == Long.MAX_VALUE) {
+                return;
+            }
+            Pair<PushEntryRequest, CompletableFuture<PushEntryResponse>> pair = writeRequestMap.remove(minFastForwardIndex);
+            if (pair == null) {
+                return;
+            }
+            // 此时，返回错误码，让Leader转变为Compare模式，重新寻找共识点
+            logger.warn("[PushFastForward] ledgerEndIndex={} entryIndex={}", endIndex, minFastForwardIndex);
+            pair.getValue().complete(buildResponse(pair.getKey(), DLedgerResponseCode.INCONSISTENT_STATE.getCode()));
+        }
+```
+
+#### 6.4.8 日志复制整体流程
+
+![](../images/72.png)
 
 
 
+### 6.5 日志复制仲裁
 
-## 七. 日志压缩
+Raft协议判断一条日志写入成功的标准是集群中超过半数的节点存储了该日志，Leader节点首先存储数据，然后异步向它所有的从节点推送日志。不需要所有的从节点都返回日志追加成功才认为是成功写入，故Leader节点需要对返回结果进行仲裁，这部分功能主要由 QuorumAckChecker 实现：
 
+```java
+// io.openmessaging.storage.dledger.DLedgerEntryPusher.QuorumAckChecker#doWork
+        @Override
+        public void doWork() {
+            try {
+                if (DLedgerUtils.elapsed(lastPrintWatermarkTimeMs) > 3000) {
+                    logger.info("[{}][{}] term={} ledgerBeforeBegin={} ledgerEnd={} committed={} watermarks={} appliedIndex={}",
+                        memberState.getSelfId(), memberState.getRole(), memberState.currTerm(), dLedgerStore.getLedgerBeforeBeginIndex(), dLedgerStore.getLedgerEndIndex(), memberState.getCommittedIndex(), JSON.toJSONString(peerWaterMarksByTerm), memberState.getAppliedIndex());
+                    lastPrintWatermarkTimeMs = System.currentTimeMillis();
+                }
+                // 当前节点所处轮次
+                long currTerm = memberState.currTerm();
+                checkTermForPendingMap(currTerm, "QuorumAckChecker");
+                checkTermForWaterMark(currTerm, "QuorumAckChecker");
+                // clear pending closure in old term
+                if (pendingClosure.size() > 1) {
+                    for (Long term : pendingClosure.keySet()) {
+                        if (term == currTerm) {
+                            continue;
+                        }
+                        for (Map.Entry<Long, Closure> futureEntry : pendingClosure.get(term).entrySet()) {
+                            logger.info("[TermChange] Will clear the pending closure index={} for term changed from {} to {}", futureEntry.getKey(), term, currTerm);
+                            // 如果是之前的轮次，则调用请求完成回调，调用后，被hold住的请求会被释放
+                            futureEntry.getValue().done(Status.error(DLedgerResponseCode.EXPIRED_TERM));
+                        }
+                        pendingClosure.remove(term);
+                    }
+                }
+                // clear peer watermarks in old term
+                if (peerWaterMarksByTerm.size() > 1) {
+                    for (Long term : peerWaterMarksByTerm.keySet()) {
+                        if (term == currTerm) {
+                            continue;
+                        }
+                        logger.info("[TermChange] Will clear the watermarks for term changed from {} to {}", term, currTerm);
+                        // 清除老的选举周期中从节点的水位线
+                        peerWaterMarksByTerm.remove(term);
+                    }
+                }
+
+                // clear the pending closure which index <= applyIndex
+                if (DLedgerUtils.elapsed(lastCheckLeakTimeMs) > 1000) {
+                    checkResponseFuturesElapsed(DLedgerEntryPusher.this.memberState.getAppliedIndex());
+                    lastCheckLeakTimeMs = System.currentTimeMillis();
+                }
+                if (DLedgerUtils.elapsed(lastCheckTimeoutTimeMs) > 1000) {
+                    // clear the timeout pending closure should check all since it can timeout for different index
+                    checkResponseFuturesTimeout(DLedgerEntryPusher.this.memberState.getAppliedIndex() + 1);
+                    lastCheckTimeoutTimeMs = System.currentTimeMillis();
+                }
+                if (!memberState.isLeader()) {
+                    // 如果不是Leader节点，则返回，不再继续执行生效的逻辑了。
+                    waitForRunning(1);
+                    return;
+                }
+
+                // 从这里开始的逻辑都是Leader节点中才会执行的
+
+                // 更新当前节点的水位线
+                updatePeerWaterMark(currTerm, memberState.getSelfId(), dLedgerStore.getLedgerEndIndex());
+
+                // 计算所有节点水位线的中位数，那么理论上比这个中位数小的index来说都已经存储在集群中大多数节点上了。
+                Map<String, Long> peerWaterMarks = peerWaterMarksByTerm.get(currTerm);
+                List<Long> sortedWaterMarks = peerWaterMarks.values()
+                    .stream()
+                    .sorted(Comparator.reverseOrder())
+                    .collect(Collectors.toList());
+                long quorumIndex = sortedWaterMarks.get(sortedWaterMarks.size() / 2);
+
+                // advance the commit index
+                // we can only commit the index whose term is equals to current term (refer to raft paper 5.4.2)
+                if (DLedgerEntryPusher.this.memberState.leaderUpdateCommittedIndex(currTerm, quorumIndex)) {
+                    // 更新已提交的索引，此时只更新了Leader的 CommittedIndex指针，从节点的CommittedIndex会在后面‘
+                    // DLedgerEntryPusher.EntryDispatcher 发送Append请求和Commit请求中得到更新
+                    DLedgerEntryPusher.this.fsmCaller.onCommitted(quorumIndex);
+                } else {
+                    // If the commit index is not advanced, we should wait for the next round
+                    waitForRunning(1);
+                }
+            } catch (Throwable t) {
+                DLedgerEntryPusher.LOGGER.error("Error in {}", getName(), t);
+                DLedgerUtils.sleep(100);
+            }
+        }
+```
+
+## 八. 总结
+
+本文详细介绍了RocketMQ 4.5版本后引入的DLedger模式实现原理，该模式基于Raft协议实现，用于提高消息Broker存储的高可用性、可靠性和强一致性。
+
+DLedger 在 RocketMQ 中实现高可用性主要依赖于以下几个关键方面：
+
+1. **基于 Raft 协议的 Leader 选举机制**：
+   - Raft 协议通过在集群节点间进行 Leader 选举来确保集群操作的一致性。当主节点（Leader）出现故障时，Raft 协议能够迅速选举出新的 Leader，保证服务的连续性。
+2. **日志复制（Log Replication）**：
+   - 在 Raft 协议中，Leader 节点负责接收所有写请求，并将这些请求记录为日志条目，然后复制到所有 Follower 节点。只有当大多数节点（超过半数）成功复制了日志条目后，该条目才被认为是已提交（committed），并向客户端确认写操作成功。
+3. **数据同步**：
+   - DLedger 确保所有 Follower 节点与 Leader 节点的数据保持同步。如果 Follower 节点落后于 Leader 节点，它会通过日志复制机制迅速赶上 Leader 节点的状态。
+4. **故障检测与恢复**：
+   - DLedger 通过心跳机制检测节点故障。如果 Leader 节点发现某个 Follower 节点未能及时响应心跳，它会触发故障恢复流程，可能涉及到重新选举或日志重新复制。
+5. **数据一致性保证**：
+   - 在日志复制过程中，DLedger 通过比较 Leader 和 Follower 节点间的日志条目来确保数据一致性。如果发现不一致，会触发数据截断（Truncate）和日志对比（Compare）操作，以确保所有副本的数据最终一致。
+6. **流控机制**：
+   - DLedger 引入了流控机制，以避免在高负载情况下对 Leader 节点造成过大压力。通过限制待发送日志条目数量，防止系统过载，并保证系统的稳定性。
+7. **异常检测与处理**：
+   - DLedger 具备异常检测机制，能够发现并处理日志复制过程中的异常情况，如请求丢失或超时。这有助于快速恢复到正常状态，减少系统不可用时间。
+
+本文在最后还介绍了 RocketMQ 如何整合DLedger组件实现Broker的高可用。
