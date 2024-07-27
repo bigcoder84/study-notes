@@ -2,7 +2,7 @@
 
 > 本文所涉及的注释源码：[bigcoder84/dledger](https://github.com/bigcoder84/dledger)
 >
-> 参考转载至：《RocketMQ技术内幕 第二版》
+> 参考：《RocketMQ技术内幕 第二版》
 
 RocketMQ 4.5版本之前，可以采用主从架构进行集群部署，但是如果 master 节点挂掉，不能自动在集群中选举出新的 master 节点，需要人工介入，在4.5版本之后提供了 DLedger 模式，DLedger 是 Open Messaging 发布的一个基于 Raft 协议实现的Java类库，可以方便引用到系统中，满足其高可用、高可靠、强一致的需求，其中在 RocketMQ 中作为消息 Broker 存储高可用实现的一种解决方案。使用Raft算法，如果 master 节点出现故障，可以自动选举出新的 master 进行切换。
 
@@ -28,7 +28,9 @@ Raft是一个分布式领域的一致性协议，只是一个方法论，需要�
 
 客户端向DLedger集群发起一个写数据请求，Leader节点收到写请求后先将数据存入Leader节点，然后将数据广播给它所有的从节点。从节点收到Leader节点的数据推送后对数据进行存储，然后向主节点汇报存储的结果。Leader节点会对该日志的存储结果进行仲裁，如果超过集群数量的一半都成功存储了该数据，则向客户端返回写入成功，否则向客户端返回写入失败。
 
-## 二. DLeger是什么
+## 二. DLedger概述
+
+### 2.1 什么是DLedger
 
 DLedger 定位是一个工业级的 Java Library，可以友好地嵌入各类 Java 系统中，满足其高可用、高可靠、强一致的需求，和这一定位比较接近的是 [Ratis](https://github.com/apache/incubator-ratis)。
 
@@ -51,11 +53,11 @@ DLedger 的实现大体可以分为以下两个部分：
 
 后文我们将详细介绍 DLedger 的实现细节以及它是如何整合进RocketMQ中使得RocketMQ集群也能拥有分布式强一致性集群模式。
 
-### 2.1 DLedger应用
+### 2.2 DLedger应用
 
 在 Apache RocketMQ 中，DLedger 不仅被直接用来当做消息存储，也被用来实现一个嵌入式的 KV 系统，以存储元数据信息。
 
-#### 2.1.1 DLedger 作为 RocketMQ 的消息存储
+#### 2.2.1 DLedger 作为 RocketMQ 的消息存储
 
 ![](../images/68.png)
 
@@ -63,7 +65,7 @@ DLedger 的实现大体可以分为以下两个部分：
 2. 依靠 DLedger 的直接存取日志的特点，消费消息时，直接从 DLedger 读取日志内容作为消息返回给客户端；
 3. 依靠 DLedger 的 Raft 选举功能，通过 RoleChangeHandler 把角色变更透传给 RocketMQ 的Broker，从而达到主备自动切换的目标；
 
-#### 2.1.2 利用 DLedger 实现一个高可用的嵌入式 KV 存储
+#### 2.2.2 利用 DLedger 实现一个高可用的嵌入式 KV 存储
 
 ![](../images/69.png)
 
@@ -2795,7 +2797,7 @@ Raft协议判断一条日志写入成功的标准是集群中超过半数的节�
         }
 ```
 
-## 八. 总结
+## 七. 总结
 
 本文详细介绍了RocketMQ 4.5版本后引入的DLedger模式实现原理，该模式基于Raft协议实现，用于提高消息Broker存储的高可用性、可靠性和强一致性。
 
@@ -2815,5 +2817,3 @@ DLedger 在 RocketMQ 中实现高可用性主要依赖于以下几个关键方�
    - DLedger 引入了流控机制，以避免在高负载情况下对 Leader 节点造成过大压力。通过限制待发送日志条目数量，防止系统过载，并保证系统的稳定性。
 7. **异常检测与处理**：
    - DLedger 具备异常检测机制，能够发现并处理日志复制过程中的异常情况，如请求丢失或超时。这有助于快速恢复到正常状态，减少系统不可用时间。
-
-本文在最后还介绍了 RocketMQ 如何整合DLedger组件实现Broker的高可用。
