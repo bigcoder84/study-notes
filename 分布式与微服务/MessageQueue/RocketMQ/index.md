@@ -14,6 +14,8 @@
 
 [RocketMQ重试机制](./subfile/_8RocketMQ重试机制.md)
 
+[RocketMQ与Kafka的区别](./subfile/_19RocketMQ与Kafka的区别.md)
+
 ## 源码分析
 
 [阅读源码前的准备](./subfile/_9阅读源码前的准备.md)
