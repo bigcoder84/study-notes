@@ -1,6 +1,6 @@
 # RocketMQ
 
-### 基本使用
+## 基本使用
 
 [安装RocketMQ](./subfile/_1安装RocketMQ.md)
 
@@ -23,6 +23,8 @@
 [RocketMQ消息发送流程](./subfile/_4RocketMQ消息发送流程.md)
 
 [RocketMQ消息存储流程](./subfile/_5RocketMQ消息存储流程.md)
+
+[RocketMQ消息消费流程](./subfile/_20RocketMQ客户端消息消费原理.md)
 
 [RocketMQ消息消费失败后的重试机制](./subfile/_8RocketMQ重试机制.md)
 
