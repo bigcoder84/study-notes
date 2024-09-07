@@ -45,7 +45,7 @@ RocketMQ 支持并发消费与顺序消费两种消费方式，消息的拉取�
 
 ![](../images/77.png)
 
-**一个MQ客户端（MQClientInstance）只会创建一个消息拉取线程向Broker拉取消息，并且同一时间只会拉取一个topic中的一个队列， 拉取线程一次向Broker拉取一批消息后，会提交到消费组的线程池，然后“不知疲倦”地向Broker发起下一个拉取请求**。
+**一个MQ客户端（MQClientInstance）只会创建一个消息拉取服务线程（PullMessageService）向Broker拉取消息，但是拉取消息网络IO操作是异步的，所以在拉取一个消费队列消息时发生长轮询阻塞并不会影响其它消费队列的消息拉取。PullMessageService会不断获取PullRequest拉取请求，将拉取请求放入IO线程池中后会立即返回（不会等Broker响应），然后继续“不知疲倦”地获取下一个PullRequest拉取请求**。当IO线程收到broker相应后，会执行回调方法，将拉取到的消息提交到消费组的线程池。
 
 RocketMQ客户端为每一个消费组创建独立的消费线程池，即在并发消费模式下，单个消费组内的并发度为线程池线程个数。线程池处理一批消息后会向Broker汇报消息消费进度。
 
@@ -631,6 +631,8 @@ public class ProcessQueue {
         );
 ```
 
+> 如果当前 ConsumerGroup 是集群消费，会将本地的消费进度在拉取请求中上报给Broker。
+
 下面逐一介绍PullSysFlag的枚举值含义:
 
 ```java
@@ -774,6 +776,477 @@ pullKernelImpl 方法的参数：
         }
 ```
 
-#### 4.3.2 消息服务端Broker组装消息
+#### 4.3.2 Broker组装消息
 
 根据消息拉取命令 `RequestCode.PULL_MESSAGE`，很容易找到 Brokder 端处理消息拉取的入口： `org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest`
+
+第一步：根据订阅信息构建消息过滤器
+
+```java
+// org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest(io.netty.channel.Channel, org.apache.rocketmq.remoting.protocol.RemotingCommand, boolean)
+        // 构建消息过滤器
+        MessageFilter messageFilter;
+        if (this.brokerController.getBrokerConfig().isFilterSupportRetry()) {
+            //表示支持对重试topic的属性进行过滤
+            messageFilter = new ExpressionForRetryMessageFilter(subscriptionData, consumerFilterData,
+                this.brokerController.getConsumerFilterManager());
+        } else {
+            // 表示不支持对重试topic的属性进行过滤
+            messageFilter = new ExpressionMessageFilter(subscriptionData, consumerFilterData,
+                this.brokerController.getConsumerFilterManager());
+        }
+```
+
+第二步：调用MessageStore.getMessage查找消息
+
+```java
+// org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest(io.netty.channel.Channel, org.apache.rocketmq.remoting.protocol.RemotingCommand, boolean)
+        // 读取broker中存储的消息
+        final GetMessageResult getMessageResult =
+            this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
+                requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
+```
+
+该方法参数含义如下：
+
+1. String group：消费组名称。
+2. String topic：主题名称。
+3. int queueId：队列ID。
+4. long offset：待拉取偏移量。
+5. int maxMsgNums：最大拉取消息条数。
+6. MessageFilter messageFilter：消息过滤器。
+
+第三步：根据主题名称与队列编号获取消息消费队列
+
+```java
+//org.apache.rocketmq.store.DefaultMessageStore#getMessage
+        long beginTime = this.getSystemClock().now();
+
+        GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
+        // 待查找队列的偏移量
+        long nextBeginOffset = offset;
+        // 当前消息队列的最小偏移量
+        long minOffset = 0;
+        // 当前消息队列的最大偏移量
+        long maxOffset = 0;
+```
+
+1. nextBeginOffset：待查找队列的偏移量。
+2. minOffset：当前消息队列的最小偏移量。
+3. maxOffset：当前消息队列的最大偏移量。
+4. maxOffsetPy：当前CommitLog文件的最大偏移量。
+
+第四步：消息偏移量异常情况校对下一次拉取偏移量：
+
+```java
+//org.apache.rocketmq.store.DefaultMessageStore#getMessage
+    GetMessageResult getResult = new GetMessageResult();
+
+        // 当前CommitLog文件的最大偏移量
+        final long maxOffsetPy = this.commitLog.getMaxOffset();
+
+        ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
+        if (consumeQueue != null) {
+            minOffset = consumeQueue.getMinOffsetInQueue();
+            maxOffset = consumeQueue.getMaxOffsetInQueue();
+
+            if (maxOffset == 0) {
+                //表示当前消费队列中没有消息，拉取结果为
+                //NO_MESSAGE_IN_QUEUE。如果当前Broker为主节点，下次拉取偏移量为
+                //0。如果当前Broker为从节点并且offsetCheckInSlave为true，设置下
+                //次拉取偏移量为0。其他情况下次拉取时使用原偏移量
+                status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
+                nextBeginOffset = nextOffsetCorrection(offset, 0);
+            } else if (offset < minOffset) {
+                //表示待拉取消息偏移量小于队列的起始偏
+                //移量，拉取结果为OFFSET_TOO_SMALL。如果当前Broker为主节点，下
+                //次拉取偏移量为队列的最小偏移量。如果当前Broker为从节点并且
+                //offsetCheckInSlave为true，下次拉取偏移量为队列的最小偏移量。
+                //其他情况下次拉取时使用原偏移量。
+                status = GetMessageStatus.OFFSET_TOO_SMALL;
+                nextBeginOffset = nextOffsetCorrection(offset, minOffset);
+            } else if (offset == maxOffset) {
+                // 如果待拉取偏移量等于队列最大偏移
+                //量，拉取结果为OFFSET_OVERFLOW_ONE，则下次拉取偏移量依然为
+                //offset。
+                status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
+                nextBeginOffset = nextOffsetCorrection(offset, offset);
+            } else if (offset > maxOffset) {
+                // 表示偏移量越界，拉取结果为
+                //OFFSET_OVERFLOW_BADLY。此时需要考虑当前队列的偏移量是否为0，
+                //如果当前队列的最小偏移量为0，则使用最小偏移量纠正下次拉取偏移
+                //量。如果当前队列的最小偏移量不为0，则使用该队列的最大偏移量来
+                //纠正下次拉取偏移量
+                status = GetMessageStatus.OFFSET_OVERFLOW_BADLY;
+                if (0 == minOffset) {
+                    nextBeginOffset = nextOffsetCorrection(offset, minOffset);
+                } else {
+                    nextBeginOffset = nextOffsetCorrection(offset, maxOffset);
+                }
+            }
+```
+
+1. maxOffset=0：表示当前消费队列中没有消息，拉取结果为NO_MESSAGE_IN_QUEUE。如果当前Broker为主节点，下次拉取偏移量为 0。如果当前Broker为从节点并且offsetCheckInSlave为true，设置下次拉取偏移量为0。其他情况下次拉取时使用原偏移量。
+2. offset<minOffset：表示待拉取消息偏移量小于队列的起始偏移量，拉取结果为OFFSET_TOO_SMALL。如果当前Broker为主节点，下 次拉取偏移量为队列的最小偏移量。如果当前Broker为从节点并且offsetCheckInSlave为true，下次拉取偏移量为队列的最小偏移量。 其他情况下次拉取时使用原偏移量。
+3. offset==maxOffset：如果待拉取偏移量等于队列最大偏移量，拉取结果为OFFSET_OVERFLOW_ONE，则下次拉取偏移量依然为offset。
+4. offset>maxOffset：表示偏移量越界，拉取结果为OFFSET_OVERFLOW_BADLY。此时需要考虑当前队列的偏移量是否为0， 如果当前队列的最小偏移量为0，则使用最小偏移量纠正下次拉取偏移量。如果当前队列的最小偏移量不为0，则使用该队列的最大偏移量来纠正下次拉取偏移量。纠正逻辑与1）、2）相同。
+
+第五步：如果待拉取偏移量大于minOffset并且小于maxOffset，从当前offset处尝试拉取32条消息。
+
+ ```java
+ //org.apache.rocketmq.store.DefaultMessageStore#getMessage
+                 SelectMappedBufferResult bufferConsumeQueue = consumeQueue.getIndexBuffer(offset);
+                 if (bufferConsumeQueue != null) {
+                     try {
+                         status = GetMessageStatus.NO_MATCHED_MESSAGE;
+ 
+                         long nextPhyFileStartOffset = Long.MIN_VALUE;
+                         long maxPhyOffsetPulling = 0;
+ 
+                         int i = 0;
+                         final int maxFilterMessageCount = Math.max(16000, maxMsgNums * ConsumeQueue.CQ_STORE_UNIT_SIZE);
+                         final boolean diskFallRecorded = this.messageStoreConfig.isDiskFallRecorded();
+                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
+                         for (; i < bufferConsumeQueue.getSize() && i < maxFilterMessageCount; i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
+                             // 消息物理偏移量
+                             long offsetPy = bufferConsumeQueue.getByteBuffer().getLong();
+                             // 消息长度
+                             int sizePy = bufferConsumeQueue.getByteBuffer().getInt();
+                             // 消息TAG的hash码
+                             long tagsCode = bufferConsumeQueue.getByteBuffer().getLong();
+ 
+                             maxPhyOffsetPulling = offsetPy;
+ 
+                             if (nextPhyFileStartOffset != Long.MIN_VALUE) {
+                                 if (offsetPy < nextPhyFileStartOffset)
+                                     continue;
+                             }
+ 
+                             boolean isInDisk = checkInDiskByCommitOffset(offsetPy, maxOffsetPy);
+ 
+                             if (this.isTheBatchFull(sizePy, maxMsgNums, getResult.getBufferTotalSize(), getResult.getMessageCount(),
+                                 isInDisk)) {
+                                 break;
+                             }
+ 
+                             boolean extRet = false, isTagsCodeLegal = true;
+                             if (consumeQueue.isExtAddr(tagsCode)) {
+                                 extRet = consumeQueue.getExt(tagsCode, cqExtUnit);
+                                 if (extRet) {
+                                     tagsCode = cqExtUnit.getTagsCode();
+                                 } else {
+                                     // can't find ext content.Client will filter messages by tag also.
+                                     log.error("[BUG] can't find consume queue extend file content!addr={}, offsetPy={}, sizePy={}, topic={}, group={}",
+                                         tagsCode, offsetPy, sizePy, topic, group);
+                                     isTagsCodeLegal = false;
+                                 }
+                             }
+ 
+                             // 对消息TAG的Hash码进行比对，如果未匹配，则继续拉取下一条消息
+                             if (messageFilter != null
+                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
+                                 if (getResult.getBufferTotalSize() == 0) {
+                                     status = GetMessageStatus.NO_MATCHED_MESSAGE;
+                                 }
+ 
+                                 continue;
+                             }
+ 
+                             SelectMappedBufferResult selectResult = this.commitLog.getMessage(offsetPy, sizePy);
+                             if (null == selectResult) {
+                                 if (getResult.getBufferTotalSize() == 0) {
+                                     status = GetMessageStatus.MESSAGE_WAS_REMOVING;
+                                 }
+ 
+                                 nextPhyFileStartOffset = this.commitLog.rollNextFile(offsetPy);
+                                 continue;
+                             }
+ 
+                             // 对消息属性进行SQL92过滤，此种过滤方式会反序列化消息内容，性能相对TAG过滤会差一点
+                             if (messageFilter != null
+                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
+                                 if (getResult.getBufferTotalSize() == 0) {
+                                     status = GetMessageStatus.NO_MATCHED_MESSAGE;
+                                 }
+                                 // release...
+                                 selectResult.release();
+                                 continue;
+                             }
+ 
+                             this.storeStatsService.getGetMessageTransferedMsgCount().incrementAndGet();
+                             getResult.addMessage(selectResult);
+                             status = GetMessageStatus.FOUND;
+                             nextPhyFileStartOffset = Long.MIN_VALUE;
+                         }
+ 
+                         if (diskFallRecorded) {
+                             long fallBehind = maxOffsetPy - maxPhyOffsetPulling;
+                             brokerStatsManager.recordDiskFallBehindSize(group, topic, queueId, fallBehind);
+                         }
+ 
+                         nextBeginOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
+ 
+                         // diff：是 maxOffsetPy 和 maxPhyOffsetPulling 两者的差值，表示还有多少消息没有拉取
+                         long diff = maxOffsetPy - maxPhyOffsetPulling;
+                         // StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE：表示当前 Master Broker 全部的物理内存大小。
+                         long memory = (long) (StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE
+                             * (this.messageStoreConfig.getAccessMessageInMemoryMaxRatio() / 100.0));
+                         // 如果消息堆积大于内存 40% 则建议从Slave Broker拉取消息（实现读写分离）
+                         getResult.setSuggestPullingFromSlave(diff > memory);
+ ```
+
+第六步：根据PullResult填充responseHeader的NextBeginOffset、MinOffset、MaxOffset。
+
+```java
+//org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest(io.netty.channel.Channel, org.apache.rocketmq.remoting.protocol.RemotingCommand, boolean)
+            response.setRemark(getMessageResult.getStatus().name());
+            responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
+            responseHeader.setMinOffset(getMessageResult.getMinOffset());
+            responseHeader.setMaxOffset(getMessageResult.getMaxOffset());
+```
+
+第七步：根据主从同步延迟，如果从节点数据包含下一次拉取的偏移量，则设置下一次拉取任务的brokerId。
+
+```java
+//org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest(io.netty.channel.Channel, org.apache.rocketmq.remoting.protocol.RemotingCommand, boolean)
+            if (getMessageResult.isSuggestPullingFromSlave()) {
+                responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getWhichBrokerWhenConsumeSlowly());
+            } else {
+                responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
+            }
+```
+
+第八步：GetMessageResult与Response进行状态编码转换。
+
+```java
+//org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest(io.netty.channel.Channel, org.apache.rocketmq.remoting.protocol.RemotingCommand, boolean)
+            switch (getMessageResult.getStatus()) {
+                case FOUND:
+                    response.setCode(ResponseCode.SUCCESS);
+                    break;
+                case MESSAGE_WAS_REMOVING:
+                    response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
+                    break;
+                case NO_MATCHED_LOGIC_QUEUE:
+                case NO_MESSAGE_IN_QUEUE:
+                    if (0 != requestHeader.getQueueOffset()) {
+                        response.setCode(ResponseCode.PULL_OFFSET_MOVED);
+
+                        // XXX: warn and notify me
+                        log.info("the broker store no queue data, fix the request offset {} to {}, Topic: {} QueueId: {} Consumer Group: {}",
+                            requestHeader.getQueueOffset(),
+                            getMessageResult.getNextBeginOffset(),
+                            requestHeader.getTopic(),
+                            requestHeader.getQueueId(),
+                            requestHeader.getConsumerGroup()
+                        );
+                    } else {
+                        response.setCode(ResponseCode.PULL_NOT_FOUND);
+                    }
+                    break;
+                case NO_MATCHED_MESSAGE:
+                    response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
+                    break;
+                case OFFSET_FOUND_NULL:
+                    response.setCode(ResponseCode.PULL_NOT_FOUND);
+                    break;
+                case OFFSET_OVERFLOW_BADLY:
+                    response.setCode(ResponseCode.PULL_OFFSET_MOVED);
+                    // XXX: warn and notify me
+                    log.info("the request offset: {} over flow badly, broker max offset: {}, consumer: {}",
+                        requestHeader.getQueueOffset(), getMessageResult.getMaxOffset(), channel.remoteAddress());
+                    break;
+                case OFFSET_OVERFLOW_ONE:
+                    response.setCode(ResponseCode.PULL_NOT_FOUND);
+                    break;
+                case OFFSET_TOO_SMALL:
+                    response.setCode(ResponseCode.PULL_OFFSET_MOVED);
+                    log.info("the request offset too small. group={}, topic={}, requestOffset={}, brokerMinOffset={}, clientIp={}",
+                        requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueOffset(),
+                        getMessageResult.getMinOffset(), channel.remoteAddress());
+                    break;
+                default:
+                    assert false;
+                    break;
+            }
+```
+
+GetMessageStatus和ResponseCode转换关系：
+
+| ResponseCode           | GetMessageStatus                                             |
+| ---------------------- | ------------------------------------------------------------ |
+| SUCCESS                | FOUND                                                        |
+| PULL_RETRY_IMMEDIATELY | NO_MATCHED_MESSAGE、MESSAGE_WAS_REMOVING（消息存在下一个CommitLog里） |
+| PULL_NOT_FOUND         | NO_MESSAGE_IN_QUEUE（队列中未包含消息）、NO_MATCHED_LOGIC_QUEUE（未找到队列）、OFFSET_FOUND_NULL、OFFSET_OVERFLOW_ONE（offset刚好等于当前最大的offset） |
+| PULL_OFFSET_MOVED      | NO_MESSAGE_IN_QUEUE（队列中未包含消息）、NO_MATCHED_LOGIC_QUEUE（未找到队列）、OFFSET_OVERFLOW_BADLY（offset越界）、OFFSET_TOO_SMALL（offset不在队列中） |
+
+第九步：**如果CommitLog标记为可用并且当前节点为主节点，则更新消息消费进度，消费进度将先存储在Broker内存中，由定时任务将消费进度写入Broker本地的JSON文件中**。
+
+```java
+//org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest(io.netty.channel.Channel, org.apache.rocketmq.remoting.protocol.RemotingCommand, boolean)
+        boolean storeOffsetEnable = brokerAllowSuspend;
+        storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
+        storeOffsetEnable = storeOffsetEnable
+            && this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE;
+        if (storeOffsetEnable) {
+            //如果CommitLog标记为可用并且当前节点为主节点，则更新消息消费进度，
+            this.brokerController.getConsumerOffsetManager().commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
+                requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(), requestHeader.getCommitOffset());
+        }
+```
+
+服务端消息拉取处理完毕，将返回结果拉取到消息调用方。在调用方，需要重点关注PULL_RETRY_IMMEDIATELY、PULL_OFFSET_MOVED、PULL_NOT_FOUND等情况下如何校正拉取偏移量。
+
+#### 4.3.3 消息拉取客户端处理消息
+
+回到消息拉取客户端调用入口：`MQClientAPIImpl#pullMessageAsync`
+
+第一步：根据响应结果解码成PullResultExt对象，此时只是从网络中读取消息列表中的byte[] messageBinary属性
+
+```java
+// org.apache.rocketmq.client.impl.MQClientAPIImpl#processPullResponse
+    private PullResult processPullResponse(
+        final RemotingCommand response) throws MQBrokerException, RemotingCommandException {
+        PullStatus pullStatus = PullStatus.NO_NEW_MSG;
+        switch (response.getCode()) {
+            case ResponseCode.SUCCESS:
+                pullStatus = PullStatus.FOUND;
+                break;
+            case ResponseCode.PULL_NOT_FOUND:
+                pullStatus = PullStatus.NO_NEW_MSG;
+                break;
+            case ResponseCode.PULL_RETRY_IMMEDIATELY:
+                pullStatus = PullStatus.NO_MATCHED_MSG;
+                break;
+            case ResponseCode.PULL_OFFSET_MOVED:
+                pullStatus = PullStatus.OFFSET_ILLEGAL;
+                break;
+
+            default:
+                throw new MQBrokerException(response.getCode(), response.getRemark());
+        }
+```
+
+NettyRemotingClient在收到服务端响应结构后，会回调PullCallback的onSuccess或onException，PullCallBack对象在DefaultMQPushConsumerImpl#pullMessage中创建。
+
+第二步：调用pullAPIWrapper的processPullResult，将消息字节数组解码成消息列表并填充msgFoundList，对消息进行消息过滤（TAG 模式）
+
+```java
+// org.apache.rocketmq.client.impl.consumer.DefaultMQPushConsumerImpl#pullMessage
+                    pullResult = DefaultMQPushConsumerImpl.this.pullAPIWrapper.processPullResult(pullRequest.getMessageQueue(), pullResult,
+                        subscriptionData);
+```
+
+接下来按照正常流程，即分析拉取结果为PullStatus.FOUND（找到对应的消息）的情况来分析整个消息拉取过程。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.DefaultMQPushConsumerImpl#pullMessage
+                    switch (pullResult.getPullStatus()) {
+                        case FOUND:
+                            // 获取到了消息
+                            long prevRequestOffset = pullRequest.getNextOffset();
+                            pullRequest.setNextOffset(pullResult.getNextBeginOffset());
+                            long pullRT = System.currentTimeMillis() - beginTimestamp;
+                            DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullRT(pullRequest.getConsumerGroup(),
+                                pullRequest.getMessageQueue().getTopic(), pullRT);
+
+                            long firstMsgOffset = Long.MAX_VALUE;
+                            if (pullResult.getMsgFoundList() == null || pullResult.getMsgFoundList().isEmpty()) {
+                                // 如果msgFoundList为空，则立即将PullReqeuest放入PullMessageService的pullRequestQueue，
+                                // 以便PullMessageSerivce能及时唤醒并再次执行消息拉取
+
+                                // 为什么PullResult.msgFoundList
+                                //还会为空呢？因为RocketMQ根据TAG进行消息过滤时，在服务端只是验
+                                //证了TAG的哈希码，所以客户端再次对消息进行过滤时，可能会出现
+                                //msgFoundList为空的情况
+                                DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                            } else {
+                                firstMsgOffset = pullResult.getMsgFoundList().get(0).getQueueOffset();
+
+                                DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullTPS(pullRequest.getConsumerGroup(),
+                                    pullRequest.getMessageQueue().getTopic(), pullResult.getMsgFoundList().size());
+
+                                // 将消息存入processQueue
+                                boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
+
+                                // 然后将拉取到的消息提交到Consume MessageService中供消费者消费
+                                DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
+                                    pullResult.getMsgFoundList(),
+                                    processQueue,
+                                    pullRequest.getMessageQueue(),
+                                    dispatchToConsume);
+
+                                if (DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval() > 0) {
+                                    DefaultMQPushConsumerImpl.this.executePullRequestLater(pullRequest,
+                                        DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval());
+                                } else {
+                                    DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                                }
+                            }
+
+                            if (pullResult.getNextBeginOffset() < prevRequestOffset
+                                || firstMsgOffset < prevRequestOffset) {
+                                log.warn(
+                                    "[BUG] pull message result maybe data wrong, nextBeginOffset: {} firstMsgOffset: {} prevRequestOffset: {}",
+                                    pullResult.getNextBeginOffset(),
+                                    firstMsgOffset,
+                                    prevRequestOffset);
+                            }
+
+                            break;
+```
+
+1. 更新PullRequest的下一次拉取偏移量，如果msgFoundList为空，则立即将PullReqeuest放入PullMessageService 的pullRequestQueue，以便PullMessageSerivce能及时唤醒并再次执行消息拉取。为什么PullStatus.msgFoundList 还会为空呢？因为RocketMQ根据TAG进行消息过滤时，在服务端只是验证了TAG的哈希码，所以客户端再次对消息进行过滤时，可能会出现msgFoundList为空的情况。
+2. 将拉取到的消息存入ProcessQueue，然后将拉取到的消息提交到ConsumeMessageService中供消费者消费。该方法是一个异步方法，也就是PullCallBack将消息提交到ConsumeMessageService中就会立即返回，至于这些消息如何消费，PullCallBack不会关注。
+3. 将消息提交给消费者线程之后，PullCallBack将立即返回，可以说本次消息拉取顺利完成。然后查看pullInterval参数，如果pullInterval>0，则等待pullInterval毫秒后将PullRequest对象放入PullMessageService的pullRequestQueue中，该消息队列的下次拉 取即将被激活，达到持续消息拉取，实现准实时拉取消息的效果。
+
+再来分析消息拉取异常处理是如何校对拉取偏移量。
+
+1. **NO_NEW_MSG、NO_MATCHED_MSG**
+
+如果返回NO_NEW_MSG（没有新消息）、NO_MATCHED_MSG（没有匹配消息），则直接使用服务器端校正的偏移量进行下一次消息的拉
+
+取：
+
+```java
+// org.apache.rocketmq.client.impl.consumer.DefaultMQPushConsumerImpl#pullMessage
+                        case NO_NEW_MSG:
+                            pullRequest.setNextOffset(pullResult.getNextBeginOffset());
+
+                            DefaultMQPushConsumerImpl.this.correctTagsOffset(pullRequest);
+
+                            DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                            break;
+                        case NO_MATCHED_MSG:
+                            pullRequest.setNextOffset(pullResult.getNextBeginOffset());
+
+                            DefaultMQPushConsumerImpl.this.correctTagsOffset(pullRequest);
+
+                            DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                            break;
+```
+
+再来看服务端如何校正Offset:
+
+NO_NEW_MSG 对应 GetMessageResult.OFFSET_FOUND_NULL、GetMessageResult.OFFSET_OVERFLOW_ONE。
+
+OFFSET_OVERFLOW_ONE表示待拉取消息的物理偏移量等于消息队列最大的偏移量，如果有新的消息到达，此时会创建一个新的ConsumeQueue文件，因为上一个ConsueQueue文件的最大偏移量就是下一个文件的起始偏移量，所以可以按照该物理偏移量第二次拉取消息。
+
+OFFSET_FOUND_NULL表示根据ConsumeQueue文件的偏移量没有找到内容，使用偏移量定位到下一个ConsumeQueue文件，其实就是offset+（一个ConsumeQueue文件包含多少个条目=MappedFileSize/20）。
+
+2. **OFFSET_ILLEGAL**
+
+如果拉取结果显示偏移量非法，首先将ProcessQueue的dropped设为true，表示丢弃该消费队列，意味着ProcessQueue中拉取的消息将停止消费，然后根据服务端下一次校对的偏移量尝试更新消息消费进度（内存中），然后尝试持久化消息消费进度，并将该消息队列从RebalacnImpl的处理队列中移除，意味着暂停该消息队列的消息拉取，等待下一次消息队列重新负载。OFFSET_ILLEGAL对应服务端GetMessageResult状态的NO_MATCHED_LOGIC_QUEUE、NO_MESSAGE_IN_QUEUE、OFFSET_OVERFLOW_BADLY、OFFSET_TOO_SMALL，这些状态服务端偏移量校正基本上使用原偏移量，在客户端更新消息消费进度时只有当消息进度比当前消费进度大才会覆盖，以此保证消息进度的准确性。
+
+![](../images/80.png)
+
+### 4.3.4 消息拉取长轮询机制分析
+
+RocketMQ 并没有真正实现推模式，而是消费者主动向消息服务器拉取消息，RocketMQ 推模式是循环向消息服务端发送消息拉取请求，如果消息消费者向 RocketMQ 发送消息拉取时，消息并未到达消费队列，且未启用长轮询机制，则会在服务端等待 `shortPollingTimeMills` 时间后（挂起），再去判断消息是否已到达消息队列。如果消息未到达，则提示消息拉取客户端 `PULL_NOT_FOUND`（消息不存在），如果开启长轮询模式，RocketMQ 一方面会每 5s 轮询检查一次消息是否可达，同时一有新消息到达后，立即通知挂起线程再次验证新消息是否是自己感兴趣的，如果是则从 `CommitLog` 文件提取消息返回给消息拉取客户端，否则挂起超时，超时时间由消息拉取方在消息拉取时封装在请求参数中，推模式默认为15s，拉模式通过 `DefaultMQPullConsumer#setBrokerSuspendMaxTimeMillis` 进行设置。RocketMQ 通过在 Broker 端配置 longPollingEnable 为true来开启长轮询模式。
+
+消息拉取时服务端从CommitLog文件中未找到消息的处理逻辑：
+
+```java
+
+```
+
