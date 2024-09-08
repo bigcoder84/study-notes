@@ -1240,13 +1240,533 @@ OFFSET_FOUND_NULL表示根据ConsumeQueue文件的偏移量没有找到内容，
 
 ![](../images/80.png)
 
-### 4.3.4 消息拉取长轮询机制分析
+#### 4.3.4 消息拉取长轮询机制分析
 
 RocketMQ 并没有真正实现推模式，而是消费者主动向消息服务器拉取消息，RocketMQ 推模式是循环向消息服务端发送消息拉取请求，如果消息消费者向 RocketMQ 发送消息拉取时，消息并未到达消费队列，且未启用长轮询机制，则会在服务端等待 `shortPollingTimeMills` 时间后（挂起），再去判断消息是否已到达消息队列。如果消息未到达，则提示消息拉取客户端 `PULL_NOT_FOUND`（消息不存在），如果开启长轮询模式，RocketMQ 一方面会每 5s 轮询检查一次消息是否可达，同时一有新消息到达后，立即通知挂起线程再次验证新消息是否是自己感兴趣的，如果是则从 `CommitLog` 文件提取消息返回给消息拉取客户端，否则挂起超时，超时时间由消息拉取方在消息拉取时封装在请求参数中，推模式默认为15s，拉模式通过 `DefaultMQPullConsumer#setBrokerSuspendMaxTimeMillis` 进行设置。RocketMQ 通过在 Broker 端配置 longPollingEnable 为true来开启长轮询模式。
 
 消息拉取时服务端从CommitLog文件中未找到消息的处理逻辑：
 
 ```java
+// org.apache.rocketmq.broker.processor.PullMessageProcessor#processRequest(io.netty.channel.Channel, org.apache.rocketmq.remoting.protocol.RemotingCommand, boolean)
+    /**
+     * 处理消息拉取请求
+     * @param channel 请求对应网络连接通道
+     * @param request 请求的内容
+     * @param brokerAllowSuspend Broker端是否支持挂起，处理消息拉取时默认传入true，表示如果未找到消息则挂起，如果该参数为false，未找到消息时直接返回客户端消息未找到。
+     * @return
+     * @throws RemotingCommandException
+     */
+    private RemotingCommand processRequest(final Channel channel, RemotingCommand request, boolean brokerAllowSuspend){
+        .......省略其它逻辑.......
+                case ResponseCode.PULL_NOT_FOUND:
 
+                    // broker是否开启了长轮询 以及 客户端是否使用长轮询
+                    if (brokerAllowSuspend && hasSuspendFlag) {
+                        long pollingTimeMills = suspendTimeoutMillisLong;
+                        if (!this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                            pollingTimeMills = this.brokerController.getBrokerConfig().getShortPollingTimeMills();
+                        }
+
+                        String topic = requestHeader.getTopic();
+                        long offset = requestHeader.getQueueOffset();
+                        int queueId = requestHeader.getQueueId();
+                        PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
+                            this.brokerController.getMessageStore().now(), offset, subscriptionData, messageFilter);
+                        // 每隔5s重试一次
+                        this.brokerController.getPullRequestHoldService().suspendPullRequest(topic, queueId, pullRequest);
+                        response = null;
+                        break;
+                    }
+    }
 ```
 
+1. Channel channel：网络通道，通过该通道向消息拉取客户端发送响应结果。
+2. RemotingCommand request：消息拉取请求。
+3. boolean brokerAllowSuspend：Broker端是否支持挂起，处理消息拉取时默认传入true，表示如果未找到消息则挂起，如果该参数 为false，未找到消息时直接返回客户端消息未找到。
+
+如果brokerAllowSuspend为true，表示支持挂起，则将响应对象response设置为null，不会立即向客户端写入响应，hasSuspendFlag 参数在拉取消息时构建的拉取标记默认为true。
+
+默认支持挂起，根据是否开启长轮询决定挂起方式。如果开启长轮询模式，挂起超时时间来自请求参数，推模式默认为15s，拉模式通过`DefaultMQPullConsumer#brokerSuspenMaxTimeMillis` 进行设置，默认20s。然后创建拉取任务 `PullRequest` 并提交到 `PullRequestHoldService` 线程中。
+
+RocketMQ 轮询机制由两个线程共同完成。
+
+1. PullRequestHoldService：每隔5s重试一次。
+2. DefaultMessageStore#ReputMessageService：每处理一次重新拉取，线程休眠1s，继续下一次检查。
+
+**PullRequestHoldService线程详解**
+
+```java
+// org.apache.rocketmq.broker.longpolling.PullRequestHoldService#suspendPullRequest
+    public void suspendPullRequest(final String topic, final int queueId, final PullRequest pullRequest) {
+        String key = this.buildKey(topic, queueId);
+        ManyPullRequest mpr = this.pullRequestTable.get(key);
+        if (null == mpr) {
+            mpr = new ManyPullRequest();
+            ManyPullRequest prev = this.pullRequestTable.putIfAbsent(key, mpr);
+            if (prev != null) {
+                mpr = prev;
+            }
+        }
+
+        mpr.addPullRequest(pullRequest);
+    }
+```
+
+根据消息主题与消息队列构建key，从 `ConcurrentMap<String/* topic@queueId */, ManyPullRequest> pullRequestTable` 中获取该主题队列对应的 `ManyPullRequest`，通过 ConcurrentMap 的并发特性，维护主题队列的 `ManyPullRequest`，然后将 `PullRequest` 放入`ManyPullRequest`。`ManyPullRequest` 对象内部持有一个 `PullRequest` 列表，表示同一主题队列的累积拉取消息任务。
+
+```java
+//org.apache.rocketmq.broker.longpolling.PullRequestHoldService#run
+    @Override
+    public void run() {
+        log.info("{} service started", this.getServiceName());
+        while (!this.isStopped()) {
+            try {
+                if (this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                    // 默认情况下，每个5s检测所有长轮询连接是否有新消息到达
+                    this.waitForRunning(5 * 1000);
+                } else {
+                    this.waitForRunning(this.brokerController.getBrokerConfig().getShortPollingTimeMills());
+                }
+
+                long beginLockTimestamp = this.systemClock.now();
+                // 检查长轮询连接是否有新的消息到达
+                this.checkHoldRequest();
+                long costTime = this.systemClock.now() - beginLockTimestamp;
+                if (costTime > 5 * 1000) {
+                    log.info("[NOTIFYME] check hold request cost {} ms.", costTime);
+                }
+            } catch (Throwable e) {
+                log.warn(this.getServiceName() + " service has exception. ", e);
+            }
+        }
+
+        log.info("{} service end", this.getServiceName());
+    }
+```
+
+如果开启长轮询，每5s判断一次新消息是否到达。如果未开启长轮询，则默认等待1s再次判断，可以通`BrokerConfig#shortPollingTimeMills` 改变等待时间。
+
+```java
+// org.apache.rocketmq.broker.longpolling.PullRequestHoldService#checkHoldRequest
+    private void checkHoldRequest() {
+        for (String key : this.pullRequestTable.keySet()) {
+            String[] kArray = key.split(TOPIC_QUEUEID_SEPARATOR);
+            if (2 == kArray.length) {
+                String topic = kArray[0];
+                int queueId = Integer.parseInt(kArray[1]);
+                final long offset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
+                try {
+                    this.notifyMessageArriving(topic, queueId, offset);
+                } catch (Throwable e) {
+                    log.error("check hold request failed. topic={}, queueId={}", topic, queueId, e);
+                }
+            }
+        }
+    }
+```
+
+遍历拉取任务表，根据主题与队列获取消息消费队列的最大偏移量，如果该偏移量大于待拉取偏移量，说明有新的消息到达，调用notifyMessageArriving触发消息拉取。
+
+```java
+//org.apache.rocketmq.broker.longpolling.PullRequestHoldService#notifyMessageArriving
+        String key = this.buildKey(topic, queueId);
+        ManyPullRequest mpr = this.pullRequestTable.get(key);
+        if (mpr != null) {
+            List<PullRequest> requestList = mpr.cloneListAndClear();
+```
+
+第一步：首先从ManyPullRequest中获取当前该主题队列所有的挂起拉取任务。
+
+```java
+//org.apache.rocketmq.broker.longpolling.PullRequestHoldService#notifyMessageArriving
+                for (PullRequest request : requestList) {
+                    long newestOffset = maxOffset;
+                    if (newestOffset <= request.getPullFromThisOffset()) {
+                        newestOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
+                    }
+
+
+                    if (newestOffset > request.getPullFromThisOffset()) {
+                        boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
+                            new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
+                        // match by bit map, need eval again when properties is not null.
+                        if (match && properties != null) {
+                            match = request.getMessageFilter().isMatchedByCommitLog(null, properties);
+                        }
+
+                        if (match) {
+                            try {
+                                // 如果消息匹配，则调用executeRequestWhenWakeup方法，将消息返回给客户端
+                                this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
+                                    request.getRequestCommand());
+                            } catch (Throwable e) {
+                                log.error("execute request when wakeup failed.", e);
+                            }
+                            continue;
+                        }
+                    }
+
+                    if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {
+                        // 如果挂起超时，则不继续等待，直接返回客户端消息未找到
+                        try {
+                            this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
+                                request.getRequestCommand());
+                        } catch (Throwable e) {
+                            log.error("execute request when wakeup failed.", e);
+                        }
+                        continue;
+                    }
+
+                    replayList.add(request);
+                }
+```
+
+第二步：如果消息队列的最大偏移量大于待拉取偏移量，且消息匹配，则调用executeRequestWhenWakeup将消息返回给消息拉取客户端，否则等待下一次尝试。如果挂起超时，则不继续等待，直接返回客户消息未找到。
+
+```java
+// org.apache.rocketmq.broker.processor.PullMessageProcessor#executeRequestWhenWakeup
+    public void executeRequestWhenWakeup(final Channel channel,
+        final RemotingCommand request) throws RemotingCommandException {
+        Runnable run = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // 拉取磁盘消息，并生成response。注意此处 brokerAllowSuspend 参数为false，代表不管是否拉取到消息都会直接返回，而不会hold线程
+                    final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
+
+                    if (response != null) {
+                        response.setOpaque(request.getOpaque());
+                        response.markResponseType();
+                        try {
+                            // 将response写入连接channel中
+                            channel.writeAndFlush(response).addListener(new ChannelFutureListener() {
+                                @Override
+                                public void operationComplete(ChannelFuture future) throws Exception {
+                                    if (!future.isSuccess()) {
+                                        log.error("processRequestWrapper response to {} failed",
+                                            future.channel().remoteAddress(), future.cause());
+                                        log.error(request.toString());
+                                        log.error(response.toString());
+                                    }
+                                }
+                            });
+                        } catch (Throwable e) {
+                            log.error("processRequestWrapper process request over, but response failed", e);
+                            log.error(request.toString());
+                            log.error(response.toString());
+                        }
+                    }
+                } catch (RemotingCommandException e1) {
+                    log.error("excuteRequestWhenWakeup run", e1);
+                }
+            }
+        };
+        this.brokerController.getPullMessageExecutor().submit(new RequestTask(run, channel, request));
+    }
+```
+
+第四步：这里的核心又回到长轮询的入口代码了，其核心是设置brokerAllowSuspend为false，表示不支持拉取线程挂起，即当根据偏移量无法获取消息时，将不挂起线程并等待新消息，而是直接返回告 诉客户端本次消息拉取未找到消息。
+
+回想一下，如果开启了长轮询机制，PullRequestHoldService线程每隔5s被唤醒，尝试检测是否有新消息到来，直到超时才停止，如果被挂起，需要等待5s再执行。消息拉取的实时性比较差，为了避免这种情况，RocketMQ引入另外一种机制：当消息到达时唤醒挂起线程，触发一次检查。
+
+**DefaultMessageStore#ReputMessageService详解**
+
+ReputMessageService线程主要是根据CommitLog文件将消息转发到ConsumeQueue、Index等文件。这里我们关注doReput()方法关于长轮询的相关实现：
+
+```java
+//org.apache.rocketmq.store.DefaultMessageStore.ReputMessageService#doReput
+              // 如果开启了长轮询
+              if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
+                  && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
+                  // 有新消息到达，唤醒长轮询等待的线程，返回消息
+                  DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
+                      dispatchRequest.getQueueId(), dispatchRequest.getConsumeQueueOffset() + 1,
+                      dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),
+                      dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
+              }
+```
+
+当新消息达到CommitLog文件时，ReputMessageService线程负责 将消息转发给Consume Queue文件和Index文件，如果Broker端开启了长轮询模式并且当前节点角色主节点，则将调用PullRequestHoldService线程的notifyMessageArriving()方法唤醒挂起线程，判断当前消费队列最大偏移量是否大于待拉取偏移量，如果 大于则拉取消息。长轮询模式实现了准实时消息拉取。
+
+**小结**
+
+RocketMQ broker在处理消息拉取请求时，如果消息未找到且`brokerAllowSuspend`为`true`（Broker端支持挂起）且开启了长轮询，会设置挂起超时时间，创建`PullRequest`并提交到`PullRequestHoldService`线程中。`PullRequestHoldService` 线程每 5 秒扫描所有被 hold 住的长轮询请求，检查是否有新消息到达并返回。为提高实时性，在 `DefaultMessageStore#ReputMessageService` 线程将 `CommitLog` 消息转发到 `ConsumeQueue` 文件时，若 Broker 端开启长轮询且当前节点为主节点，则调用 `PullRequestHoldService` 的 `notifyMessageArriving` 方法唤醒挂起线程，判断消费队列最大偏移量与待拉取偏移量关系，若前者大于后者则拉取消息。
+
+## 五. 消息队列负载与重平衡
+
+试想一下一个消费组通常由多个消费者实例消费，而一个 ConsumeQueue 同一时间只能被一个消费者实例消费，Topic的多个队列该以何种方式分配给各个消费者实例呢？在生产环境中会涉及到节点的扩缩容以及发布场景下的节点上下线问题，如果消费者实例数量发生变更，如何重新将 ConsumeQueue 重新分配给消费者实例呢？
+
+RocketMQ消息队列重新分布是由RebalanceService线程实现的，一个MQClientInstance持有一个RebalanceService实现，并随着MQClientInstance的启动而启动。接下来我们带着上面的问题，了解一下RebalanceService的run()方法。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.RebalanceService#run
+    @Override
+    public void run() {
+        log.info(this.getServiceName() + " service started");
+
+        while (!this.isStopped()) {
+            // 默认每20s执行一次 doRebalance
+            this.waitForRunning(waitInterval);
+            this.mqClientFactory.doRebalance();
+        }
+
+        log.info(this.getServiceName() + " service end");
+    }
+```
+
+RebalanceService 线程默认每隔 20s 执行一次 doRebalance() 方法。可以使用 `-Drocketmq.client.rebalance.waitInterval=interval` 改变默认配置。
+
+```java
+// org.apache.rocketmq.client.impl.factory.MQClientInstance#doRebalance
+    public void doRebalance() {
+        // 遍历消费者
+        for (Map.Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
+            MQConsumerInner impl = entry.getValue();
+            if (impl != null) {
+                try {
+                    // 对消费者执行 doRebalance
+                    impl.doRebalance();
+                } catch (Throwable e) {
+                    log.error("doRebalance exception", e);
+                }
+            }
+        }
+    }
+```
+
+doRebalance()方法中，会循环遍历所有注册的消费者信息，然后执行对应消费组的 `doRebalance()` 方法：
+
+```java
+// org.apache.rocketmq.client.impl.consumer.RebalanceImpl#doRebalance
+    public void doRebalance(final boolean isOrder) {
+        // 一个consumerGroup可以同时消费多个topic，所以此处返回的是一个Map，key 是 topic 名称
+        Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
+        if (subTable != null) {
+            for (final Map.Entry<String, SubscriptionData> entry : subTable.entrySet()) {
+                final String topic = entry.getKey();
+                try {
+                    this.rebalanceByTopic(topic, isOrder);
+                } catch (Throwable e) {
+                    if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                        log.warn("rebalanceByTopic Exception", e);
+                    }
+                }
+            }
+        }
+
+        this.truncateMessageQueueNotMyTopic();
+    }
+```
+
+每个 `DefaultMQPushConsumerImpl` 都持有一个单独的 `RebalanceImpl` 对象，该方法主要遍历订阅信息对每个主题的队列进行重新负载。`RebalanceImpl` 的 `Map<String, SubscriptionData> subTable` 在调用消费者 `DefaultMQPushConsumerImpl#subscribe` 方法时填充。如果订阅信息发生变化，例如调用了 `unsubscribe()` 方法，则需要将不关心的主题消费队列从 `processQueueTable` 中移除。接下来重点分析 `RebalanceImpl#rebalanceByTopic`，了解RocketMQ如何针对单个主题进行消息队列重新负载（以集群模式）。
+
+第一步：从主题订阅信息缓存表中获取主题的队列信息。发送请求从Broker中获取该消费组内当前所有的消费者客户端ID，主题的队列可能分布在多个Broker上，那么请求该发往哪个Broker呢？ RocketeMQ从主题的路由信息表中随机选择一个Broker。Broker为什么会存在消费组内所有消费者的信息呢？我们不妨回忆一下，消费者在启动的时候会向MQClientInstance中注册消费者，然后MQClientInstance会向所有的Broker发送心跳包，心跳包中包含MQClientInstance的消费者信息。如果mqSet、cidAll任意一个为空，则忽略本次消息队列负载。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.RebalanceImpl#rebalanceByTopic
+            case CLUSTERING: {
+                // 获取topic 的队列信息
+                Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
+                // 发送请求，从broker中获取该消费组内当前所有的消费者客户端ID
+                List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
+```
+
+第二步：对cidAll、mqAll进行排序。这一步很重要，同一个消费组内看到的视图应保持一致，确保同一个消费队列不会被多个消费者分配。然后调用 `AllocateMessageQueueStrategy` 队列负载策略进行队列负载：
+
+```java
+// org.apache.rocketmq.client.impl.consumer.RebalanceImpl#rebalanceByTopic
+                    Collections.sort(mqAll);
+                    Collections.sort(cidAll);
+
+                    AllocateMessageQueueStrategy strategy = this.allocateMessageQueueStrategy;
+
+                    List<MessageQueue> allocateResult = null;
+                    try {
+                        allocateResult = strategy.allocate(
+                            this.consumerGroup,
+                            this.mQClientFactory.getClientId(),
+                            mqAll,
+                            cidAll);
+                    } catch (Throwable e) {
+                        log.error("AllocateMessageQueueStrategy.allocate Exception. allocateMessageQueueStrategyName={}", strategy.getName(),
+                            e);
+                        return;
+                    }
+```
+
+`AllocateMessageQueueStrategy` 是队列分配算法的接口：
+
+```java
+/**
+ * 多个消费者之间分配消息队列算法策略
+ */
+public interface AllocateMessageQueueStrategy {
+
+    /**
+     * Allocating by consumer id
+     *
+     * @param consumerGroup current consumer group
+     * @param currentCID current consumer id
+     * @param mqAll message queue set in current topic
+     * @param cidAll consumer set in current consumer group
+     * @return The allocate result of given strategy
+     */
+    List<MessageQueue> allocate(
+        final String consumerGroup,
+        final String currentCID,
+        final List<MessageQueue> mqAll,
+        final List<String> cidAll
+    );
+
+    /**
+     * Algorithm name
+     *
+     * @return The strategy name
+     */
+    String getName();
+}
+```
+
+RocketMQ默认提供5种分配算法:
+
+1. AllocateMessageQueueAveragely：平均分配，推荐使用。
+
+   举例来说，如果现在有8个消息消费队列q1、q2、q3、q4、q5、 q6、q7、q8，有3个消费者c1、c2、c3，那么根据该负载算法，消息队列分配如下。
+
+   ```txt
+   c1：q1、q2、q3
+   c2：q4、q5、q6
+   c3：q7、q8。
+   ```
+
+2. AllocateMessageQueueAveragelyByCircle：平均轮询分配，推荐使用。
+
+   举例来说，如果现在有8个消息消费队列q1、q2、q3、q4、q5、 q6、q7、q8，有3个消费者c1、c2、c3，那么根据该负载算法，消息队列分配如下。
+
+   ```txt
+   c1：q1、q4、q7
+   c2：q2、q5、q8
+   c3：q3、q6
+   ```
+
+3. AllocateMessageQueueConsistentHash：一致性哈希。因为消息队列负载信息不容易跟踪，所以不推荐使用。
+
+4. AllocateMessageQueueByConfig：根据配置，为每一个消费者配置固定的消息队列。
+
+5. AllocateMessageQueueByMachineRoom：根据Broker部署机房名，对每个消费者负责不同的Broker上的队列。
+
+当然你也可以扩展该接口实现自己的负载策略。
+
+消息负载算法如果没有特殊的要求，尽量使用 `AllocateMessageQueueAveragely`、`AllocateMessageQueueAveragelyByCircle`，这是因为分配算法比较直观。消息队列分配原则为一个消费者可以分配多个消息队列，但同一个消息队列只会分配给一个消费者，故如果消费者个数大于消息队列数量，则有些消费者无法消费消息。
+
+对比消息队列是否发生变化，主要思路是遍历当前负载队列集合，如果队列不在新分配队列的集合中，需要将该队列停止消费并保存消费进度；遍历已分配的队列，如果队列不在队列负载表中（processQueueTable），则需要创建该队列拉取任务PullRequest， 然后添加到PullMessageService 线程的 pullRequestQueue中，PullMessageService才会继续拉取任务：
+
+第三步：`ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable` 是当前消费者负载的消息队列缓存表，如果缓存表中的`MessageQueue` 不包含在 `mqSet` 中，说明经过本次消息队列负载后，该mq被分配给其他消费者，需要暂停该消息队列消息的消费。方法是将 `ProccessQueue` 的状态设置为 `droped=true`，该 `ProcessQueue` 中的消息将不会再被消费，调用 `removeUnnecessaryMessageQueue` 方法判断是否将 `MessageQueue、ProccessQueue `从缓存表中移除。`removeUnnecessaryMessageQueue` 在 `RebalanceImple` 中定义为抽象方法。`removeUnnecessaryMessageQueue` 方法主要用于持久化待移除 `MessageQueue` 的消息消费进度。在推模式下，如果是集群模式并且是顺序消息消费，还需要先解锁队列。关于顺序消息我们在 [《RocketMQ顺序消息实现原理》](./_12RocketMQ顺序消息.md) 详细介绍。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.RebalanceImpl#updateProcessQueueTableInRebalance
+        // processQueueTable是当前消费者负载的消息队列缓存表，如果缓存表中的MessageQueue不包含在mqSet中，说明经过本次消息队列负载后，
+        // 该mq被分配给其他消费者，需要暂停该消息队列消息的消费
+        Iterator<Entry<MessageQueue, ProcessQueue>> it = this.processQueueTable.entrySet().iterator();
+        while (it.hasNext()) {
+            Entry<MessageQueue, ProcessQueue> next = it.next();
+            MessageQueue mq = next.getKey();
+            ProcessQueue pq = next.getValue();
+
+            if (mq.getTopic().equals(topic)) {
+                if (!mqSet.contains(mq)) {
+                    // 如果缓存表中的MessageQueue不包含在mqSet中，说明经过本次消息队列负载后，该mq被分配给其他消费者
+                    pq.setDropped(true);
+                    // 持久化消费进度至broker
+                    if (this.removeUnnecessaryMessageQueue(mq, pq)) {
+                        it.remove();
+                        changed = true;
+                        log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
+                    }
+                } else if (pq.isPullExpired()) {
+                    switch (this.consumeType()) {
+                        case CONSUME_ACTIVELY:
+                            break;
+                        case CONSUME_PASSIVELY:
+                            pq.setDropped(true);
+                            if (this.removeUnnecessaryMessageQueue(mq, pq)) {
+                                it.remove();
+                                changed = true;
+                                log.error("[BUG]doRebalance, {}, remove unnecessary mq, {}, because pull is pause, so try to fixed it",
+                                    consumerGroup, mq);
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+        }
+```
+
+第四步：遍历本次负载分配到的队列集合，如果 `processQueueTable` 中没有包含该消息队列，表明这是本次新增加的消息队列，首先从内存中移除该消息队列的消费进度，然后从磁盘或者Broker中（根据消费模式）读取该消息队列的消费进度。然后将新分配队列的PullRequest放入 PullMessageService 任务队列中，这样消费者就可以开始拉取消息。
+
+```java
+
+        List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
+        for (MessageQueue mq : mqSet) {
+            if (!this.processQueueTable.containsKey(mq)) {
+                // 如果 mqSet 不存在于本地缓存中，则证明是新增加的消息队列
+                // 如果是顺序消费，则需要对queue进行加锁，只有加锁成功才会创建 PullRequest 拉取broker消息
+                if (isOrder && !this.lock(mq)) {
+                    log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
+                    continue;
+                }
+                // 从内存中移除消息进度（脏数据）
+                this.removeDirtyOffset(mq);
+                ProcessQueue pq = new ProcessQueue();
+                // 计算消息消费的起始偏移量
+                long nextOffset = this.computePullFromWhere(mq);
+                if (nextOffset >= 0) {
+                    ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);
+                    if (pre != null) {
+                        log.info("doRebalance, {}, mq already exists, {}", consumerGroup, mq);
+                    } else {
+                        log.info("doRebalance, {}, add a new mq, {}", consumerGroup, mq);
+                        PullRequest pullRequest = new PullRequest();
+                        pullRequest.setConsumerGroup(consumerGroup);
+                        pullRequest.setNextOffset(nextOffset);
+                        pullRequest.setMessageQueue(mq);
+                        pullRequest.setProcessQueue(pq);
+                        pullRequestList.add(pullRequest);
+                        changed = true;
+                    }
+                } else {
+                    log.warn("doRebalance, {}, add new mq failed, {}", consumerGroup, mq);
+                }
+            }
+        }
+
+        // 将PullRequest 放入 PullMessageService 任务队列中，这样消费者就可以开始拉取消息
+        this.dispatchPullRequest(pullRequestList);
+
+        return changed;
+    }
+```
+
+**小结**
+
+RocketMQ 消息队列的负载与重平衡由 RebalanceService 线程实现，默认每隔 20s 执行一次 doRebalance 方法。具体过程如下：
+
+1. RebalanceService 线程每隔 20s 触发一次 doRebalance，遍历所有注册的消费者信息执行对应消费组的 doRebalance 方法，对每个主题的队列进行重新负载。
+2. 在 RebalanceImpl#rebalanceByTopic 中，首先从主题订阅信息缓存表中获取主题的队列信息，并从 Broker 中获取消费组内当前所有消费者客户端 ID。
+3. 对消费者 ID 和队列进行排序，然后调用 AllocateMessageQueueStrategy 队列负载策略进行队列负载，RocketMQ 默认提供五种分配算法，推荐使用平均分配或平均轮询分配算法。
+4. 对比消息队列是否发生变化，若缓存表中的 MessageQueue 不在新分配队列集合中，需暂停该队列消息消费并保存消费进度；若已分配队列不在缓存表中，则创建该队列拉取任务并添加到 PullMessageService 线程任务队列。
+5. 遍历本次负载分配到的队列集合，若 processQueueTable 中没有包含该消息队列，表明是新增加的消息队列，需读取消费进度并将新分配队列的 PullRequest 放入 PullMessageService 任务队列以便消费者拉取消息。
+
+![](../images/77.png)
+
+## 六. 消息的消费过程
+
+
+
+### 6.1 消息消费
+
+### 6.2 消息确认
+
+### 6.3 消息进度管理
