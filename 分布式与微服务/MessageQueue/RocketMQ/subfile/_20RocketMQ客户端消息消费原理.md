@@ -2669,6 +2669,10 @@ broker存储消费进度的思路和客户端类似，先将消费进度存储�
 }
 ```
 
+RocketMQ 控制台消费进度查询：
+
+![](../images/84.png)
+
 **小结**
 
 **客户端拉取消费进度与消费进度的持久化**：
@@ -2696,3 +2700,34 @@ broker存储消费进度的思路和客户端类似，先将消费进度存储�
 ## 七. 总结
 
 ![](../images/83.png)
+
+该文章主要介绍了 RocketMQ 客户端消息消费的原理，包括消息消费模型、消费者启动流程、消息拉取、消息队列负载与重平衡以及消息的消费过程等内容，具体总结如下：
+
+1. 消息消费模型：
+   - **两种消费模式**：广播模式与集群模式，广播模式下每一个消费者需要拉取订阅主题下所有消费队列的消息，集群模式下同一个消费组内的多个消息消费者共享消息主题下的所有消息。
+   - **并发消费模型**：RocketMQ 客户端为每一个消费组创建独立的消费线程池，单个消费组内的并发度为线程池线程个数，线程池处理一批消息后会向 Broker 汇报消息消费进度。
+   - **消息消费进度反馈机制**：消费线程池在处理完一批消息后，会将消息消费进度存储在本地内存中，客户端会启动一个定时线程，每 5s 将存储在本地内存中的所有队列消息消费偏移量提交到 Broker 中，Broker 收到的消息消费进度会存储在内存中，每隔 5s 将消息消费偏移量持久化到磁盘文件中。
+2. 消费者启动流程：
+   - **构建主题订阅信息**：将主题订阅信息构建为 SubscriptionData 并加入 RebalanceImpl 的订阅消息中。
+   - **初始化相关组件**：初始化 MQClientInstance、RebalanceImple 等，初始化消息进度，根据消费模式选择不同的消息进度存储方式。
+   - **创建消费线程服务**：根据消费模式创建相应的消费线程服务，如顺序消费创建 ConsumeMessageOrderlyService，并发消费创建 ConsumeMessageConcurrentlyService。
+   - **向 MQClientInstance 注册消费者并启动**：向 MQClientInstance 注册消费者，启动 MQClientInstance。
+3. 消息拉取：
+   - **PullMessageService 实现机制**：PullMessageService 继承 ServiceThread，通过 run () 方法从 pullRequestQueue 中获取 PullRequest 消息拉取任务，然后调用 pullMessage 方法进行消息拉取。
+   - **ProcessQueue 实现机制**：ProcessQueue 是 MessageQueue 在消费端的重现、快照，用于存储从 Broker 拉取的消息，PullMessageService 将消息提交到消费者消费线程池，消息成功消费后，再从 ProcessQueue 中移除。
+   - 消息拉取的基本流程：
+     - **客户端封装消息拉取请求**：包括获取 ProcessQueue、进行消息拉取流控、获取主题订阅信息、构建消息拉取系统标记、调用 PullAPIWrapper.pullKernelImpl 方法与服务端交互等步骤。
+     - **Broker 组装消息**：根据订阅信息构建消息过滤器，调用 MessageStore.getMessage 查找消息，根据主题名称与队列编号获取消息消费队列，校对下一次拉取偏移量，组装消息并返回。
+     - **消息拉取客户端处理消息**：根据响应结果解码成 PullResultExt 对象，对消息进行过滤，将消息存入 processQueue，然后将拉取到的消息提交到 ConsumeMessageService 中供消费者消费。
+     - **消息拉取长轮询机制分析**：RocketMQ 通过在 Broker 端配置 longPollingEnable 为 true 来开启长轮询模式，Broker 在处理消息拉取请求时，如果消息未找到且 brokerAllowSuspend 为 true 且开启了长轮询，会设置挂起超时时间，创建 PullRequest 并提交到 PullRequestHoldService 线程中，PullRequestHoldService 线程每 5 秒扫描所有被 hold 住的长轮询请求，检查是否有新消息到达并返回，DefaultMessageStore#ReputMessageService 线程在将 CommitLog 消息转发到 ConsumeQueue 文件时，若 Broker 端开启长轮询且当前节点为主节点，则调用 PullRequestHoldService 的 notifyMessageArriving 方法唤醒挂起线程，判断消费队列最大偏移量与待拉取偏移量关系，若前者大于后者则拉取消息。
+4. 消息队列负载与重平衡：
+   - **RebalanceService 线程实现**：默认每隔 20s 执行一次 doRebalance 方法，遍历所有注册的消费者信息，执行对应消费组的 doRebalance 方法，对每个主题的队列进行重新负载。
+   - **RebalanceImpl.rebalanceByTopic 实现**：从主题订阅信息缓存表中获取主题的队列信息，从 Broker 中获取消费组内当前所有消费者客户端 ID，对消费者 ID 和队列进行排序，调用 AllocateMessageQueueStrategy 队列负载策略进行队列负载，对比消息队列是否发生变化，暂停不属于当前消费者的队列消息消费并保存消费进度，创建新分配队列的 PullRequest 并添加到 PullMessageService 线程任务队列。
+5. 消息的消费过程：
+
+   - 消息消费：消费者消息消费服务 ConsumeMessageConcurrentlyService 的主要方法是 submitConsumeRequest 提交消费请求，根据消息数量和 consumeMessageBatchMaxSize 进行处理，将消息放入 ConsumeRequest 并提交到消费线程池。进入具体消费队列时，会检查 processQueue 的 dropped 状态，执行消息消费钩子函数，执行业务代码消费消息，根据消费结果计算 ackIndex，处理消息消费结果，从 ProcessQueue 中移除已确认消息并更新消费进度。
+   - 消息消费失败重试机制：如果消息监听器返回的消费结果为 RECONSUME_LATER，则将消息发送给 Broker 的重试 topic 中。客户端以同步方式发送请求到服务端，服务端创建重试主题，根据消息物理偏移量获取消息，设置消息重试次数和延时级别，创建新的消息对象并存入 CommitLog 文件。
+
+6. 消费进度管理：
+     - 广播模式消费进度存储：广播模式消息消费进度存储在消费者本地，实现类为 LocalFileOffsetStore，通过 load 方法从磁盘加载消息消费进度，persistAll 方法将内存中的消费进度持久化到磁盘中。
+     - 集群模式消费进度存储：集群模式消息进度存储文件存放在消息服务端，实现类为 RemoteBrokerOffsetStore，从 broker 获取指定 MessageQueue 当前消费组的消费进度，并更新内存中的消费进度。
