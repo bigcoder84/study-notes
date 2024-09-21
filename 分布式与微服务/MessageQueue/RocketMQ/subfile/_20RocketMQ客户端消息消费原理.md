@@ -1763,10 +1763,936 @@ RocketMQ 消息队列的负载与重平衡由 RebalanceService 线程实现，�
 
 ## 六. 消息的消费过程
 
+我们先回顾一下消息拉取的过程：`PullMessageService` 负责对消息队列进行消息拉取，从远端服务器拉取消息后存入 `ProcessQueue` 消息处理队列中，然后调用 `ConsumeMessageService#submitConsumeRequest` 方法进行消息消费。 使用线程池消费消息，确保了消息拉取与消息消费的解耦。RocketMQ 使用 `ConsumeMessageService` 来实现消息消费的处理逻辑。RocketMQ 支持顺序消费与并发消费，本节将重点关注并发消费的流程。`ConsumeMessageService` 核心方法如下：
 
+- ConsumeMessageDirectlyResult consumeMessageDirectly（MessageExt msg, String brokerName）： 直接消费消息，主要用于通过管理命令接收消费消息。
+- void submitConsumeRequest（List msgs, ProcessQueue processQueue, MessageQueue messageQueue, boolean dispathToConsume）：提交消息消费。
+
+ConsumeMessageConcurrentlyService并发消息消费核心参数解释：
+
+- DefaultMQPushConsumerImpl defaultMQPushConsumerImpl： 消息推模式实现类。
+- DefaultMQPushConsumer defaultMQPushConsumer：消费者对象。
+- MessageListenerConcurrently messageListener：并发消息业务事件类。
+- BlockingQueue consumeRequestQueue：消息消费任务队列。
+- ThreadPoolExecutor consumeExecutor：消息消费线程池。
+- String consumerGroup：消费组。
+- ScheduledExecutorService scheduledExecutorService：添加消费任务到consumeExecutor延迟调度器
+- ScheduledExecutorService cleanExpireMsgExecutors：定时删除过期消息线程池。为了揭示消息消费的完整过程，从服务器拉取到消息后，回调 `PullCallBack` 方法，先将消息放入 `ProccessQueue` 中， 然后把消息提交到消费线程池中执行，也就是调用`ConsumeMessageService#submitConsumeRequest` 开始进入消息消费的流程。
 
 ### 6.1 消息消费
 
-### 6.2 消息确认
+消费者消息消费服务 `ConsumeMessageConcurrentlyService` 的主要方法是 `submitConsumeRequest` 提交消费请求
 
-### 6.3 消息进度管理
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService#submitConsumeRequest
+        // consumeMessageBatchMaxSize表示消息批次，也就是一次消息消费任务ConsumeRequest中包含的消息条数，默认为1。
+        // msgs.size()默认最多为32条消息，受DefaultMQPushConsumer.pullBatchSize属性控制，如果msgs.size()
+        // 小于consumeMessage BatchMaxSize，则直接将拉取到的消息放入ConsumeRequest，然后将consumeRequest提交到消息消费者线程池中
+        final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
+        if (msgs.size() <= consumeBatchSize) {
+            ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
+            try {
+                this.consumeExecutor.submit(consumeRequest);
+            } catch (RejectedExecutionException e) {
+                // 如果提交过程中出现拒绝提交异常，则延迟5s再提交
+                this.submitConsumeRequestLater(consumeRequest);
+            }
+        } 
+```
+
+第一步：`consumeMessageBatchMaxSize` 表示消息批次，也就是一次消息消费任务 `ConsumeRequest` 中包含的消息条数，默认为1。`msgs.size()` 默认最多为32条消息，受 `DefaultMQPushConsumer.pullBatchSize` 属性控制，如果 `msgs.size()` 小于 `consumeMessage BatchMaxSize`，则直接将拉取到的消息放入 `ConsumeRequest`，然后将 `consumeRequest` 提交到消息消费者线程池中。如果提交过程中出现拒绝提交异常，则延迟5s再提交。这里其实是给出一种标准的拒绝提交实现方式，实际上，由于消费者线程池使用的任务队列`LinkedBlockingQueue` 为无界队列，故不会出现拒绝提交异常。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService#submitConsumeRequest
+            // 如果拉取的消息条数大于consumeMessageBatchMaxSize，则对拉取消息进行分页，每页
+            // consumeMessageBatchMaxSize条消息，创建多个ConsumeRequest任务并提交到消费线程池
+            for (int total = 0; total < msgs.size(); ) {
+                List<MessageExt> msgThis = new ArrayList<MessageExt>(consumeBatchSize);
+                for (int i = 0; i < consumeBatchSize; i++, total++) {
+                    if (total < msgs.size()) {
+                        msgThis.add(msgs.get(total));
+                    } else {
+                        break;
+                    }
+                }
+
+                ConsumeRequest consumeRequest = new ConsumeRequest(msgThis, processQueue, messageQueue);
+                try {
+                    this.consumeExecutor.submit(consumeRequest);
+                } catch (RejectedExecutionException e) {
+                    for (; total < msgs.size(); total++) {
+                        msgThis.add(msgs.get(total));
+                    }
+
+                    this.submitConsumeRequestLater(consumeRequest);
+                }
+            }
+```
+
+第二步：如果拉取的消息条数大于 `consumeMessageBatchMaxSize`，则对拉取消息进行分页，每页 `consumeMessageBatchMaxSize` 条消息，创建多个 `ConsumeRequest` 任务并提交到消费线程池。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.ConsumeRequest#run
+            if (this.processQueue.isDropped()) {
+                log.info("the message queue not be able to consume, because it's dropped. group={} {}", ConsumeMessageConcurrentlyService.this.consumerGroup, this.messageQueue);
+                return;
+            }
+```
+
+第三步：进入具体的消息消费队列时，会先检查 `processQueue` 的 `dropped`，如果设置为true，则停止该队列的消费。在进行消息重新负载时，如果该消息队列被分配给消费组内的其他消费者，需要将 `droped` 设置为true，阻止消费者继续消费不属于自己的消息队列。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.ConsumeRequest#run
+            // 执行消息消费钩子函数ConsumeMessageHook#consumeMessageBefore。通过consumer.getDefaultMQPushConsumerImpl().registerConsumeMessageHook(hook)方法消息消费执行钩子函数
+            ConsumeMessageContext consumeMessageContext = null;
+            if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
+                consumeMessageContext = new ConsumeMessageContext();
+                consumeMessageContext.setNamespace(defaultMQPushConsumer.getNamespace());
+                consumeMessageContext.setConsumerGroup(defaultMQPushConsumer.getConsumerGroup());
+                consumeMessageContext.setProps(new HashMap<String, String>());
+                consumeMessageContext.setMq(messageQueue);
+                consumeMessageContext.setMsgList(msgs);
+                consumeMessageContext.setSuccess(false);
+                ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.executeHookBefore(consumeMessageContext);
+            }
+```
+
+第四步：执行消息消费钩子函数。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.ConsumeRequest#run
+            // 消息消费开始时间
+            long beginTimestamp = System.currentTimeMillis();
+            boolean hasException = false;
+            ConsumeReturnType returnType = ConsumeReturnType.SUCCESS;
+            try {
+                if (msgs != null && !msgs.isEmpty()) {
+                    for (MessageExt msg : msgs) {
+                        MessageAccessor.setConsumeStartTimeStamp(msg, String.valueOf(System.currentTimeMillis()));
+                    }
+                }
+                // 执行业务代码消费消息
+                status = listener.consumeMessage(Collections.unmodifiableList(msgs), context);
+            } catch (Throwable e) {
+                log.warn("consumeMessage exception: {} Group: {} Msgs: {} MQ: {}",
+                    RemotingHelper.exceptionSimpleDesc(e),
+                    ConsumeMessageConcurrentlyService.this.consumerGroup,
+                    msgs,
+                    messageQueue);
+                // 若出现异常，则设置未true
+                hasException = true;
+            }
+            // 消息消费耗时
+            long consumeRT = System.currentTimeMillis() - beginTimestamp;
+```
+
+第六步：执行具体的消息消费，调用应用程序消息监听器的 `consumeMessage` 方法，进入具体的消息消费业务逻辑，返回该批消息的消费结果，即CONSUME_SUCCESS（消费成功）或 RECONSUME_LATER（需要重新消费）。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.ConsumeRequest#run
+            // 执行消息消费钩子函数ConsumeMessageHook#consumeMessageAfter
+            if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
+                consumeMessageContext.setStatus(status.toString());
+                consumeMessageContext.setSuccess(ConsumeConcurrentlyStatus.CONSUME_SUCCESS == status);
+                ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.executeHookAfter(consumeMessageContext);
+            }
+```
+
+第七步：执行消息消费后置钩子函数。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.ConsumeRequest#run
+            // 执行业务消息消费后，在处理结果前再次验证一次ProcessQueue的isDroped状态值。如果状态值为true，将不对结果进
+            // 行任何处理。也就是说，在消息消费进入第四步时，如果因新的消费者加入或原先的消费者出现宕机，导致原先分配给消费者的队列在负
+            // 载之后分配给了别的消费者，那么消息会被重复消费
+            if (!processQueue.isDropped()) {
+                // 处理消息消费结果
+                ConsumeMessageConcurrentlyService.this.processConsumeResult(status, context, this);
+            } else {
+                log.warn("processQueue is dropped without process consume result. messageQueue={}, msgs={}", messageQueue, msgs);
+            }
+```
+
+第八步：执行业务消息消费后，在处理结果前再次验证一次 `ProcessQueue` 的 `isDroped` 状态值。如果状态值为true，将不对结果进行任何处理。也就是说，在消息消费进入第四步时，如果因新的消费者加入或原先的消费者出现宕机，导致原先分配给消费者的队列在负载之后分配给了别的消费者，那么消息会被重复消费。
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService#processConsumeResult
+        // 根据消息监听器返回的结果计算ackIndex
+        switch (status) {
+            case CONSUME_SUCCESS:
+                if (ackIndex >= consumeRequest.getMsgs().size()) {
+                    // 如果返回CONSUME_SUCCESS，则将ackIndex设置为msgs.size()-1，这样在后面就不会执行 sendMessageBack，将消息重新
+                    // 发送至broker retry队列中去尝试重新消费该消息。
+                    ackIndex = consumeRequest.getMsgs().size() - 1;
+                }
+                int ok = ackIndex + 1;
+                int failed = consumeRequest.getMsgs().size() - ok;
+                this.getConsumerStatsManager().incConsumeOKTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), ok);
+                this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), failed);
+                break;
+            case RECONSUME_LATER:
+                // 如果返回 RECONSUME_LATER，则将ackIndex设置为-1。这样就会将这一批消息全部发送至broker retry topic中，然后消费者就能重新消费到这一批消息
+                ackIndex = -1;
+                this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(),
+                    consumeRequest.getMsgs().size());
+                break;
+            default:
+                break;
+        }
+```
+
+第九步：根据消息监听器返回的结果计算 `ackIndex`，如果返回 `CONSUME_SUCCESS`，则将 `ackIndex` 设置为 `msgs.size()-1`，如果返回`RECONSUME_LATER` ，则将 `ackIndex` 设置为 -1，这是为下文消息ACK做准备。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService#processConsumeResult
+        switch (this.defaultMQPushConsumer.getMessageModel()) {
+            case BROADCASTING:
+                for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
+                    MessageExt msg = consumeRequest.getMsgs().get(i);
+                    log.warn("BROADCASTING, the message consume failed, drop it, {}", msg.toString());
+                }
+                break;
+            case CLUSTERING:
+                List<MessageExt> msgBackFailed = new ArrayList<MessageExt>(consumeRequest.getMsgs().size());
+                for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
+                    MessageExt msg = consumeRequest.getMsgs().get(i);
+                    // 将消息重新发送至broker的 retry topic中，
+                    boolean result = this.sendMessageBack(msg, context);
+                    if (!result) {
+                        msg.setReconsumeTimes(msg.getReconsumeTimes() + 1);
+                        msgBackFailed.add(msg);
+                    }
+                }
+
+                if (!msgBackFailed.isEmpty()) {
+                    consumeRequest.getMsgs().removeAll(msgBackFailed);
+                    // 消息确认失败，则五秒后重新消费消息
+                    this.submitConsumeRequestLater(msgBackFailed, consumeRequest.getProcessQueue(), consumeRequest.getMessageQueue());
+                }
+                break;
+            default:
+                break;
+        }
+```
+
+第十步：如果是广播模式，业务代码返回 `RECONSUME_LATER`，消息并不会被重新消费，而是以警告级别输出到日志文件中。
+
+如果是集群模式，消息消费成功，因为 `ackIndex=consumeRequest.getMsgs().size()-1`，所以 `i=ackIndex+1` 等于`consumeRequest.getMsgs().size()`，并不会执行 `sendMessageBack`。 只有在业务代码返回 `RECONSUME_LATER` 时，该批消息都需要发送至Broker的重试队列中，如果消息发送失败，则直接将本次发送失败的消息再次封装为ConsumeRequest，然后延迟5s重新消费。如果ACK消息发送成功，则该消息会延迟消费。
+
+```java
+// org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService#processConsumeResult
+        // 从 processQueue中移除已确认消息，返回的偏移量是移除该批消息后最小的偏移量。
+        long offset = consumeRequest.getProcessQueue().removeMessage(consumeRequest.getMsgs());
+        if (offset >= 0 && !consumeRequest.getProcessQueue().isDropped()) {
+            // 然后更新已消费的offset，以便消费者重启后能从上一次的消费进度开始消费
+            this.defaultMQPushConsumerImpl.getOffsetStore().updateOffset(consumeRequest.getMessageQueue(), offset, true);
+        }
+```
+
+第十一步：**从 `ProcessQueue` 中移除这批消息，这里返回的偏移量是移除该批消息后内存中正在处理的消息的最小的偏移量。然后用该偏移量更新消息消费进度，以便消费者重启后能从上一次的消费进度开始消费**，避免消息重复消费。**值得注意的是，当消息监听器返回 `RECONSUME_LATER` 时，消息消费进度也会向前推进**，并用 `ProcessQueue` 中最小的队列偏移量调用消息消费进度存储器 `OffsetStore` 更新消费进度。这是因为当返回 `RECONSUME_LATER` 时，RocketMQ 会创建一条与原消息属性相同的消息，拥有一个唯一的新 `msgId`，并存储原消息ID，该消息会存入 `CommitLog` 文件，与原消息没有任何关联，所以该消息也会进入 `ConsuemeQueue`， 并拥有一个全新的队列偏移量。
+
+> 为啥会使用内存中剩余消息最小偏移量更新消费进度，这是因为并发消费模式下，不同消息的消费完成无法保证顺序。例如按照顺序拉取到了4条消息 a,b,c,d，由于是并发消费，这四条消息可能被消费者线程同时消费，假设消息d先消费完成，此时更新消费进度，因为a、b、c没有消费完成，不能将进度更新为消息d的offset，而是将消息d从 `ProcessQueue` 中移除，移除后内存只剩下 a、b、c 三条消息，此时会将消费进度更新为`ProcessQueue` 中最小的消息偏移量，也就是 a。
+
+### 6.2 消息消费失败重试机制
+
+如果消息监听器返回的消费结果为 `RECONSUME_LATER`，则需要将这些消息发送给Broker的重试topic中。如果客户端发送重试消息至Broker失败，将延迟5s后提交线程池进行消费。
+
+重试消息发送的网络客户端入口为 `MQClientAPIImpl#consumerSendMessageBack`，命令编码为 `RequestCode.CONSUMER_SEND_MSG_BACK`。
+
+`ConsumerSendMsgBackRequestHeader` 的核心属性:
+
+```java
+public class ConsumerSendMsgBackRequestHeader implements CommandCustomHeader {
+    /**
+     * 消息物理偏移量，因为需要重试的消息在Broker中本来就有，所以发送重试消息只需要发送消息的物理偏移量即可
+     */
+    @CFNotNull
+    private Long offset;
+    /**
+     * 消费组名
+     */
+    @CFNotNull
+    private String group;
+    /**
+     * 延迟级别。RcketMQ不支持精确的定时消息调度，而是提供几个延时级别，MessageStoreConfig#messageDelayLevel = "1s 5s 10s 30s 1m 2m
+     * 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"，delayLevel=1，表示延迟5s，delayLevel=2，表示延迟10s。
+     */
+    @CFNotNull
+    private Integer delayLevel;
+    /**
+     * 原消息的消息ID
+     */
+    private String originMsgId;
+    /**
+     * 原消息的topic
+     */
+    private String originTopic;
+    @CFNullable
+    private boolean unitMode = false;
+    /**
+     * 最大重新消费次数，默认16次。
+     */
+    private Integer maxReconsumeTimes;
+}
+```
+
+客户端以同步方式发送 `RequestCode.CONSUMER_SEND` 到服务端。服务端命令处理器为 `org.apache.rocketmq.broker.processor.SendMessageProcessor#consumerSendMsgBack`
+
+```java
+// org.apache.rocketmq.broker.processor.SendMessageProcessor#consumerSendMsgBack
+        // 获取消费组的订阅配置信息
+        // 获取消费组的订阅配置信息
+        SubscriptionGroupConfig subscriptionGroupConfig =
+            this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getGroup());
+        if (null == subscriptionGroupConfig) {
+            response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
+            response.setRemark("subscription group not exist, " + requestHeader.getGroup() + " "
+                + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));
+            return response;
+        }
+
+        if (!PermName.isWriteable(this.brokerController.getBrokerConfig().getBrokerPermission())) {
+            response.setCode(ResponseCode.NO_PERMISSION);
+            response.setRemark("the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1() + "] sending message is forbidden");
+            return response;
+        }
+
+        if (subscriptionGroupConfig.getRetryQueueNums() <= 0) {
+            response.setCode(ResponseCode.SUCCESS);
+            response.setRemark(null);
+            return response;
+        }
+```
+
+第一步：获取消费组的订阅配置信息，如果配置信息为空，返回配置组信息不存在错误，如果重试队列数量小于等于0，则直接返回成功，说明该消费组不支持重试。
+
+我们先逐一介绍 `SubscriptionGroupConfig` 的核心属性：
+
+```java
+public class SubscriptionGroupConfig {
+
+    /**
+     * 消费组名
+     */
+    private String groupName;
+    /**
+     * 是否可以消费，默认为true，如果consumeEnable=false，该消费组无法拉取消息，因而无法消费消息
+     */
+    private boolean consumeEnable = true;
+    /**
+     * 是否允许从队列最小偏移量开始消费，默认为true，目前未使用该参数
+     */
+    private boolean consumeFromMinEnable = true;
+    /**
+     * 设置该消费组是否能以广播模式消费，默认为true，如果设置为false，表示只能以集群模式消费
+     */
+    private boolean consumeBroadcastEnable = true;
+    /**
+     * 重试队列个数，默认为1，每一个Broker上有一个重试队列
+     */
+    private int retryQueueNums = 1;
+    /**
+     * 消息最大重试次数，默认16次
+     */
+    private int retryMaxTimes = 16;
+    /**
+     * 主节点ID
+     */
+    private long brokerId = MixAll.MASTER_ID;
+    /**
+     * 如果消息堵塞（主节点），将转向该brokerId的服务器上拉取消息，默认为1
+     */
+    private long whichBrokerWhenConsumeSlowly = 1;
+    /**
+     * 当消费发生变化时，是否
+     * 立即进行消息队列重新负载。消费组订阅信息配置信息存储在Broker
+     * 的 ${ROCKET_HOME}/store/config/subscriptionGroup.json中。
+     * BrokerConfig.autoCreateSubscriptionGroup默认为true，表示在第
+     * 一次使用消费组配置信息时如果不存在消费组，则使用上述默认值自
+     * 动创建一个，如果为false，则只能通过客户端命令mqadmin
+     * updateSubGroup创建消费组后再修改相关参数
+     */
+    private boolean notifyConsumerIdsChangedEnable = true;
+}
+```
+
+回到 `consumerSendMsgBack` 方法：
+
+```java
+// org.apache.rocketmq.broker.processor.SendMessageProcessor#consumerSendMsgBack
+        // 创建重试主题，重试主题名称为%RETRY%+消费组名称，从重试队列中随机选择一个队列，并构建TopicConfig主题配置信息
+        String newTopic = MixAll.getRetryTopic(requestHeader.getGroup());
+        int queueIdInt = Math.abs(this.random.nextInt() % 99999999) % subscriptionGroupConfig.getRetryQueueNums();
+        // 如果没有重试主题则创建一个
+        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
+            newTopic,
+            subscriptionGroupConfig.getRetryQueueNums(),
+            PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
+        if (null == topicConfig) {
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark("topic[" + newTopic + "] not exist");
+            return response;
+        }
+
+        if (!PermName.isWriteable(topicConfig.getPerm())) {
+            response.setCode(ResponseCode.NO_PERMISSION);
+            response.setRemark(String.format("the topic[%s] sending message is forbidden", newTopic));
+            return response;
+        }
+```
+
+第二步：创建重试主题，重试主题名称为%RETRY%+消费组名称，从重试队列中随机选择一个队列，并构建 `TopicConfig` 主题配置信息。
+
+```java
+// org.apache.rocketmq.broker.processor.SendMessageProcessor#consumerSendMsgBack
+
+        // 根据消息物理偏移量从CommitLog中获取消息
+        MessageExt msgExt = this.brokerController.getMessageStore().lookMessageByOffset(requestHeader.getOffset());
+        if (null == msgExt) {
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark("look message by offset failed, " + requestHeader.getOffset());
+            return response;
+        }
+        final String retryTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
+        if (null == retryTopic) {
+            // 将消息的主题信息存入属性
+            MessageAccessor.putProperty(msgExt, MessageConst.PROPERTY_RETRY_TOPIC, msgExt.getTopic());
+        }
+        msgExt.setWaitStoreMsgOK(false);
+```
+
+第三步：根据消息物理偏移量从CommitLog文件中获取消息，因为需要重试的消息在Broker中本来就有，所以发送重试消息只发送消息的物理偏移量并没有发送消息内容。同时将消息的主题存入属性。
+
+```java
+// org.apache.rocketmq.broker.processor.SendMessageProcessor#consumerSendMsgBack
+   int delayLevel = requestHeader.getDelayLevel();
+
+        int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
+        if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
+            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes();
+        }
+
+        if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
+            || delayLevel < 0) {
+            // 设置消息重试次数，如果消息重试次数已超过maxReconsumeTimes，再次改变newTopic主题为DLQ（"%DLQ%"），该主
+            // 题的权限为只写，说明消息一旦进入DLQ队列，RocketMQ将不负责再次调度消费了，需要人工干预
+            newTopic = MixAll.getDLQTopic(requestHeader.getGroup());
+            queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;
+
+            topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic,
+                DLQ_NUMS_PER_GROUP,
+                PermName.PERM_WRITE, 0
+            );
+            if (null == topicConfig) {
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark("topic[" + newTopic + "] not exist");
+                return response;
+            }
+        } else {
+            if (0 == delayLevel) {
+                delayLevel = 3 + msgExt.getReconsumeTimes();
+            }
+			// 设置延时级别
+            msgExt.setDelayTimeLevel(delayLevel);
+        }
+
+```
+
+第四步：设置消息重试次数，如果消息重试次数已超过 `maxReconsumeTimes`，再次改变 newTopic 主题为DLQ（"%DLQ%"）也就是死信队列，该主题的权限为只写，说明消息一旦进入DLQ队列，RocketMQ将不负责再次调度消费了，需要人工干预。
+
+```java
+// org.apache.rocketmq.broker.processor.SendMessageProcessor#consumerSendMsgBack
+        // 根据原先的消息创建一个新的消息对象，重试消息会拥有一个唯一消息ID（msgId）并存入CommitLog文件。这里不会更新原
+        // 先的消息，而是会将原先的主题、消息ID存入消息属性，主题名称为重试主题，其他属性与原消息保持一致。
+        MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
+        // 将重试的消息放入重试topic,或则死信topic
+        msgInner.setTopic(newTopic);
+        msgInner.setBody(msgExt.getBody());
+        msgInner.setFlag(msgExt.getFlag());
+        MessageAccessor.setProperties(msgInner, msgExt.getProperties());
+        msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgExt.getProperties()));
+        msgInner.setTagsCode(MessageExtBrokerInner.tagsString2tagsCode(null, msgExt.getTags()));
+
+        msgInner.setQueueId(queueIdInt);
+        msgInner.setSysFlag(msgExt.getSysFlag());
+        msgInner.setBornTimestamp(msgExt.getBornTimestamp());
+        msgInner.setBornHost(msgExt.getBornHost());
+        msgInner.setStoreHost(this.getStoreHost());
+        msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);
+
+        // 原始的消息ID
+        String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
+        // 设置原始的消息ID
+        MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
+```
+
+第五步：根据原先的消息创建一个新的消息对象，重试消息会拥有一个唯一消息ID（msgId）并存入CommitLog文件。这里不会更新原先的消息，而是会将原先的主题、消息ID存入消息属性，主题名称为重试主题，其他属性与原消息保持一致。
+
+```java
+// org.apache.rocketmq.broker.processor.SendMessageProcessor#consumerSendMsgBack
+        // 将重试的消息写入重试topic,或则死信topic。根据 newTopic 变量决定写入哪个topic
+        PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
+        if (putMessageResult != null) {
+            switch (putMessageResult.getPutMessageStatus()) {
+                case PUT_OK:
+                    String backTopic = msgExt.getTopic();
+                    String correctTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
+                    if (correctTopic != null) {
+                        backTopic = correctTopic;
+                    }
+
+                    this.brokerController.getBrokerStatsManager().incSendBackNums(requestHeader.getGroup(), backTopic);
+
+                    response.setCode(ResponseCode.SUCCESS);
+                    response.setRemark(null);
+
+                    return response;
+                default:
+                    break;
+            }
+
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark(putMessageResult.getPutMessageStatus().name());
+            return response;
+        }
+```
+
+第六步：将消息存入 CommitLog 文件。这里想再重点突出消息重试机制，该机制的实现依托于RocketMQ延时消息机制。在第四步，会设置消息的延时级别，设置延时级别后消息实际上并不会直接发送至重试topic中（SCHEDULE_TOPIC_XXXX），而是先发送至延时队列中，当延时到期后才会由定时任务将消息发送回真正的重试队列中，此时就能由客户端消费到重试队列中的消息了。延时消息具体原理可参考：[RocketMQ延迟消息](./_11RocketMQ延迟消息.md)
+
+### 6.3 消费进度管理
+
+消息消费者在消费一批消息后，需要记录该批消息已经消费完毕，否则当消费者重新启动时，又要从消息消费队列最开始消费。从6.1节也可以看到，一次消息消费后会从 `ProcessQueue` 处理队列中移除该批消息，返回 `ProcessQueue` 内存中正在处理消息的最小偏移量，并存入消息进度表。 那么消息进度文件存储在哪里合适呢？
+
+1）广播模式：同一个消费组的所有消息消费者都需要消费主题下的所有消息，也就是同组内消费者的消息消费行为是对立的，互相不影响，故消息进度需要独立存储，最理想的存储地方应该是与消费者绑定。
+
+2）集群模式：同一个消费组内的所有消息消费者共享消息主题下的所有消息，同一条消息（同一个消息消费队列）在同一时间只会被消费组内的一个消费者消费，并且随着消费队列的动态变化而重新负载，因此消费进度需要保存在每个消费者都能访问到的地方。
+
+RocketMQ消息消费进度接口如下：
+
+```java
+/**
+ * Offset store interface
+ */
+public interface OffsetStore {
+    /**
+     * 从消息进度存储文件加载消息进度到内存
+     * Load
+     */
+    void load() throws MQClientException;
+
+    /**
+     * 更新内存中的消息消费进度
+     * @param mq 消息消费队列
+     * @param offset 消息消费偏移量
+     * @param increaseOnly true表示offset必须大于内存中当前的消费偏移量才更新
+     */
+    void updateOffset(final MessageQueue mq, final long offset, final boolean increaseOnly);
+
+    /**
+     * 读取消息消费进度
+     * @param mq 消息消费队列
+     * @param type 读取方式，可选值包括
+     * READ_FROM_MEMORY，即从内存中读取，READ_FROM_STORE，即从磁盘中读取，MEMORY_FIRST_THEN_STORE，即先从内存中读取，再从磁盘中读取
+     * @return
+     */
+    long readOffset(final MessageQueue mq, final ReadOffsetType type);
+
+    /**
+     * 持久化指定消息队列进度到磁盘
+     * @param mqs
+     */
+    void persistAll(final Set<MessageQueue> mqs);
+
+    /**
+     * Persist the offset,may be in local storage or remote name server
+     */
+    void persist(final MessageQueue mq);
+
+    /**
+     * 将消息队列的消息消费进度从内存中移除。
+     * @param mq
+     */
+    void removeOffset(MessageQueue mq);
+
+    /**
+     * 复制该主题下所有消息队列的消息消费进度。
+     * @param topic
+     * @return
+     */
+    Map<MessageQueue, Long> cloneOffsetTable(String topic);
+
+    /**
+     * 使用集群模式更新存储在Broker端的消息消费进度
+     * @param mq
+     * @param offset
+     * @param isOneway
+     */
+    void updateConsumeOffsetToBroker(MessageQueue mq, long offset, boolean isOneway) throws RemotingException,
+        MQBrokerException, InterruptedException, MQClientException;
+}
+```
+
+#### 6.3.1 广播模式消费进度存储
+
+广播模式消息消费进度存储在消费者本地，其实现类为 `LocalFileOffsetStore`：
+
+```java
+public class LocalFileOffsetStore implements OffsetStore {
+    /**
+     * 消息进度存储目录
+     */
+    public final static String LOCAL_OFFSET_STORE_DIR = System.getProperty(
+        "rocketmq.client.localOffsetStoreDir",
+        System.getProperty("user.home") + File.separator + ".rocketmq_offsets");
+    private final static InternalLogger log = ClientLogger.getLog();
+    private final MQClientInstance mQClientFactory;
+    private final String groupName;
+    /**
+     * 消息进度存储文件LOCAL_OFFSET_STORE_DIR/.rocketmq_offsets/{mQClientFactory.getClientId()}/groupName/offsets.json
+     */
+    private final String storePath;
+    /**
+     * 消息消费进度（内存）
+     */
+    private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
+        new ConcurrentHashMap<MessageQueue, AtomicLong>();
+}
+```
+
+下面对 `LocalFileOffsetStore` 核心方法进行简单介绍，load方法用于从磁盘加载消息消费进度：
+
+```java
+// org.apache.rocketmq.client.consumer.store.LocalFileOffsetStore#load
+    @Override
+    public void load() throws MQClientException {
+        // OffsetSerializeWrapper内部就是ConcurrentMap<MessageQueue,AtomicLong>offsetTable数据结构的封装，readLocalOffset方法首先
+        // 从storePath中尝试加载内容，如果读取的内容为空，尝试从storePath+".bak"中加载，如果还是未找到内容，则返回null。
+        OffsetSerializeWrapper offsetSerializeWrapper = this.readLocalOffset();
+        if (offsetSerializeWrapper != null && offsetSerializeWrapper.getOffsetTable() != null) {
+            offsetTable.putAll(offsetSerializeWrapper.getOffsetTable());
+
+            for (MessageQueue mq : offsetSerializeWrapper.getOffsetTable().keySet()) {
+                AtomicLong offset = offsetSerializeWrapper.getOffsetTable().get(mq);
+                log.info("load consumer's offset, {} {} {}",
+                    this.groupName,
+                    mq,
+                    offset.get());
+            }
+        }
+    }
+```
+
+`OffsetSerializeWrapper` 内部就是 `ConcurrentMap<MessageQueue, AtomicLong> offsetTable` 数据结构的封装，`readLocalOffset` 方法首先从 `storePath` 中尝试加载内容，如果读取的内容为空，尝试从 `storePath+".bak"` 中加载，如果还是未找到内容，则返回null。
+
+广播消息消费进度默认存储在：
+
+![](../images/81.png)
+
+消息进度文件存储内容：
+
+```java
+{
+	"offsetTable":{{
+			"brokerName":"broker-a",
+			"queueId":2,
+			"topic":"TopicTest"
+		}:333,{
+			"brokerName":"broker-a",
+			"queueId":1,
+			"topic":"TopicTest"
+		}:335,{
+			"brokerName":"broker-a",
+			"queueId":0,
+			"topic":"TopicTest"
+		}:335
+	}
+}
+```
+
+persistAll方法用于将内存中的消费进度持久化到磁盘中：
+
+```java
+// org.apache.rocketmq.client.consumer.store.LocalFileOffsetStore#persistAll
+    @Override
+    public void persistAll(Set<MessageQueue> mqs) {
+        if (null == mqs || mqs.isEmpty())
+            return;
+
+        OffsetSerializeWrapper offsetSerializeWrapper = new OffsetSerializeWrapper();
+        for (Map.Entry<MessageQueue, AtomicLong> entry : this.offsetTable.entrySet()) {
+            if (mqs.contains(entry.getKey())) {
+                AtomicLong offset = entry.getValue();
+                offsetSerializeWrapper.getOffsetTable().put(entry.getKey(), offset);
+            }
+        }
+
+        String jsonString = offsetSerializeWrapper.toJson(true);
+        if (jsonString != null) {
+            try {
+                // 将内存中的广播消费进度存储至磁盘
+                MixAll.string2File(jsonString, this.storePath);
+            } catch (IOException e) {
+                log.error("persistAll consumer offset Exception, " + this.storePath, e);
+            }
+        }
+    }
+```
+
+持久化消息进度就是将 `ConcurrentMap<MessageQueue, AtomicLong> offsetTable` 序列化到磁盘文件中。在 `MQClientInstance` 中会启动一个定时任务，默认每5s持久化消息消费进度一次，可通过 `persistConsumerOffsetInterval` 进行设置。
+
+```java
+// org.apache.rocketmq.client.impl.factory.MQClientInstance#startScheduledTask
+        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+
+            @Override
+            public void run() {
+                try {
+                    MQClientInstance.this.persistAllConsumerOffset();
+                } catch (Exception e) {
+                    log.error("ScheduledTask persistAllConsumerOffset exception", e);
+                }
+            }
+        }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
+```
+
+对广播模式的消息消费进度进行存储、更新、持久化还是比较容易的，本文就简单介绍到这里，接下来重点分析集群模式下的消息进度管理。
+
+#### 6.3.2 集群模式消费进度存储
+
+集群模式消息进度存储文件存放在消息服务端。消息消费进度集群模式实现类 `RemoteBrokerOffsetStore`。
+
+集群模式下消息消费进度的读取、持久化与广播模式的实现细节差不多，如果是集群消费模式，当 `RebalanceService` 将 `MessageQueue` 负载到当前客户端时，会调用 `org.apache.rocketmq.client.impl.consumer.RebalancePushImpl#computePullFromWhere` 方法从broker中获取当前 `MessageQueue` 的消费进度：
+
+```java
+// org.apache.rocketmq.client.impl.consumer.RebalancePushImpl#computePullFromWhere
+    @Override
+    public long computePullFromWhere(MessageQueue mq) {
+        long result = -1;
+        final ConsumeFromWhere consumeFromWhere = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getConsumeFromWhere();
+        final OffsetStore offsetStore = this.defaultMQPushConsumerImpl.getOffsetStore();
+        switch (consumeFromWhere) {
+            case CONSUME_FROM_LAST_OFFSET_AND_FROM_MIN_WHEN_BOOT_FIRST:
+            case CONSUME_FROM_MIN_OFFSET:
+            case CONSUME_FROM_MAX_OFFSET:
+            case CONSUME_FROM_LAST_OFFSET: {
+                // 集群模式下获取broker中的消费进度、广播模式下从本地读取消费进度
+                long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
+                if (lastOffset >= 0) {
+                    result = lastOffset;
+                }
+                // First start,no offset
+                else if (-1 == lastOffset) {
+                    if (mq.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                        result = 0L;
+                    } else {
+                        try {
+                            result = this.mQClientFactory.getMQAdminImpl().maxOffset(mq);
+                        } catch (MQClientException e) {
+                            result = -1;
+                        }
+                    }
+                } else {
+                    result = -1;
+                }
+                break;
+            }
+            ....
+    }
+```
+
+而该方法内会调用 `RemoteBrokerOffsetStore#readOffset` 方法从broker获取消费进度：
+
+```java
+// org.apache.rocketmq.client.consumer.store.RemoteBrokerOffsetStore#readOffset
+    @Override
+    public long readOffset(final MessageQueue mq, final ReadOffsetType type) {
+        if (mq != null) {
+            switch (type) {
+                case MEMORY_FIRST_THEN_STORE:
+                case READ_FROM_MEMORY: {
+                    AtomicLong offset = this.offsetTable.get(mq);
+                    if (offset != null) {
+                        return offset.get();
+                    } else if (ReadOffsetType.READ_FROM_MEMORY == type) {
+                        return -1;
+                    }
+                }
+                case READ_FROM_STORE: {
+                    try {
+                        // 从broker获取指定MessageQueue当前消费组的消费进度
+                        long brokerOffset = this.fetchConsumeOffsetFromBroker(mq);
+                        AtomicLong offset = new AtomicLong(brokerOffset);
+                        // 更新内存中的消费进度
+                        this.updateOffset(mq, offset.get(), false);
+                        return brokerOffset;
+                    }
+                    // No offset in broker
+                    catch (MQBrokerException e) {
+                        return -1;
+                    }
+                    //Other exceptions
+                    catch (Exception e) {
+                        log.warn("fetchConsumeOffsetFromBroker exception, " + mq, e);
+                        return -2;
+                    }
+                }
+                default:
+                    break;
+            }
+        }
+
+        return -1;
+    }
+```
+
+`RemoteBrokerOffsetStore` 会把从broker查询到的消费进度进行缓存，其余时间客户端查询和更新消费进度都是基于内存中的数据，而消费进度的持久化同样是通过定时任务（默认每5s）调用 `RemoteBrokerOffsetStore#persistAll` 将内存中的消费进度通过网络请求写入broker磁盘。
+
+broker处理客户端消费进度更新请求的处理类是 `ConsumerManageProcessor#updateConsumerOffset`:
+
+```java
+// org.apache.rocketmq.broker.processor.ConsumerManageProcessor#updateConsumerOffset
+    private RemotingCommand updateConsumerOffset(ChannelHandlerContext ctx, RemotingCommand request)
+        throws RemotingCommandException {
+        final RemotingCommand response =
+            RemotingCommand.createResponseCommand(UpdateConsumerOffsetResponseHeader.class);
+        final UpdateConsumerOffsetRequestHeader requestHeader =
+            (UpdateConsumerOffsetRequestHeader) request
+                .decodeCommandCustomHeader(UpdateConsumerOffsetRequestHeader.class);
+        // 更新broker中的消费进度
+        this.brokerController.getConsumerOffsetManager().commitOffset(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), requestHeader.getConsumerGroup(),
+            requestHeader.getTopic(), requestHeader.getQueueId(), requestHeader.getCommitOffset());
+        response.setCode(ResponseCode.SUCCESS);
+        response.setRemark(null);
+        return response;
+    }
+```
+
+更新的请求中，主要包含如下信息:
+
+```java
+public class UpdateConsumerOffsetRequestHeader implements CommandCustomHeader {
+
+    /**
+     * 更新的消费组
+     */
+    @CFNotNull
+    private String consumerGroup;
+    /**
+     * 主题名称
+     */
+    @CFNotNull
+    private String topic;
+    /**
+     * 队列ID
+     */
+    @CFNotNull
+    private Integer queueId;
+    /**
+     * 更新的消费进度
+     */
+    @CFNotNull
+    private Long commitOffset;
+}
+```
+
+`updateConsumerOffset` 方法最终会调用下列方法更新broker内存中的消费进度：
+
+```java
+// org.apache.rocketmq.broker.offset.ConsumerOffsetManager#commitOffset(java.lang.String, java.lang.String, int, long)
+    public void commitOffset(final String clientHost, final String group, final String topic, final int queueId,
+        final long offset) {
+        // topic@group
+        String key = topic + TOPIC_GROUP_SEPARATOR + group;
+        this.commitOffset(clientHost, key, queueId, offset);
+    }
+
+    private void commitOffset(final String clientHost, final String key, final int queueId, final long offset) {
+        ConcurrentMap<Integer, Long> map = this.offsetTable.get(key);
+        if (null == map) {
+            map = new ConcurrentHashMap<Integer, Long>(32);
+            map.put(queueId, offset);
+            this.offsetTable.put(key, map);
+        } else {
+            Long storeOffset = map.put(queueId, offset);
+            if (storeOffset != null && offset < storeOffset) {
+                log.warn("[NOTIFYME]update consumer offset less than store. clientHost={}, key={}, queueId={}, requestOffset={}, storeOffset={}", clientHost, key, queueId, offset, storeOffset);
+            }
+        }
+    }
+```
+
+broker存储消费进度的思路和客户端类似，先将消费进度存储在内存中，然后通过JOB每隔10s调用 `ConfigManager#persist()` 刷盘，broker在启动时会创建这个JOB：`org.apache.rocketmq.broker.BrokerController#initialize()`
+
+```java
+// org.apache.rocketmq.broker.offset.ConsumerOffsetManager#persist
+
+    public synchronized void persist() {
+        String jsonString = this.encode(true);
+        if (jsonString != null) {
+            String fileName = this.configFilePath();
+            try {
+                MixAll.string2File(jsonString, fileName);
+            } catch (IOException e) {
+                log.error("persist file " + fileName + " exception", e);
+            }
+        }
+    }
+```
+
+消费进度文件存储目录在broker配置文件中配置：
+
+![](../images/82.png)
+
+消费进度文件内容：
+
+```json
+{
+	"offsetTable":{
+        // Topic名称@ConsumeGroup名称 : 消费进度
+		"TopicTest@please_rename_unique_group_name_4":{
+            // queueId : 消费进度
+            0:1,
+            1:0,
+            2:0,
+            3:0
+		},
+		"TopicTest@TopicTest-Consumer":{0:335,1:335,2:333
+		},
+		"%RETRY%TopicTest-Consumer@TopicTest-Consumer":{0:0
+		},
+		"%RETRY%rocket-mq-consumer-demo@rocket-mq-consumer-demo":{0:2
+		},
+		"%RETRY%please_rename_unique_group_name_4@please_rename_unique_group_name_4":{0:0
+		},
+		"rocket-mq-topic@rocket-mq-consumer-demo":{0:0,1:0,2:1,3:1
+		}
+	}
+}
+```
+
+**小结**
+
+**客户端拉取消费进度与消费进度的持久化**：
+
+集群消费模式，当 `RebalanceService` 将 `MessageQueue` 负载到当前客户端时，会调用`RebalancePushImpl#computePullFromWhere`方法从broker中获取当前 `MessageQueue` 的消费进度 `RemoteBrokerOffsetStore` 会把从broker查询到的消费进度进行缓存，其余时间客户端查询和更新消费进度都是基于内存中的数据，而消费进度的持久化同样是通过定时任务（默认每5s）调用 `RemoteBrokerOffsetStore#persistAll` 将内存中的消费进度通过网络请求写入broker磁盘。
+
+**客户端何时更新内存中的消费进度**：
+
+业务代码消费 `PullMessageService` 拉取到的消息时，不管是消费成功还是消费失败，都会将消费完的消息从 `ProcessQueue` 移除，并获取移除后内存中剩余消息的最小偏移量，并已该最小偏移量更新客户端内存中的消费进度。
+
+为啥会使用内存中剩余消息最小偏移量更新消费进度，这是因为并发消费模式下，不同消息的消费完成无法保证顺序。例如按照顺序拉取到了4条消息 a,b,c,d，由于是并发消费，这四条消息可能被消费者线程同时消费，假设消息d先消费完成，此时更新消费进度，因为a、b、c没有消费完成，不能将进度更新为消息d的offset，而是将消息d从 `ProcessQueue` 中移除，移除后内存只剩下 a、b、c 三条消息，此时会将消费进度更新为`ProcessQueue` 中最小的消息偏移量，也就是 a。
+
+**客户端何时更新broker消费进度**：
+
+除了定时任务上报消费进度，**消费者client每次拉取消息时都会在请求头中携带其本地的消费进度**，broker收到拉取请求后会调用 `ConsumerOffsetManager#commitOffset` 方法更新broker的消费进度。
+
+- 消费者Client携带本地消费进度拉取消息的入口：`DefaultMQPushConsumerImpl#pullMessage`
+
+* broker处理拉取请求，并存储消费进度的入口：`PullMessageProcessor#processRequest`
+
+broker存储消费进度的思路和客户端类似，先将消费进度存储在内存中，然后通过JOB每隔10s调用
+
+`ConfigManager#persist()` 刷盘，broker在启动时会创建这个JOB：`BrokerController#initialize()`。
+
+## 七. 总结
+
+![](../images/83.png)
