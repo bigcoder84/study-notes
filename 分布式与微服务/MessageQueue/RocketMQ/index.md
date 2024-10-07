@@ -18,6 +18,8 @@
 
 [RocketMQ集群平滑扩缩容](./subfile/_22RocketMQ集群平滑扩缩容.md)
 
+[RocketMQ问答](./subfile/_23RocketMQ问答.md)
+
 ## 源码分析
 
 [阅读源码前的准备](./subfile/_9阅读源码前的准备.md)
