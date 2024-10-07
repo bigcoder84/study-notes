@@ -35,6 +35,8 @@ RocketMQ 中的 TransientStorePool 机制是一种优化磁盘写入性能的技
 
 并且开启 transientStorePool 机制后，由于消息数据会先写入堆外内存，然后由特定后台线程（CommitRealTimeService），将堆外内存中的修改 commit 到内存映射区域，而这一步如果发生断电、服务宕机，都会产生消息丢失。而普通的异步刷盘，由于消息是直接写入内存映射区域，所以服务宕机并不会丢失数据，只有在服务器突然断电时才会丢失少量数据。 
 
+> 参考文章：[RocketMQ消息存储流程](_5RocketMQ消息存储流程.md)
+
 ## RocketMQ 顺序消息实现原理
 
 RocketMQ为了保证消息的顺序性，分别从Producer和Consumer都有着相应的设计~
@@ -88,6 +90,8 @@ Broker 会每隔 60s 获取半消息 Topic 中需要事务回查的半消息，�
 
 ![](../images/86.png)
 
+> 参考文章：[RocketMQ事务消息](_13RocketMQ事务消息.md)
+
 ## RocketMQ 延迟消息实现原理
 
 **总体架构与概念**
@@ -107,6 +111,8 @@ RocketMQ 的消息存储在 CommitLog 文件中，它是顺序写入的。对于
 Broker 内部有专门的定时任务机制来管理延迟消息队列。每个延迟级别都对应一个定时器，定时器会定期（例如每隔 100ms）扫描对应的延迟消息队列。当定时器扫描到某个延迟消息队列中的消息时，会检查消息的延迟时间是否已经到达。如果到达了延迟时间，就会将消息从延迟消息队列中取出。
 
 从延迟消息队列中取出的消息，会根据之前记录的原始 Topic 和消费队列等信息进行还原。然后，Broker 会将还原后的消息重新投递到对应的消费队列中，以便消费者能够正常消费。在重新投递之前，Broker 还会进行一些必要的消息属性更新，例如清除延迟消息相关的标记等。
+
+> 参考文章：[RocketMQ延迟消息](_11RocketMQ延迟消息.md)
 
 ## RocketMQ 消息重试机制
 
@@ -140,6 +146,8 @@ PullMessageService 是 RocketMQ 客户端拉取消息的入口，它内部有一
 
 **每一个消费组一个消费者线程池**
 
+> 参考文章：[RocketMQ客户端消息消费原理](_20RocketMQ客户端消息消费原理.md)
+
 ## RocketMQ 消息 ACK 机制
 
 [源码分析RocketMQ之消息ACK机制（消费进度）_readoffset(final messagequeue mq-CSDN博客](https://blog.csdn.net/prestigeding/article/details/79090848)
@@ -151,6 +159,8 @@ RocketMQ 消息消费拉取是批量的，拉取到一批消息后会将消息�
 ![](../images/84.png)
 
 从 RocketMQ Dashboard 也能看出，RocketMQ 消息消费进度是 ConsumeQueue 维度管理的，在上图中 TopicTest 主题在 broker-a 和 broker-b 上分别有三个队列。
+
+> 参考文章：[RocketMQ客户端消息消费原理](_20RocketMQ客户端消息消费原理.md)
 
 ## RocketMQ 队列 Reblance 实现原理
 
@@ -196,6 +206,8 @@ Rebalance 是按照 ConsumeGroup 维度进行的，RebalanceService 中会发送
 - AllocateMessageQueueByMachineRoom：根据Broker部署机房名，对每个消费者负责不同的Broker上的队列。
 
 ![](../images/85.png)
+
+> 参考文章：[RocketMQ客户端消息消费原理](_20RocketMQ客户端消息消费原理.md)
 
 ## RocketMQ 生产者生产消息时如何进行队列路由
 
