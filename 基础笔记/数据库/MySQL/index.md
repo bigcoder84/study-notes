@@ -4,15 +4,15 @@
 
 [CentOS8安装MySQL](./subfile/_12CentOS8安装MySQL.md)
 
+[MySQL支持的数据类型](./subfile/_3MySQL支持的数据类型.md)
+
+[详解Mysql中日期比较大小的方法](./subfile/_4详解Mysql中日期的查询.md)
+
 [使用MySQL数据库时为什么永远不要UTF-8编码](./subfile/_1使用MySQL数据库时为什么永远不要UTF-8编码.md)
 
 [事务并发带来的问题](./subfile/_2事务的并发问题.md)
 
 [事务的隔离级别](./subfile/_6事务的隔离级别.md)
-
-[MySQL支持的数据类型](./subfile/_3MySQL支持的数据类型.md)
-
-[详解Mysql中日期比较大小的方法](./subfile/_4详解Mysql中日期的查询.md)
 
 [MySQL索引实现原理](./subfile/_5MySQL索引实现原理.md)
 
@@ -41,6 +41,8 @@
 [MySQL逻辑架构](./subfile/_20MySQL逻辑架构.md)
 
 [MySQL分区表详解](./subfile/_21MySQL分区表详解.md)
+
+[MySQL索引合并](./subfile/_37MySQL索引合并.md)
 
 [MySQL索引下推原理](./subfile/_22MySQL索引下推.md)
 
