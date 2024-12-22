@@ -11,3 +11,5 @@
 [Markdown画图语法](./subfile/_5Markdown画图语法.md)
 
 [快速获取公网IP](./subfile/_6快速获取公网IP.md)
+
+[Window git bash美化教程](./subfile/_7windows_git_bash美化教程.md)
