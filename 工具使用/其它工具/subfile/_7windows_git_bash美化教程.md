@@ -1,4 +1,4 @@
-# Git Bash美化教程
+# Windows 系统使用 oh-my-posh 美化 Git Bash
 
 ## 一. Windows Terminal 新增 Git Bash
 

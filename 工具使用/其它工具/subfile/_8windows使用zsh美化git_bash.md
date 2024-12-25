@@ -1,4 +1,4 @@
-# Windows系统使用 ZSH 美化git bash
+# Windows 系统使用 ZSH 美化 Git Bash
 
 此前，我们讲解了一种借助 Windows Subsystem for Linux（WSL）让用户在 Windows 操作系统中运用 Linux Shell 命令，进而高效地实现文件访问、编译等开发工作。
 

@@ -12,4 +12,6 @@
 
 [快速获取公网IP](./subfile/_6快速获取公网IP.md)
 
-[Window git bash美化教程](./subfile/_7windows_git_bash美化教程.md)
+[Windows 使用 oh-my-posh 美化 git bash](./subfile/_7windows_git_bash美化教程.md)
+
+[Windows 使用 zsh 美化 git bash](./subfile/_8windows使用zsh美化git_bash.md)
