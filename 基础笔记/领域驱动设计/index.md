@@ -19,3 +19,5 @@
 [领域事件](./subfile/_9领域事件.md)
 
 [CQRS](./subfile/_10CQRS.md)
+
+[DDD架构设计下的CRUD](./subfile/_11DDD架构设计下的CRUD.md)
