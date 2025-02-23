@@ -17,3 +17,5 @@
 [基于DDD的微服务设计实例](./subfile/_3基于DDD的微服务设计实例.md)
 
 [领域事件](./subfile/_9领域事件.md)
+
+[CQRS](./subfile/_10CQRS.md)
