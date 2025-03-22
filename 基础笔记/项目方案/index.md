@@ -30,6 +30,8 @@
 
 [深入剖析缓存一致性问题：延时双删的利弊与替代方案](./subfile/_18深入剖析缓存一致性问题：延时双删的利弊与替代方案.md)
 
+[SpringStateMachine实践](./subfile/_19SpringStateMachine实践.md)
+
 ## 项目规范
 
 [项目结构规范](./subfile/_5项目结构规范.md)
