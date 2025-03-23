@@ -19,12 +19,13 @@
 - `Action`：动作，事件发生以后要执行动作。例如事件是“按开门按钮”，动作是“开门”。编程的时候，一个 Action一般就对应一个函数。
 - `Transition`：变换，也就是从一个状态变化为另一个状态。例如“开门过程”就是一个变换。
 
-### 1.3 状态机
+### 1.3 状态机的价值
 
-`有限状态机（Finite-state machine,FSM）`，又称`有限状态自动机`，简称`状态机`，是表示有限个状态以及在这些状态之间的转移和动作等行为的数学模型。
+有限状态机通过明确的规则定义，将复杂的业务流程转化为可预测的状态迁移图。其核心优势体现在：
 
-`FSM`是一种算法思想，简单而言，有限状态机由一组状态、一个初始状态、输入和根据输入及现有状态转换为下一个状态的转换函数组成。
-其作用主要是描述对象在它的生命周期内所经历的状态序列，以及如何响应来自外界的各种事件。
+1. 可视化业务流程，降低系统复杂度
+2. 保证状态转换的合法性，避免非法状态
+3. 集中管理业务规则，提升可维护性
 
 ## 二. 状态机选型
 
@@ -123,13 +124,627 @@ Cola StateMachine 将 StateMachine 的实例定义为无状态(Stateless)的，�
 
 ## 三. Spring StateMachine Demo
 
+### 3.1 建表
+
+```sql
+CREATE TABLE order_info
+(
+    order_id      VARCHAR(255) NOT NULL comment '订单号',
+    state         INT          NOT NULL comment '订单状态',
+    amount        BIGINT       NOT NULL comment '订单金额',
+    coupon_amount BIGINT       NOT NULL comment '订单优惠金额',
+    supplier_ids  VARCHAR(255) NOT NULL comment '勾选的服务商列表',
+    start_address VARCHAR(255) NOT NULL comment '订单起始位置',
+    end_address   VARCHAR(255) NOT NULL comment '订单结束位置',
+    start_lat     DOUBLE,
+    start_lng     DOUBLE,
+    end_lat       DOUBLE,
+    end_lng       DOUBLE,
+    create_time   DATETIME     NOT NULL default current_timestamp comment '订单创建时间',
+    update_time   DATETIME     NOT NULL default current_timestamp on update current_timestamp comment '订单创建时间',
+    PRIMARY KEY (order_id)
+);
+
+CREATE TABLE `order_item`
+(
+    `id`             INT(11)     NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `order_id`       VARCHAR(64) NOT NULL COMMENT '订单ID',
+    `third_order_id` VARCHAR(64) NOT NULL COMMENT '第三方订单ID',
+    `supplier_id`    INT(11)     NOT NULL COMMENT '供应商ID',
+    PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_general_ci
+    COMMENT '订单子项表';
+```
+
+### 3.2 配置
+
+#### 3.2.1 引入依赖
+
+```xml
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <version>3.5.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>5.8.36</version>
+        </dependency>
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <version>1.9.7</version>
+        </dependency>
+		<!--状态机-->
+        <dependency>
+            <groupId>org.springframework.statemachine</groupId>
+            <artifactId>spring-statemachine-core</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+```
+
+#### 2.3.2 application.yaml
+
+```yml
+# DataSource Config
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/xxx?useSSL=false&serverTimezone=UTC
+    username: root
+    password: xxx
+server:
+  port: 8971
+```
+
+### 3.3 状态机配置
+
+#### 3.3.1 状态定义
+
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.enums;
+
+import lombok.Getter;
+
+/**
+ * @author: bigcoder
+ * @date: 2025-03-22
+ **/
+@Getter
+public enum OrderState {
+    INIT(1, "初始化"),
+    UN_DISPATCHING(2, "未派单"),
+    SP_DISPATCHING(3, "服务商派单中"),
+    SP_DISPATCHED(4, "服务商已派单"),
+    ;
+
+    private Integer state;
+    private String desc;
+
+    OrderState(Integer state, String desc) {
+        this.state = state;
+        this.desc = desc;
+    }
+
+    public static OrderState getByState(Integer state) {
+        for (OrderState orderState : OrderState.values()) {
+            if (orderState.state.equals(state)) {
+                return orderState;
+            }
+        }
+        return null;
+    }
+}
+
+```
+
+#### 3.3.2 事件定义
+
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.enums;
+
+/**
+ * @author: bigcoder
+ * @date: 2025-03-22
+ **/
+public enum OrderEvent {
+    BOOK_ORDER("下单"),
+    DISPATCH("派单"),
+    SP_CONFIRM("服务商司机接单"),
+    ;
+
+    private String desc;
+
+    OrderEvent(String desc) {
+        this.desc = desc;
+    }
+}
+
+```
+
+#### 3.3.4 定义状态机
+
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.statemachine.config;
+
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderEvent;
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderState;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.po.OrderInfoPo;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.action.OrderConfirmAction;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.action.OrderDispatchAction;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.action.OrderInitAction;
+import java.util.EnumSet;
+import javax.annotation.Resource;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.statemachine.StateMachineContext;
+import org.springframework.statemachine.StateMachinePersist;
+import org.springframework.statemachine.config.EnableStateMachineFactory;
+import org.springframework.statemachine.config.StateMachineConfigurerAdapter;
+import org.springframework.statemachine.config.builders.StateMachineStateConfigurer;
+import org.springframework.statemachine.config.builders.StateMachineTransitionConfigurer;
+import org.springframework.statemachine.persist.DefaultStateMachinePersister;
+import org.springframework.statemachine.persist.StateMachinePersister;
+import org.springframework.statemachine.support.DefaultStateMachineContext;
+
+/**
+ * @description: 订单状态机
+ */
+@Configuration
+@EnableStateMachineFactory
+public class OrderStateMachineConfig extends
+        StateMachineConfigurerAdapter<OrderState, OrderEvent> {
+
+    @Resource
+    private OrderInitAction orderInitAction;
+    @Resource
+    private OrderDispatchAction orderDispatchAction;
+    @Resource
+    private OrderConfirmAction orderConfirmAction;
+
+    /**
+     * 配置状态
+     */
+    @Override
+    public void configure(StateMachineStateConfigurer<OrderState, OrderEvent> states)
+            throws Exception {
+        states.withStates()
+                .initial(OrderState.INIT)
+                .states(EnumSet.allOf(OrderState.class));
+    }
+
+    /**
+     * 配置状态转换事件关系
+     */
+    @Override
+    public void configure(StateMachineTransitionConfigurer<OrderState, OrderEvent> transitions)
+            throws Exception {
+        // 下单
+        transitions.withExternal()
+                .source(OrderState.INIT)
+                .target(OrderState.UN_DISPATCHING)
+                .event(OrderEvent.BOOK_ORDER)
+                .action(orderInitAction);
+        // 派单
+        transitions.withExternal()
+                .source(OrderState.UN_DISPATCHING)
+                .target(OrderState.SP_DISPATCHING)
+                .event(OrderEvent.DISPATCH)
+                .action(orderDispatchAction);
+
+        // 服务商确认
+        transitions.withExternal()
+                .source(OrderState.SP_DISPATCHING)
+                .target(OrderState.SP_DISPATCHED)
+                .event(OrderEvent.SP_CONFIRM)
+                .action(orderConfirmAction);
+        transitions.withExternal()
+                .source(OrderState.UN_DISPATCHING)
+                .target(OrderState.SP_DISPATCHED)
+                .event(OrderEvent.SP_CONFIRM)
+                .action(orderConfirmAction);
+
+    }
+
+    /**
+     * StateMachinePersister配置
+     *
+     * @author yvesdong
+     * @date 2024/2/20 14:11
+     */
+    @Bean
+    public StateMachinePersister<OrderState, OrderEvent, OrderInfoPo> persister() {
+        return new DefaultStateMachinePersister<>(
+                new StateMachinePersist<OrderState, OrderEvent, OrderInfoPo>() {
+
+                    @Override
+                    public void write(StateMachineContext<OrderState, OrderEvent> stateMachineContext,
+                            OrderInfoPo order)
+                            throws Exception {
+                        // do nothing: 不依赖于状态机的持久化管理
+                    }
+
+                    @Override
+                    public StateMachineContext<OrderState, OrderEvent> read(OrderInfoPo orderInfo)
+                            throws Exception {
+                        // 读取当前订单状态
+                        OrderState orderState = OrderState.getByState(orderInfo.getState());
+                        if (orderState == null) {
+                            throw new RuntimeException("state not exist");
+                        }
+                        return new DefaultStateMachineContext<>(orderState, null,
+                                null, null);
+                    }
+                });
+    }
+}
+```
+
+#### 3.3.5 定义基础Action
+
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.statemachine.action;
+
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderEvent;
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderState;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.OrderInfoPoRepository;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.po.OrderInfoPo;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.config.StateMachineConstants;
+import javax.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.framework.AopContext;
+import org.springframework.statemachine.StateContext;
+import org.springframework.statemachine.action.Action;
+
+@Slf4j
+public abstract class AbstractOrderAction<T, R> implements Action<OrderState, OrderEvent> {
+
+    @Override
+    public void execute(StateContext<OrderState, OrderEvent> context) {
+        R response;
+        try {
+            if (context.getException() != null) {
+                log.warn("BaseOrderAction execute exception, event:{}", context.getEvent(), context.getException());
+                throw context.getException();
+            } else {
+                T request = (T) context.getMessageHeader(StateMachineConstants.REQUEST);
+                OrderInfoPo orderInfo = (OrderInfoPo) context.getMessageHeader(StateMachineConstants.ORDER);
+                AbstractOrderAction proxy;
+                try {
+                    // 尝试获取代理对象
+                    proxy = (AbstractOrderAction) AopContext.currentProxy();
+                } catch (IllegalStateException e) {
+                    // 如果没有代理对象，使用当前对象本身
+                    proxy = (AbstractOrderAction) this;
+                }
+                response = (R) proxy.onExecute(context, request, orderInfo);
+            }
+            context.getExtendedState().getVariables().put(StateMachineConstants.RESPONSE, response);
+        } catch (Exception e) {
+            context.getExtendedState().getVariables().put(StateMachineConstants.EXCEPTION_KEY, e);
+        }
+    }
 
 
+    public abstract R onExecute(StateContext<OrderState, OrderEvent> context, final T request,
+            final OrderInfoPo orderInfo) throws Exception;
+}
+```
 
+在 `AbstractOrderAction` 提供一个 `onExecute` 抽象方法，子类实现该方法完成对应业务逻辑。之所以定义这个抽象类，是因为原生`Action#execute` 方法返回类型为 `void`， 无法直接返回处理结果，亦或者在处理过程中发生异常，也会被状态机吞掉。
 
+但是我们可以借助状态机提供的上下文传递的能力，将返回值以及异常透传出去。
 
+#### 3.3.6 定义状态机门面
 
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.statemachine;
 
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderEvent;
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderState;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.mapper.OrderInfoPoMapper;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.po.OrderInfoPo;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.config.StateMachineConstants;
+import java.rmi.ServerException;
+import javax.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.statemachine.StateMachine;
+import org.springframework.statemachine.config.StateMachineFactory;
+import org.springframework.statemachine.persist.StateMachinePersister;
+import org.springframework.stereotype.Service;
+
+/**
+ * @author: bigcoder
+ * @date: 2025-03-22
+ **/
+@Slf4j
+@Service
+public class StateMachineService {
+
+    @Resource
+    private OrderInfoPoMapper orderInfoPoMapper;
+
+    @Resource
+    private StateMachineFactory<OrderState, OrderEvent> stateMachineFactory;
+    @Resource
+    private StateMachinePersister<OrderState, OrderEvent, OrderInfoPo> stateMachinePersister;
+
+    public <T extends BaseOrderReqDto, R> R sendEvent(OrderEvent event, T request, Class<R> resType) throws Exception {
+        String eventName = event.name();
+        OrderInfoPo orderInfo = orderInfoPoMapper.selectById(request.getOrderId());
+        if (orderInfo == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        // 初始化状态机实例
+        StateMachine<OrderState, OrderEvent> stateMachine = stateMachineFactory.getStateMachine();
+        // 初始化状态机状态
+        stateMachinePersister.restore(stateMachine, orderInfo);
+        // 触发事件
+        boolean tag = stateMachine.sendEvent(
+                MessageBuilder.withPayload(event)
+                        .setHeader(StateMachineConstants.REQUEST, request)
+                        .setHeader(StateMachineConstants.ORDER, orderInfo)
+                        .build());
+        if (!tag) {
+            throw new ServerException("状态不匹配");
+        }
+        // 获取action里抛出的异常
+        Exception exception = stateMachine
+                .getExtendedState()
+                .get(StateMachineConstants.EXCEPTION_KEY, Exception.class);
+        if (exception != null) {
+            // 如果执行过程中有异常，则抛出
+            throw exception;
+        }
+        R response = stateMachine.getExtendedState().get(StateMachineConstants.RESPONSE, resType);
+        if (response == null) {
+            return null;
+        }
+        return response;
+    }
+}
+```
+
+### 3.4 实现业务逻辑
+
+#### 3.4.1 OrderInitAction
+
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.statemachine.action;
+
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderEvent;
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderState;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.OrderInfoPoRepository;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.mapper.OrderInfoPoMapper;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.po.OrderInfoPo;
+import cn.bigcoder.statemachine.springstatemachinedemo.vo.req.OrderCreateReq;
+import cn.bigcoder.statemachine.springstatemachinedemo.vo.res.OrderCreateRes;
+import cn.hutool.core.lang.TypeReference;
+import cn.hutool.json.JSONUtil;
+import java.util.List;
+import javax.annotation.Resource;
+import org.springframework.statemachine.StateContext;
+import org.springframework.statemachine.state.State;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 初始化操作
+ *
+ * @author: bigcoder
+ * @date: 2025-03-22
+ **/
+@Component
+public class OrderInitAction extends AbstractOrderAction<OrderCreateReq, OrderCreateRes> {
+
+    @Resource
+    private OrderInfoPoRepository orderInfoPoRepository;
+
+    @Override
+    @Transactional
+    public OrderCreateRes onExecute(StateContext<OrderState, OrderEvent> context, OrderCreateReq request,
+            OrderInfoPo orderInfo) throws Exception {
+        // 订单那初始化操作.......
+        orderInfoPoRepository.updateState(orderInfo.getOrderId(), context.getSource().getId(),
+                context.getTarget().getId());
+        return OrderCreateRes.builder().orderId(orderInfo.getOrderId()).build();
+    }
+}
+
+```
+
+#### 3.4.2 OrderDispatchAction
+
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.statemachine.action;
+
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderEvent;
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderState;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.OrderInfoPoRepository;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.mapper.OrderItemPoMapper;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.po.OrderInfoPo;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.po.OrderItemPo;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.BaseOrderReqDto;
+import cn.bigcoder.statemachine.springstatemachinedemo.supplier.SupplierProxyService;
+import cn.bigcoder.statemachine.springstatemachinedemo.supplier.dto.SupplierOrderReqDto;
+import cn.bigcoder.statemachine.springstatemachinedemo.supplier.dto.SupplierOrderResDto;
+import cn.bigcoder.statemachine.springstatemachinedemo.vo.req.OrderCreateReq;
+import cn.hutool.core.lang.TypeReference;
+import cn.hutool.json.JSONUtil;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import javax.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.statemachine.StateContext;
+import org.springframework.statemachine.state.State;
+import org.springframework.stereotype.Component;
+
+/**
+ * 派单操作。保证幂等，
+ *
+ * @author: bigcoder
+ * @date: 2025-03-22
+ **/
+@Component
+public class OrderDispatchAction extends AbstractOrderAction<BaseOrderReqDto, Boolean> {
+
+    @Resource
+    private SupplierProxyService supplierProxyService;
+    @Resource
+    private OrderItemPoMapper orderItemPoMapper;
+    @Autowired
+    private OrderInfoPoRepository orderInfoPoRepository;
+
+    @Override
+    public Boolean onExecute(StateContext<OrderState, OrderEvent> context, BaseOrderReqDto request,
+            OrderInfoPo orderInfo) throws Exception {
+
+        OrderEvent event = context.getEvent();
+        State<OrderState, OrderEvent> source = context.getSource();
+        State<OrderState, OrderEvent> target = context.getTarget();
+
+        // 执行派单逻辑
+        List<Integer> supplierIds = JSONUtil.toBean(
+                orderInfo.getSupplierIds(),
+                new TypeReference<List<Integer>>() {
+                }, // 泛型类型捕获
+                false // 是否跳过转换错误（按需设置）
+        );
+
+        AtomicReference<Boolean> success = new AtomicReference<>(true);
+
+        for (Integer supplierId : supplierIds) {
+            // 调用运力商接口下单
+            SupplierOrderReqDto supplierOrderReqDto = SupplierOrderReqDto.builder()
+                    .thirdOrderId(orderInfo.getOrderId())
+                    .userCode(orderInfo.getUserId().toString())
+                    .build();
+            SupplierOrderResDto thirdOrder = supplierProxyService.createOrder(supplierOrderReqDto);
+            if (thirdOrder.getCode() == 0) {
+                // 记录第三方单号和当前订单关系
+                OrderItemPo orderItemPo = new OrderItemPo();
+                orderItemPo.setOrderId(orderInfo.getOrderId());
+                orderItemPo.setSupplierId(supplierId);
+                orderItemPo.setThirdOrderId(thirdOrder.getOrderId());
+                orderItemPoMapper.insert(orderItemPo);
+            } else {
+                success.set(false);
+            }
+        }
+        if (success.get()) {
+            orderInfoPoRepository.updateState(request.getOrderId(), source.getId(), target.getId());
+        }
+        return success.get();
+    }
+}
+
+```
+
+#### 3.4.3 OrderService
+
+```java
+package cn.bigcoder.statemachine.springstatemachinedemo.service.impl;
+
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderEvent;
+import cn.bigcoder.statemachine.springstatemachinedemo.enums.OrderState;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.mapper.OrderInfoPoMapper;
+import cn.bigcoder.statemachine.springstatemachinedemo.repository.po.OrderInfoPo;
+import cn.bigcoder.statemachine.springstatemachinedemo.service.OrderService;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.BaseOrderReqDto;
+import cn.bigcoder.statemachine.springstatemachinedemo.statemachine.StateMachineService;
+import cn.bigcoder.statemachine.springstatemachinedemo.utils.IdGenerator;
+import cn.bigcoder.statemachine.springstatemachinedemo.vo.req.OrderCreateReq;
+import cn.bigcoder.statemachine.springstatemachinedemo.vo.res.OrderCreateRes;
+import cn.hutool.json.JSONUtil;
+import javax.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+/**
+ * @author: bigcoder
+ * @date: 2025-03-22
+ **/
+@Service
+@Slf4j
+public class OrderServiceImpl implements OrderService {
+
+    @Resource
+    private StateMachineService stateMachineService;
+    @Resource
+    private OrderInfoPoMapper orderInfoPoMapper;
+
+    @Override
+    public OrderCreateRes createOrder(OrderCreateReq req) throws Exception {
+        String orderId = IdGenerator.generateId();
+        req.setOrderId(orderId);
+        OrderInfoPo orderInfoPo = buildOrderInfo(req);
+        orderInfoPoMapper.insert(orderInfoPo);
+        return stateMachineService.sendEvent(OrderEvent.BOOK_ORDER, req, OrderCreateRes.class);
+    }
+
+    /**
+     * 该方法可以由job异步触发
+     *
+     * @param req
+     * @throws Exception
+     */
+    @Override
+    public void dispatch(BaseOrderReqDto req) throws Exception {
+        stateMachineService.sendEvent(OrderEvent.DISPATCH, req, Boolean.class);
+    }
+
+    private static OrderInfoPo buildOrderInfo(OrderCreateReq req) {
+        if (req == null) {
+            return null;
+        }
+        OrderInfoPo orderInfoPo = new OrderInfoPo();
+        orderInfoPo.setOrderId(req.getOrderId());
+        orderInfoPo.setUserId(req.getUserId());
+        orderInfoPo.setSupplierIds(JSONUtil.toJsonStr(req.getSupplierIds()));
+        orderInfoPo.setStartAddress(req.getStartAddress());
+        orderInfoPo.setEndAddress(req.getEndAddress());
+        orderInfoPo.setStartLat(req.getStartLat());
+        orderInfoPo.setStartLng(req.getStartLng());
+        orderInfoPo.setEndLat(req.getEndLat());
+        orderInfoPo.setEndLng(req.getEndLng());
+        orderInfoPo.setState(OrderState.INIT.getState());
+        orderInfoPo.setAmount(0L);
+        orderInfoPo.setCouponAmount(0L);
+        return orderInfoPo;
+    }
+}
+```
+
+## 四. 总结
+
+通过本文的实践案例可以看出，Spring StateMachine为复杂业务流提供了清晰的建模方式。开发者需要根据具体业务场景，在状态复杂性、性能要求和开发成本之间找到平衡点。对于需要严格状态控制的电商、金融等系统，Spring StateMachine的完整功能支持具有明显优势，而对于高并发的简单状态管理场景，Cola等轻量级方案可能更为适合。掌握状态机设计模式，将大幅提升开发者对复杂业务系统的架构能力。
 
 
 
