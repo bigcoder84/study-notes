@@ -2,9 +2,30 @@
 
 ElasticSearch的数据交互接口是基于HTTP协议实现的，基本格式如下：
 
-## 一. 新增索引
+## 一. 创建索引
 
-格式：
+默认情况下，我们向一个不存在的的索引添加数据时，就会创建这个索引：
+
+![](../images/9.png)
+
+我们向一个不存在的employee索引添加一条数据，那么默认情况下ES会帮我们自动创建索引，并且也会自动帮我们创建字段映射：
+![](../images/9.png)
+
+### 1.1 禁止自动创建索引
+
+那么如果我们需要对这个建立索引的过程做更多的控制：比如想要确保这个索引有数量适中的主分片，并且在我们索引任何数据之前，分析器和映射已经被建立好。那么就会引入两点：第一个**禁止自动创建索引**，第二个是**手动创建索引**。
+
+- 禁止自动创建索引
+
+可以通过在 config/elasticsearch.yml 的每个节点下添加下面的配置：
+
+```bash
+action.auto_create_index: false
+```
+
+手动创建索引就是接下来文章的内容。
+
+### 1.2 手动创建索引
 
 ```shell
 PUT /{index_name}
@@ -42,15 +63,26 @@ PUT /order
 PUT /order2
 {
   "settings": {
-    "number_of_shards": 3,
-    "number_of_replicas": 1
-  },
+		"number_of_shards": 1,
+		"number_of_replicas": 1
+	},
   "mappings": {
     "properties": {
-      "title": { "type": "text" },
-      "content": { "type": "text" },
-      "price": { "type": "scaled_float", "scaling_factor": 100 },
-      "publish_date": { "type": "date" }
+      "name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "age": {
+        "type": "long"
+      },
+      "remarks": {
+        "type": "text"
+      }
     }
   }
 }
@@ -114,11 +146,6 @@ GET /{index_name}
 
 ### 3.1 修改setting配置
 
-`settings` 里面主要是对索引的全局属性、存储、性能、分片分配等多方面的配置，下面是索引中比较重要的两个配置：
-
-- number_of_shards：索引应该具有的主分片数量。7.x及以上版本默认值为`1`，6.x及以下版本默认值为`5`。**此设置只能在创建索引时设置，在关闭的索引上也不能修改**。
-- number_of_replicas：每个主分片的副本数，默认值是 1 。对于活动的索引库，这个配置可以随时修改。
-
 修改settings配置的格式：
 
 ```txt
@@ -128,11 +155,11 @@ PUT /{index_name}/_settings
 }
 ```
 
-我们可以用该API动态修改 order 索引的副本数：
+我们可以用该API动态修改 order 索引分片的副本数：
 
 ![](../images/4.png)
 
-如果尝试修改 `number_of_shards` 则会报错：
+`number_of_shards` 只能在创建索引时指定，如果尝试修改 `number_of_shards` 则会报错：
 
 ![](../images/5.png)
 
@@ -176,3 +203,36 @@ DELETE /logs-*
 DELETE /my_index?master_timeout=30s&timeout=30s
 ```
 
+## 五. 打开关闭索引
+
+### 5.1 关闭索引
+
+一旦索引被关闭，那么这个索引只能显示元数据信息，**不能够进行读写操作**。
+
+语法格式：
+
+```txt
+POST /{index_name}/_close
+```
+
+关闭索引后，操作数据报错：
+
+![](../images/11.png)
+
+### 5.2 打开索引
+
+索引打开后又可以重新写数据了
+
+语法格式：
+
+```txt
+POST /{index_name}/_open
+```
+
+## 六. kibana管理索引
+
+在Kibana如下路径，我们可以查看和管理索引
+
+![](../images/13.png)
+
+![](../images/12.png)
