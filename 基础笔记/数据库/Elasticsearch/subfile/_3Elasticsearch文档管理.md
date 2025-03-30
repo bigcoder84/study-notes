@@ -34,8 +34,12 @@ POST /{index_name}/_doc/{id}
 
 ## 二. 更新文档
 
+### 2.1 根据ID替换文档
+
+**`PUT` 请求**：通常用于完整替换文档。如果只提供了部分字段，原文档中未提及的字段会被删除。比如原文档有 `field1`、`field2` 和 `field3`，使用 `PUT` 请求只更新 `field1`，那么更新后文档将只包含 `field1`，`field2` 和 `field3` 会被删除。
+
 ```bash
-PUT /{index_name}/_doc/{id}
+PUT /{index_name}/_doc/{document_id}
 {
    ...
 }
@@ -44,9 +48,81 @@ PUT /{index_name}/_doc/{id}
 - index_name：索引名称
 - id：文档ID，必填。
 
+例如：
+
+```json
+PUT /employee/_doc/7
+{
+    "name": "王五",
+    "age": 27
+}
+```
+
+### 2.2 根据ID部分更新文档
+
+部分更新允许你只更新文档中的某些字段，而不影响其他字段。以下是一个使用 `POST` 请求进行部分更新的示例：
+
+```json
+POST /{index_name}/_update/{document_id}
+{
+    "doc": {
+        "field1": "new_value1",
+        "field2": "new_value2"
+    }
+}
+```
+
+![](../images/26.png)
+
+### 2.3 根据查询条件更新文档
+
+#### 2.3.1 案例一：更新部分文档name字段
+
+例如我需要更新所有 `age>18` 的数据，在 `name` 字段后面增加一个统一后缀“（成人）”：
+
+```java
+POST /employee/_update_by_query
+{
+    "query": {
+        "range": {
+            "age": {
+                "gt": 18
+            }
+        }
+    },
+    "script": {
+        "source": "ctx._source.Name = ctx._source.Name + '（成人）'",
+        "lang": "painless"
+    }
+}
+```
+
+**解释：**
+
+- **`_update_by_query`**：这是 Elasticsearch 提供的用于批量更新满足特定查询条件的文档的 API。
+- **`query`**：指定更新操作的筛选条件。这里使用 `range` 查询筛选出 `age` 大于 18 的文档。
+- **`script`**：使用 Painless 脚本对符合条件的文档进行更新。`ctx._source` 表示当前文档的源数据，通过 `ctx._source.Name = ctx._source.Name + '（成人）'` 语句在 `Name` 字段后面添加 “（成人）” 后缀。
+
+![](../images/27.png)
+
+#### 2.3.2 案例二：删除文档中的某个字段
+
+```java
+POST /employee/_update_by_query
+{
+    "query": {
+        "match_all": {}
+    },
+    "script": {
+        "source": "if (ctx._source.containsKey('Name')) { ctx._source.remove('Name') }",
+        "lang": "painless"
+    }
+}
+```
+
 ## 三. 删除文档
 
-## 
+### 3.1 根据ID删除文档
 
 ```bash
 DELETE /{index_name}/_doc/{id}
@@ -57,7 +133,22 @@ DELETE /{index_name}/_doc/{id}
 
 ![](../images/8.png)
 
-## 四. 查询文档
+### 3.2 根据查询条件删除文档
+
+删除 `age>60` 的文档：
+
+```JSON
+POST /employee/_delete_by_query
+{
+    "query": {
+        "range": {
+            "age": {
+                "gt": 60
+            }
+        }
+    }
+}
+```
 
 
 

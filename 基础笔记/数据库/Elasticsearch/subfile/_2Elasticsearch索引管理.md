@@ -183,6 +183,8 @@ PUT /{index_name}/_mapping
 
 字段映射功能会在后面文章中详细介绍。
 
+可以参考：[Elasticsearch索引字段映射（mapping）](./_4Elasticsearch索引字段映射.md)
+
 ### 3.3 修改aliases配置
 
 字段别名功能会在后面文章中详细介绍。
