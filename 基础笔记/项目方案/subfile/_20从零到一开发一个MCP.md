@@ -464,25 +464,28 @@ mvn clean package -Dmaven.test.skip=true
    ![](../images/57.png)
 
    ```shell
-   "mcpServers": {
+   {
+     "mcpServers": {
        "AUM5itYnoMcxPiU2vFa3Z": {
-           "name": "Excel操作",
-           "type": "stdio",
-           "description": "",
-           "isActive": true,
-           "command": "java",
-           "args": [
-               "-Dspring.ai.mcp.server.stdio=true",
-               "-Dspring.main.web-application-type=none",
-               "-jar",
-               "E:/xxxx/mcp-excel-server/target/mcp-excel-server-0.0.1-SNAPSHOT.jar"
-           ]
+         "name": "Excel操作",
+         "type": "stdio",
+         "description": "",
+         "isActive": true,
+         "command": "java",
+         "args": [
+           "-Dspring.ai.mcp.server.stdio=true",
+           "-Dspring.main.web-application-type=none",
+           "-Dfile.encoding=UTF-8",
+           "-jar",
+           "{your_path}/mcp-excel-server-0.0.1-SNAPSHOT.jar"
+         ]
        }
+     }
    }
    ```
-
+   
    当然，你也可以通过图形化界面进行配置。
-
+   
 3. 检查是否正确连接 MCP Server
 
    ![](../images/58.png)
