@@ -32,6 +32,8 @@
 
 [SpringStateMachine实践](./subfile/_19SpringStateMachine实践.md)
 
+[从零到一开发一个MCP](./subfile/_20从零到一开发一个MCP.md)
+
 ## 项目规范
 
 [项目结构规范](./subfile/_5项目结构规范.md)
