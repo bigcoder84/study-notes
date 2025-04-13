@@ -436,13 +436,7 @@ public class McpExcelServerApplication {
 }
 ```
 
-## 四. 在LLM客户端中使用 mcp-excel-server
-
-开发完 MCP Server 后，我们可以将其与 LLM 客户端进行集成。
-
-目前 Claude、Cursor 以及 Cherry Studio 等，都可以快速接入 MCP 功能。我们通过 Cherry Studio 来验证一下我们开发的工具。
-
-### 4.1 生成可执行jar
+### 3.7 生成可执行jar
 
 在项目根目录下执行下列命令，将项目打包为可执行jar：
 
@@ -454,7 +448,43 @@ mvn clean package -Dmaven.test.skip=true
 
 ![](../images/55.png)
 
-### 4.2 配置Cherry Studio
+## 四. 使用 MCP Inspector 测试 MCP Server
+
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) 是一个交互式开发者工具，用于测试和调试 MCP 服务器。
+
+该工具运行依赖于node.js，大家自行安装即可。
+
+使用下列命令运行 `MCP Inspector`：
+
+```shell
+npx @modelcontextprotocol/inspector
+```
+
+![](../images/64.png)
+
+访问浏览器 `http://127.0.0.1:6274` 即可进入工具：
+
+![](../images/65.png)
+
+选择正确的传输模式、命令、运行参数，以我们开发的工具为例，填写下列参数即可：
+
+| 参数名         | 参数值                                                       |
+| -------------- | ------------------------------------------------------------ |
+| Transport Type | STDIO                                                        |
+| Command        | java                                                         |
+| Arguments      | -Dspring.ai.mcp.server.stdio=true -Dspring.main.web-application-type=none -Dlogging.pattern.console= -jar  {your_path}\\\\mcp-excel-server-0.0.1.jar |
+
+点击“Connect”即可连接MCP Server，在右边工具栏中，我们就可以看到MCP Server提供的功能，并且我们可以针对功能传入参数进行调试：
+
+![](../images/66.png)
+
+## 五. 在 LLM 客户端中使用 mcp-excel-server
+
+开发完 MCP Server 后，我们可以将其与 LLM 客户端进行集成。
+
+目前 Claude、Cursor 以及 Cherry Studio 等，都可以快速接入 MCP 功能。我们通过 Cherry Studio 来验证一下我们开发的工具。
+
+### 5.1 配置Cherry Studio
 
 1. 打开设置，配置大语言模型API KEY，请选择支持工具调用功能的模型进行配置，我这里配置的DeepSeek：
 
@@ -491,7 +521,7 @@ mvn clean package -Dmaven.test.skip=true
    ![](../images/58.png)
    
 
-### 4.3 在对话中使用MCP功能
+### 5.2 在对话中使用 MCP 功能
 
 如果想要在对话中激活MCP功，我们需要手动开启该功能：
 
@@ -515,7 +545,7 @@ mvn clean package -Dmaven.test.skip=true
 
 至此我们就带大家走完了 MCP Server 开发的全流程。
 
-## 五. 总结
+## 六. 总结
 
 本文通过理论与实战结合的方式，完整呈现了基于 Spring AI 框架开发 MCP Server 的核心流程。从 MCP 协议的基础架构出发，我们理解了其作为 “AI 与数据桥梁” 的核心价值 —— 通过统一接口打破数据孤岛，让 AI 能动态调用工具、访问本地资源，实现复杂任务的处理。相较于传统 Function Calling，MCP 的标准化协议带来了更低的开发成本、更高的复用性和更强的灵活性，尤其在跨平台数据整合与生态协作场景中优势显著。
 
