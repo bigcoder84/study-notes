@@ -60,6 +60,8 @@
 
 [MongoDB](./基础笔记/数据库/MongoDB/index.md)
 
+[Elasticsearch](./基础笔记/数据库/Elasticsearch/index.md)
+
 ## 项目经验
 
 [项目方案](./基础笔记/项目方案/index.md)
