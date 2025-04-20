@@ -11,7 +11,12 @@ Elasticsearch 的查询可以看作一棵树，树的每个节点可以是两种
 
 ## 一. 叶子查询
 
-### 1.1 精确查询
+叶子查询大致分为两类：
+
+- **精确检索**：不对待检索文本进行分词处理，而是将整个文本视为一个完整的词条进行匹配。
+- 全文检索：需要对文本进行分词处理。在分词后，每个词条将单独进行检索，并通过布尔逻辑（如与、或、非等)进行组合检索，以找到最相关的结果。
+
+### 1.1 精确检索
 
 下列查询用于精确匹配字段的 **未经分词** 的原始值（通常针对 `keyword` 类型或数值类型字段）。在实战过程中，需要避免将下列查询关键字应用于text类型字段的检索。进一步说，text类型字段会分词后存储，将精确查询关键字用于`text`类型字段时并不会报错，但检索结果一般会达不到预期。
 
@@ -548,7 +553,7 @@ GET /bank/_search
 
 
 
-#### 1.2.4 `multi_match`
+#### 1.2.3 `multi_match` 查询
 
 multi_match查询在Elasticsearch中用于在多个字段上执行相同的搜索操作。它可以接受一个查询字符串，并在指定的字段集合中搜索这个字符串。multi_match查询提供了灵活的匹配类型和操作符选项，以便根据不同的搜索需求调整搜索行为。
 
@@ -593,7 +598,7 @@ GET /bank/_search
 
 ![](../images/39.png)
 
-#### 1.2.3 `match_phrase` 查询
+#### 1.2.4 `match_phrase` 查询
 
 **用途**：匹配完整短语（分词顺序一致）。
 
@@ -686,23 +691,36 @@ POST _analyze
 }
 ```
 
-#### 1.2.4 `match_phrase_prefix` 查询
+#### 1.2.5 `match_phrase_prefix` 查询
 
-**用途**：匹配短语前缀。
-​**​示例​**​：在 `address` 字段中搜索以 `"990"` 开头的短语。
+用途：用于全文搜索（text类型字段），实现短语的自动补全。
+
+例如：用户输入 `quick brown f`，希望匹配类似 `quick brown fox` 的短语。
+
+工作原理：
+
+1. **分词处理**：先将查询字符串分词（如 `["quick", "brown", "f"]`）。
+2. **短语顺序匹配**：要求文档中的词项必须按顺序出现（`quick` → `brown` → `以 f 开头的词`）。
+3. **最后一个词前缀匹配**：仅最后一个词项使用前缀匹配，其余词必须精确匹配
+   ​**​示例​**​：在 `address` 字段中搜索以 `"990"` 开头的短语。
 
 ```json
 GET /{index_name}/_search
 {
   "query": {
     "match_phrase_prefix": {
-      "address": "990"
+      "address": {
+        "query": "Holmes L",
+        "slop": 1
+      }
     }
   }
 }
 ```
 
-#### 1.2.5 `common` 查询
+![](../images/41.png)
+
+#### 1.2.6 `common` 查询
 
 **用途**：优化高频词（如停用词）的匹配。
 ​**​示例​**​：在 `address` 字段中搜索 `"Avenue and the Street"`，优先低频词。
@@ -718,6 +736,146 @@ GET /{index_name}/_search
       }
     }
   }
+}
+```
+
+#### 1.2.7 `query_string` 查询
+
+`query_string` 查询是一种灵活的查询类型，它允许使用Lucene查询语法来构建复杂的搜索查询。这种查询类型支持多种逻辑运算符，包括与（AND）、或（OR）和非（NOT），以及通配符、模糊搜索和正则表达式等功能。`query_string` 查询可以在单个或多个字段上进行搜索，并且可以处理复杂的查询逻辑。
+
+应用场景包括高级搜索、数据分析和报表等，适合处理需满足特定需求、要求支持与或非表达式的复杂查询任务，通常用于专业领域或需要高级查询功能的应用中。
+
+基本语法：
+
+```json
+GET /{index_name}/_search
+{
+    "query": {
+        "query_string": {
+            "query": "{your_query_string}",
+            "default_field": "{field_name}"
+        }
+    }
+}
+```
+
+- your_query_string：查询逻辑，可以包含上述提到的逻辑运算符和通配符等
+
+- field_name：默认搜索字段，如果省略则会搜索所有可索引字段。
+
+示例：
+
+- 未指定字段查询
+
+```json
+# AND 要求大写
+GET /employee/_search
+{
+    "query": {
+        "query_string": {
+            "query": "赵六 AND 橘子洲"
+        }
+    }
+}
+```
+
+- 指定单个字段查询
+
+```json
+GET /employee/_search
+{
+    "query": {
+        "query_string": {
+            "default_field": "address",
+            "query": "白云山 OR 橘子洲"
+        }
+    }
+}
+```
+
+注意: 查询字段分词就将查询条件分词查询，查询字段不分词将查询条件不分词查询
+
+- 指定多个字段查询
+
+```json
+GET /employee/_search
+{
+    "query": {
+        "query_string": {
+            "fields": [
+                "name",
+                "address"
+            ],
+            "query": "张三 OR (广州 AND 王五)"
+        }
+    }
+}
+
+```
+
+#### 1.2.8 `simple_query_string` 查询
+
+类似Query String，但是会忽略错误的语法,同时只支持部分查询语法，不支持AND OR NOT，会当作字符串处理。支持部分逻辑：
+
++ “+”替代AND
++ “|”替代OR
+
+- “-”替代NOT
+
+在生产环境中推荐使用 simple_query_string 而不是 query_string 主要是因为 simple_query_string 提供了更宽松的语法，能够容忍一定程度的输入错误，而不会导致整个查询失败。
+
+基本语法：
+
+```json
+GET /{index_name}/_search
+{
+    "query": {
+        "simple_query_string": {
+            "query": "{query_string}",
+            "fields": [
+                "{field1}",
+                "{field2}", ...
+            ],
+            "default_operator": "OR" // 或 "AND"
+        }
+    }
+}
+```
+
+- query_string：要搜索的查询表达式
+- field1, field2：搜索可以在其中进行的字段列表
+- default_operator：定义了查询字符串中未指定操作符时的默认逻辑运算符，可以是 "OR" 或 "AND"。
+
+示例：
+
+```json
+#simple_query_string 默认的operator是OR
+GET /employee/_search
+{
+    "query": {
+        "simple_query_string": {
+            "fields": [
+                "name",
+                "address"
+            ],
+            "query": "广州公园",
+            "default_operator": "AND"
+        }
+    }
+}
+
+
+GET /employee/_search
+{
+    "query": {
+        "simple_query_string": {
+            "fields": [
+                "name",
+                "address"
+            ],
+            "query": "广州 + 公园"
+        }
+    }
 }
 ```
 
