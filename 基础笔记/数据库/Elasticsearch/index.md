@@ -11,3 +11,5 @@
 [Elasticsearch文档管理](./subfile/_3Elasticsearch文档管理.md)
 
 [Elasticsearch查询](./subfile/_5DSL查询.md)
+
+[Elasticsearch搜索相关性](./subfile/_7Elasticsearch搜索相关性.md)
