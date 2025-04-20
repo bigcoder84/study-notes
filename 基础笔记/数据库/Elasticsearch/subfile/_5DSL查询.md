@@ -14,7 +14,7 @@ Elasticsearch 的查询可以看作一棵树，树的每个节点可以是两种
 叶子查询大致分为两类：
 
 - **精确检索**：不对待检索文本进行分词处理，而是将整个文本视为一个完整的词条进行匹配。
-- 全文检索：需要对文本进行分词处理。在分词后，每个词条将单独进行检索，并通过布尔逻辑（如与、或、非等)进行组合检索，以找到最相关的结果。
+- **全文检索**：需要对文本进行分词处理。在分词后，每个词条将单独进行检索，并通过布尔逻辑（如与、或、非等)进行组合检索，以找到最相关的结果。
 
 ### 1.1 精确检索
 
@@ -433,6 +433,57 @@ GET /movies/_search
     }
 }
 ```
+
+#### 1.1.11 地理位置搜索
+
+地理空间位置查询是数据库和搜索系统中的一个重要特性，特别是在地理信息系统（GIS）和位置服务中。它允许用户基于地理位置信息来搜索和过滤数据。在Elasticsearch这样的全文搜索引擎中，地理空间位置查询被广泛应用，例如在旅行、房地产、物流和零售等行业，用于提供基于位置的搜索功能。
+
+在Elasticsearch中，地理空间数据通常存储在geo_point字段类型中。这种字段类型可以存储纬度和经度坐标，用于表示地球上的一个点。
+
+以下是一个使用geo_distance查询的例子，它会找到距离特定点一定距离内的所有文档。
+
+1. 确保索引中有一个geo_point字段，例如location。
+
+```json
+PUT /my_index
+{
+    "mappings": {
+        "properties": {
+            "location": {
+                "type": "geo_point"
+            }
+        }
+    }
+}
+```
+
+2. 使用以下查询来找到距离给定坐标点（例如lat和lon）小于或等于10公里的所有文档
+
+```json
+GET /home_location/_search
+{
+  "query": {
+    "geo_distance": {
+      "distance": "10km",
+      "distance_type": "arc",
+      "location": {
+        "lat": 30.445513,
+        "lon": 114.385169
+      }
+    }
+  }
+}
+```
+
+- "geo_distance" 是一个地理距离查询，它允许您指定一个距离和一个点的坐标。
+
+- "distance" 是查询的最大距离，单位可以是米(m)、公里(km)等。
+
+- "distance_type" 可以是 arc（以地球表面的弧长为单位）或 plane（以直线距离为单位)。通常对于地球上的距离查询，建议使用 arc。
+
+- "location" 是查询的参考点，包含纬度和经度坐标。
+
+![](../images/45.png)
 
 ### 1.2 全文检索查询（Full-Text）
 
@@ -1015,6 +1066,103 @@ GET /{index_name}/_search
 - `from` 参数明确了查询结果起始的偏移量，也就是跳过前 `from` 条数据，从第 `from+1` 条结果开始返回。**它的默认值是 0，跳过前0条数据，从第1条结果返回**。在你的查询里，`from` 的值设定为 2，这表明 Elasticsearch 会跳过前 2 条结果，从第 3 条结果开始返回。
 
 - `size` 参数指定了查询结果返回的最大文档数量。**它的默认值为 10，即默认返回 10 条结果**。在你的查询中，`size` 的值为 5，这就表示 Elasticsearch 只会返回至多 5 条结果。
+
+## 四. 高亮检索
+
+highlight 关键字: 可以让符合条件的文档中的关键词高亮。highlight相关属性：
+
+- pre_tags：前缀标签 
+- post_tags：后缀标签
+
+- tags_schema：设置为styled可以使用内置高亮样式
+
+- require_field_match：多字段高亮需要设置为false
+
+**示例**
+
+### 4.1 创建示例数据
+
+```json
+PUT /products
+{
+    "settings": {
+        "index": {
+            "analysis.analyzer.default.type": "ik_max_word"
+        }
+    }
+}
+
+PUT /products/_doc/1
+{
+    "proId": "2",
+    "name": "牛仔男外套",
+    "desc": "牛仔外套男装春季衣服男春装夹克修身休闲男生潮牌工装潮流头号青年春秋棒球服男 7705浅蓝常规 XL",
+    "timestamp": 1576313264451,
+    "createTime": "2019-12-13 12:56:56"
+}
+
+PUT /products/_doc/2
+{
+    "proId": "6",
+    "name": "HLA海澜之家牛仔裤男",
+    "desc": "HLA海澜之家牛仔裤男2019时尚有型舒适HKNAD3E109A 牛仔蓝(A9)175/82A(32)",
+    "timestamp": 1576314265571,
+    "createTime": "2019-12-18 15:56:56"
+}
+```
+
+### 4.2 高亮检索
+
+```json
+GET /products/_search
+{
+    "query": {
+        "match": {
+            "name": "牛仔裤"
+        }
+    },
+    "highlight": {
+        "fields": {
+            "*": {}
+        }
+    }
+}
+```
+
+- `highlight` 用于指定对匹配结果的哪些字段进行高亮显示。
+- `fields` 是一个对象，用于指定要高亮显示的字段。
+- `"*": {}` 表示对所有匹配的字段都进行高亮显示。默认情况下，Elasticsearch 会在匹配的文本前后添加 `<em>` 标签来实现高亮效果。
+
+![](../images/46.png)
+
+### 4.2 自定义HTML标签高亮
+
+```json
+GET /products/_search
+{
+    "query": {
+        "match": {
+            "name": "牛仔裤"
+        }
+    },
+    "highlight": {
+        "pre_tags": ["<span style='color:red'>"],
+        "post_tags": ["</span>"],
+        "fields": {
+            "*": {}
+        }
+    }
+}
+```
+
+- `pre_tags`：指定在高亮显示的文本前插入的 HTML 标签。这里设置为 `<span style='color:red'>`，意味着匹配的文本会被包裹在一个红色字体的 `<span>` 标签中。
+- `post_tags`：指定在高亮显示的文本后插入的 HTML 标签。这里设置为 `</span>`，与 `pre_tags` 中的 `<span>` 标签对应，用于闭合标签。
+
+![](../images/47.png)
+
+## 
+
+
 
 
 
