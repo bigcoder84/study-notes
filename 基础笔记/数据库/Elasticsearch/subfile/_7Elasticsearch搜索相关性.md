@@ -1,5 +1,7 @@
 # Elasticsearch搜索相关性
 
+> [4.1 搜索相关性详解.note](https://note.youdao.com/ynoteshare/index.html?id=16adbf53c13f129e57e1155cc107b7ac&type=note&_time=1745146715975)
+
 ## 一. 相关性概述
 
 ### 1.1 什么是相关性
@@ -439,6 +441,8 @@ GET /blogs/_search
 }
 ```
 
+> `should` 数组中的子查询属于可选条件。只要文档匹配 `should` 数组里的任意一个子查询，就会被视为匹配查询。最终，Elasticsearch 会依据文档与各个子查询的匹配程度来计算文档的相关性得分。详细查询语法参考：[DSL查询](./_5DSL查询.md)
+
 由于两个文档中 `title` 和 `content` 字段都包含了 "Apple" 和 "iPad"，并且“词频”和“逆向文本频率”是一致的
 
 得分情况：
@@ -484,5 +488,278 @@ GET /blogs/_search
 
 ![](../images/55.png)
 
+### 2.3 降低文档相关性（nagative_boost）
 
+若对某些返回结果不满意，但又不想将其排除(must_not)，则可以考虑采用negative_boost的方式。原理说明如下：
+
+- `negative_boost` 仅对查询中定义为 `negative` 的部分生效。
+- 计算评分时，不修改 `boosting` 部分评分，而 `negative` 部分的评分则乘以 `negative_boost` 的值。
+- `negative_boost` 取值为0～1.0，如0.3。
+
+案例：要求苹果公司的产品信息优先展示
+
+**准备数据：**
+
+```json
+POST /news/_bulk
+{"index":{"_id":1}}
+{"content":"Apple Mac"}
+{"index":{"_id":2}}
+{"content":"Apple iPad"}
+{"index":{"_id":3}}
+{"content":"Apple employee like Apple Pie and Apple Juice"}
+```
+
+**正常查询包含 `apple` 关键字的文档：**
+
+```json
+GET /news/_search
+{
+    "query": {
+        "bool": {
+            "must": {
+                "match": {
+                    "content": "apple"
+                }
+            }
+        }
+    }
+}
+```
+
+![](../images/56.png)
+
+可以看到这样将所有带有 `apple` 关键词的文档都查询出来了，该查询会返回所有包含`apple`关键词的文档，但无法区分产品与其他关联内容（如`Apple Pie`）。若希望排除与苹果公司产品无关的内容（如`pie`），可使用`must_not`：
+
+```json
+GET /news/_search
+{
+    "query": {
+        "bool": {
+            "must": {
+                "match": {
+                    "content": "apple"
+                }
+            },
+            "must_not": {
+                "match":{
+                    "content": "pie"
+                }
+            }
+        }
+    }
+}
+```
+
+但此方法会直接排除包含`pie`的文档，可能影响查询召回率。为在不排除文档的前提下，优先展示苹果公司产品信息，可采用`negative_boost`：
+
+```json
+GET /news/_search
+{
+    "query": {
+        "boosting": {
+            "positive": {
+                "match": {
+                    "content": "apple"
+                }
+            },
+            "negative": {
+                "match": {
+                    "content": "pie"
+                }
+            },
+            "negative_boost": 0.2
+        }
+    }
+}
+```
+
+- **positive**：它是一个标准的查询对象，像 `match`、`term` 这类查询都能使用。只要文档匹配了 `positive` 查询，就会在最终的相关性评分里得到提升。
+- **negative**：同样也是标准的查询对象。要是文档匹配了 `negative` 查询，其相关性评分就会降低。
+- **negative_boost**：取值在 0 到 1 之间，此值用于降低匹配 `negative` 查询的文档的相关性评分。数值越小，降低的幅度就越大。
+
+![](../images/57.png)
+
+你或许会有这样的疑问，我们在上一节介绍boosting修改文档相关性时指出，boost的值也可以定义为 0~1 之间，那和此处介绍的 `nagative_boost` 有啥区别呢？
+
+虽然`boost`的值在 0~1 之间时与 `negative_boost` 都能起到降低文档相关性评分的作用，但二者在使用场景、作用范围和逻辑机制上存在明显区别：
+
+- 使用场景
+  - **`boost`（0~1）**：主要用于在同一查询逻辑内，对不同字段或不同查询条件的评分进行相对调整。比如在多字段查询中，希望弱化某个字段对整体相关性评分的影响，像在搜索博客文章时，降低`content`字段在整体相关性计算中的权重 ，从而突出`title`字段的重要性。
+  - **`negative_boost`**：侧重于处理在满足主要查询条件的基础上，对部分不希望完全排除但需要降低其相关性的文档进行调整。例如在搜索新闻时，对于包含某些特定关键词（如与产品无关的词汇）的文档，不想直接排除它们，但又希望优先展示更相关的内容。
+- 作用范围
+  - **`boost`（0~1）**：直接作用于对应的查询子句，只要文档匹配该查询子句，其评分就会按照设定的`boost`值进行调整，影响范围是单个查询子句对应的文档匹配情况。
+  - **`negative_boost`**：需要结合`boosting`查询中的`positive`和`negative`部分共同作用。只有当文档同时匹配`positive`查询（保证是相关文档）且匹配`negative`查询（需要降低相关性的部分）时，`negative_boost`才会生效，对文档评分进行调整，影响范围是满足特定组合条件的文档。
+- 逻辑机制
+  - **`boost`（0~1）**：是对查询子句计算出的原始评分直接进行乘法运算，属于在正常查询评分计算流程中对某一部分的权重调整，改变的是该部分查询对整体相关性评分的贡献程度。
+  - **`negative_boost`**：是在已经完成整体相关性评分计算后，针对满足`negative`查询条件的文档，额外进行一次评分修正。它不改变`positive`查询部分以及其他正常查询部分的评分计算过程，只是对匹配`negative`查询的文档评分进行二次处理 ，起到微调相关性排序的作用。
+
+综上所述，`boost`（0~1）和`negative_boost`虽然都能降低文档相关性评分，但在实际应用中，应根据具体的业务需求和查询逻辑，选择合适的方式来优化搜索结果的相关性排序。
+
+### 2.4 自定义评分（function_score）
+
+该方式支持用户自定义一个或多个查询语句及脚本，达到精细化控制评分的目的，以对搜索结果进行高度个性化的排序设置。适用于需进行复杂查询的自定义评分业务场景。
+
+案例1：商品信息如下，如何同时根据销量和浏览人数进行相关度提升？
+
+| 商品 | 销量 | 浏览人数 |
+| ---- | ---- | -------- |
+| A    | 10   | 10       |
+| B    | 20   | 20       |
+
+想要提升相关度评分，则将每个文档的原始评分与其销量和浏览人数相结合，得到一个新的评分。例如，使用如下公式：
+
+评分 = 原始评分 ×（销量 + 浏览人数）
+
+这样，销量和浏览人数较高的文档就会有更高的评分，从而在搜索结果中排名更靠前。这种评分方式不仅考虑了文档与查询的匹配度（由_score表示），还考虑了文档的销量和浏览人数，非常适用于电子商务等场景。
+
+该需求可以借助script_score实现，代码如下，其评分是基于原始评分和销量与浏览人数之和的乘积计算的结果。
+
+**数据准备**：
+
+```json
+PUT my_index_products/_bulk
+{"index":{"_id":1}}
+{"name":"A","sales":10,"visitors":10}
+{"index":{"_id":2}}
+{"name":"B","sales":20,"visitors":20}
+{"index":{"_id":3}}
+{"name":"C","sales":30,"visitors":30}
+```
+
+**基于function_score实现自定义评分检索**:
+
+```json
+POST my_index_products/_search
+{
+    "query": {
+        "function_score": {
+            "query": {
+                "match_all": {}
+            },
+            "script_score": {
+                "script": {
+                    "source": "_score*(doc['sales'].value+doc['visitors'].value)"
+                }
+            }
+        }
+    }
+}
+```
+
+- `script_score` 是 `function_score` 查询中的一种评分函数，它允许你使用自定义的脚本（通常是 Painless 脚本）来计算文档的得分。
+
+  - `source`：指定脚本的内容。在这个脚本中：
+    - `_score`：表示文档在原始查询（这里是 `match_all` 查询）中的得分。由于 `match_all` 查询对所有文档的初始得分通常是 1.0，所以它是一个基础得分。
+    - `doc['sales'].value`：表示文档中 `sales` 字段的值。
+    - `doc['visitors'].value`：表示文档中 `visitors` 字段的值。
+
+  脚本的作用是将文档的原始得分乘以 `sales` 字段和 `visitors` 字段值的总和，从而得到一个新的得分。例如，如果一个文档的 `sales` 值为 10，`visitors` 值为 20，原始得分是 1.0，那么新的得分就是 `1.0 * (10 + 20) = 30`。
+
+![](../images/58.png)
+
+### 2.5 查询后二次打分（rescore_query）
+
+在 Elasticsearch 的搜索场景中，有时候默认的查询结果排序并不能完全满足业务需求。例如，在电商搜索中，除了考虑商品与搜索关键词的匹配度，还希望将热门商品、促销商品等因素纳入排序考量；在文档搜索中，可能需要根据文档的时效性、重要性等对初始搜索结果进行调整。这时，`rescore_query` 就成为了优化搜索结果排序的得力工具。
+
+二次评分，即重新计算查询所返回的结果文档中指定文档的得分，是 `rescore_query` 的核心功能。Elasticsearch 在执行查询时，会先按照默认的相关性算法计算所有文档的初始得分，并截取返回前 N 条结果。而 rescore_query 则允许我们使用预定义的二次评分方法，对这些初始结果中的部分文档重新计算得分，进而调整整体的结果排序。
+
+之所以不对全部有序的结果集进行重新排序，是因为这将带来巨大的开销。想象一下，当索引中有海量文档时，对所有结果重新计算得分并排序会消耗大量的计算资源和时间。而 `rescore_query` 通过只处理结果集的子集，在保证一定精准度的同时，有效控制了性能损耗，这也是其在实际应用中备受青睐的原因。
+
+**语法**：
+
+```json
+GET your_index/_search
+{
+    "query": {
+        // 初始查询语句，用于获取初步结果集
+        "match": {
+            "your_field": "your_keyword"
+        }
+    },
+    "rescore": {
+        "query": {
+            "rescore_query": {
+                // 二次评分查询语句，定义重新计算得分的逻辑
+                "match": {
+                    "another_field": "another_keyword"
+                }
+            },
+            "query_weight": 0.7,
+            "rescore_query_weight": 1.2
+        },
+        "window_size": 50
+    }
+}
+```
+
+- **query**：初始查询部分，负责获取初步的搜索结果集。它可以是任何 Elasticsearch 支持的查询类型，如match、bool、term等。
+
+- **rescore**：二次评分配置部分，核心参数如下：
+
+  - `rescore_query`：用于定义二次评分的查询逻辑。通过这个查询，指定哪些文档需要重新计算得分。例如，在图书搜索中，可以使用 `rescore_query` 筛选出特定作者的图书，并重新计算其得分。
+
+  - `query_weight`：初始查询得分的权重，取值范围通常为 0 到 1 之间。它决定了初始查询得分在最终得分中的重要程度。假设`query_weight` 为 0.7，意味着初始查询得分在最终得分中占比 70%。
+
+  - `rescore_query_weight`：二次评分查询得分的权重，该值通常大于query_weight，以突出二次评分的影响。例如，`rescore_query_weight` 为 1.2，表示二次评分查询得分在最终得分中的占比更高，能够更显著地调整文档排序。
+
+  - `window_size`：指定从分片结果中选取用于二次评分的文档数量。它就像是一个 “窗口”，Elasticsearch 只会对这个 “窗口” 内的文档重新计算得分。设置合适的 `window_size` 非常关键，值过小可能导致重要文档无法被重新评分，影响排序效果；值过大则会增加计算成本，降低查询性能。
+
+**数据准备**：
+
+```json
+PUT my_index_books-demo/_bulk
+{"index":{"_id":"1"}}
+{"title":"ES实战","content":"ES的实战操作，实战要领，实战经验"}
+{"index":{"_id":"2"}}
+{"title":"MySQL实战","content":"MySQL的实战操作"}
+{"index":{"_id":"3"}}
+{"title":"MySQL","content":"MySQL一定要会"}
+```
+
+**初始查询**：
+
+```json
+GET my_index_books-demo/_search
+{
+    "query": {
+        "match": {
+            "content": "实战"
+        }
+    }
+}
+```
+
+此时，Elasticsearch 会根据默认的相关性算法计算文档得分并排序，返回初步结果：
+
+![](../images/59.png)
+
+**二次评分查询**：
+
+假设我们希望对上述查询结果进行优化：查询content字段中包含 “实战” 的文档，其初始查询得分权重设为 0.7；同时，对文档中title为 “MySQL” 的文档增加评分，二次评分查询得分权重设为 1.2，并且取分片结果的前 50 个文档进行重新算分。对应的查询语句如下：
+
+```json
+GET my_index_books-demo/_search
+{
+    "query": {
+        "match": {
+            "content": "实战"
+        }
+    },
+    "rescore": {
+        "query": {
+            "rescore_query": {
+                "match": {
+                    "title": "MySQL"
+                }
+            },
+            "query_weight": 0.7,
+            "rescore_query_weight": 1.2
+        },
+        "window_size": 50
+    }
+}
+```
+
+## 三. 多字段搜索场景优化
 

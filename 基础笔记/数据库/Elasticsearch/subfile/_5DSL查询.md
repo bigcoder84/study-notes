@@ -28,7 +28,7 @@ Elasticsearch 的查询可以看作一棵树，树的每个节点可以是两种
 
 ![](../images/28.png)
 
-同理，我想通过精确搜索匹配 `address` 前缀为 `990 Concord` 的数据，我们同样需要使用keyword类型字段进行匹配，因为 `address` 字段本身是 `text` 类型，`990 Concord Street` 会被分词为 [“990”,“Concord”,“Street”] 三个独立的词项， `990 Concord` 无法匹配到任意一个词项的前缀，所以无法查询到数据：
+同理，我想通过精确搜索匹配 `address` 前缀为 `990 Concord` 的数据，我们同样需要使用 `keyword` 类型字段进行匹配，因为 `address` 字段本身是 `text` 类型，`990 Concord Street` 会被分词为 [“990”,“Concord”,“Street”] 三个独立的词项，`990 Concord` 无法匹配到任意一个词项的前缀，所以无法查询到数据：
 
 ![](../images/33.png)
 
