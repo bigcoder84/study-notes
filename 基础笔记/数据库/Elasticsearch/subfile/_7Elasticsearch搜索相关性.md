@@ -396,7 +396,7 @@ POST my_index_100*/_search
 
 boosting可在查询时修改文档的相关度。boosting值所在范围不同，含义也不同。
 
-- 若boosting值为0～1，如0.2，代表降低评分；
+- 若boosting 值为0～1，如0.2，代表降低评分；
 - 若 boosting 值＞1，如1.5，则代表提升评分。
 
 适用于某些特定的查询场景，用户可以自定义修改满足某个查询条件的结果评分。
@@ -762,4 +762,318 @@ GET my_index_books-demo/_search
 ```
 
 ## 三. 多字段搜索场景优化
+
+多字段搜索的三种场景：
+
+- 最佳字段(Best Fields) ： 多个字段中返回评分最高的
+
+当字段之间相互竞争，又相互关联。例如，对于博客的 title 和 body这样的字段，评分来自最匹配字段
+
+- 多数字段(Most Fields)：匹配多个字段，返回各个字段评分之和
+
+处理英文内容时的一种常见的手段是，在主字段( English Analyzer)，抽取词干，加入同义词，以匹配更多的文档。相同的文本，加入子字段（Standard Analyzer），以提供更加精确的匹配。其他字段作为匹配文档提高相关度的信号，匹配字段越多则越好。
+
+- 混合字段(Cross Fields)： 跨字段匹配，待查询内容在多个字段中都显示
+
+对于某些实体，例如人名，地址，图书信息。需要在多个字段中确定信息，单个字段只能作为整体的一部分。希望在任何这些列出的字段中找到尽可能多的词。
+
+### 3.1 数据准备
+
+```json
+DELETE /blogs
+
+PUT /blogs/_doc/1
+{
+  "title": "Quick brown rabbits",
+  "body": "Brown rabbits are commonly seen."
+}
+
+PUT /blogs/_doc/2
+{
+  "title": "Keeping pets healthy",
+  "body": "My quick brown fox eats rabbits on a regular basis."
+}
+```
+
+为了方便后续示例的演示，我们先创建一个 `blogs` 索引，里面有 `title` 和 `body` 字段，并为索引添加两条数据。
+
+### 3.2 查询“棕色的狐狸”的博客
+
+```json
+POST /blogs/_search
+{
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "match": {
+            "title": "Brown fox"
+          }
+        },
+        {
+          "match": {
+            "body": "Brown fox"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+执行前，你们可以想象一下查询结果是啥样的，我想你可能会认为文档2排在最前面，因为文档2能够完全匹配我的搜索词“brown fox”，但实时并不是这样。
+
+![](../images/60.png)
+
+可以看到 `id=2` 的文档 `body` 字段完全匹配了所有搜索词（“brown fox”），但是得分反而不如只匹配到了 `brown` 关键词的文档。
+
+这是因为 `bool should` 的评分机制导致的：`bool should` 会将所有匹配子句的评分**累加**，并乘以 `匹配子句数 / 总子句数`。
+
+- 对于文档1：
+  - `title` 匹配 `Brown`（评分部分匹配）。
+  - `body` 匹配 `Brown`（评分部分匹配）。
+  - **总分 = 两字段部分匹配的累加**。
+- 对于文档2：
+  - `body` 完全匹配 `Brown fox`（评分较高）。
+  - `title` 未匹配。
+  - **总分 = 仅 `body` 的评分**。
+
+### 3.3 评分分析
+
+评分计算过程，我们可以通过 `explain` 关键字看到详细的计算过程：
+
+```json
+POST /blogs/_search
+{
+  "explain": true,
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "match": {
+            "title": "Brown fox"
+          }
+        },
+        {
+          "match": {
+            "body": "Brown fox"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**文档一**：
+
+1. 匹配词项
+
+- **`title` 字段**：匹配 `brown`。
+- **`body` 字段**：匹配 `brown`。
+
+2. 评分计算
+
+- **`title:brown` 的贡献**：
+  - boost：2.2
+  - **TF（词频得分）**：0.45454544。
+  - **IDF**：0.6931472（`title` 字段中 `brown` 的全局稀缺性较高）。
+  - **得分**：`2.2 * 0.45454544 * 0.6931472 ≈ 0.693`。
+- **`body:brown` 的贡献**：
+  - boost：2.2
+  - **TF（词频得分）**：0.5263158
+  - **IDF**：0.18232156（`body` 字段中 `brown` 的全局稀缺性较低）
+  - **得分**：`2.2 * 0.5263158 * 0.18232156 ≈ 0.211`。
+
+3. 总分
+
+- **累加得分**：`0.693 (title) + 0.211 (body) = 0.904`。
+
+**文档2**：
+
+1. 匹配词项
+
+- **`body` 字段**：匹配 `brown` 和 `fox`。
+
+2. 评分计算
+
+- **`body:brown` 的贡献**：
+  - boost：2.2
+  - **TF**： 0.40000004
+  - **IDF**：0.18232156（与文档1相同）
+  - **得分**：`2.2 * 0.40000004 * 0.18232156 ≈ 0.160`。
+- **`body:fox` 的贡献**：
+  - boost：2.2
+  - **TF**：0.40000004。
+  - **IDF**：0.6931472。
+  - **得分**：`2.2 * 0.40000004 * 0.6931472 ≈ 0.610`。
+
+3. 总分
+
+- **累加得分**：`0.160 (brown) + 0.609 (fox) = 0.770`。
+
+**因为文档1因两个字段都匹配 `Brown`，总分高于文档2的单个字段完全匹配。这不符合预期，一般的用户大多都希望优先展示完全匹配 `Brown fox` 的文档2**。
+
+### 3.4 dis_max 查询
+
+`dis_max`（Disjunction Max Query）是 Elasticsearch 中一种特殊的多字段查询，专门用于处理字段间存在竞争关系的搜索场景。下面我将从原理、语法、使用场景和实际案例等方面全面解析这个查询。
+
+#### 3.4.1 什么是 `dis_max` 查询？
+
+`dis_max`（Disjunction Max Query）意为"分离最大化查询"，它的核心特点是：
+
+- 对多个子查询执行**逻辑或(OR)**操作，但只采用**得分最高的子查询**的评分作为主评分
+- 其他匹配的子查询评分可以按比例(`tie_breaker`)加入总分。
+
+语法：
+
+```json
+{
+  "query": {
+    "dis_max": {
+      "queries": [
+        { "match": { "title": "quick brown fox" }},
+        { "match": { "content": "quick brown fox" }}
+      ],
+      "tie_breaker": 0.3
+    }
+  }
+}
+```
+
+|     参数      |                             说明                             |
+| :-----------: | :----------------------------------------------------------: |
+|   `queries`   |                    包含多个查询条件的数组                    |
+| `tie_breaker` | 浮点数，取值范围 0~1，默认 0.0。改参数用于控制非最高评分子查询对总分的贡献比例 |
+
+评分公式：
+
+```
+最终得分 = max(子查询得分) + tie_breaker * sum(其他子查询得分)
+```
+
+#### 3.4.2 示例
+
+针对上面查询“棕色的狐狸”的案例中使用 `should` 查询反应出来的问题，我们可以通过 `dis_max` 查询来优化：
+
+```json
+POST /blogs/_search
+{
+  "query": {
+    "dis_max": {
+      "queries": [
+        {
+          "match": {
+            "title": "Brown fox"
+          }
+        },
+        {
+          "match": {
+            "body": "Brown fox"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+默认情况下，`tie_breaker` 参数为 0，也就意味着只有得分最高的查询子句参与得分，这样就能得到另我们满意的结果：
+
+![](../images/61.png)
+
+你以为使用了 `dis_max` 查询就能高枕无忧了，我们看看下面这个例子：
+
+```json
+POST /blogs/_search
+{
+  "query": {
+    "dis_max": {
+      "queries": [
+        { "match": { "title": "Quick pets" }},
+        { "match": { "body": "Quick pets" }}
+      ]
+    }
+  }
+}
+```
+
+我们尝试查询 `Quick pets` 关键字，文档1中只能在 `title` 中匹配到 `quick`，而文档2可以在 `title` 中匹配到 `pets`，在 `body` 中匹配到 `quick`，所以我们更愿意将文档二排在前面，但是实际上，由于我们没有指定 `tie_breaker` (代表 `tie_breaker=0`)，这也就意味着只有最高分子查询参与算分，所以两个文档，都只有 `title` 字段子查询参与算分，最终两个文档得分一致，ID小的文档排前面，与我们的预期不一致：
+
+![](../images/62.png)
+
+此时，我们调整 `tie_breaker` 的值，让最高分子查询以外的查询也参与一定的算分，即可解决问题：
+
+```json
+POST /blogs/_search
+{
+  "query": {
+    "dis_max": {
+      "queries": [
+        { "match": { "title": "Quick pets" }},
+        { "match": { "body": "Quick pets" }}
+      ],
+      "tie_breaker": 0.1
+    }
+  }
+}
+```
+
+![](../images/63.png)
+
+算分过程：
+
+**文档一**：只有**`title:quick` 参与贡献**：0.6931471
+
+**文档二**：
+
+- **`title:pets` 参与贡献**：0.6931471
+- **`body:quick` 参与贡献**：0.60996956
+- 最终得分：`0.6931471+(0.60996956)*0.1 ≈ 0.754144`
+
+### 3.5 best_fields 查询
+
+#### 3.5.1 best_fields 介绍
+
+`best_fields` 是 Elasticsearch 中 `multi_match` 查询的一种类型，主要用于在多个字段中搜索相同查询词时，优先返回匹配度最高的字段结果。与上一节介绍的`dis_max` 查询算分逻辑是一致的，事实上当使用`best_fields`时，Elasticsearch会将其转换为一个`dis_max`查询。
+
+Best Fields是默认类型，可以不用指定，等价于dis_max查询方式：
+
+```json
+POST /blogs/_search
+{
+  "query": {
+    "multi_match": {
+      "type": "best_fields",
+      "query": "Brown fox",
+      "fields": ["title", "body"],
+      "tie_breaker": 0.2
+    }
+  }
+}
+```
+
+#### 3.5.2 与 `dis_max` 查询的异同
+
+|      特性      |        best_fields         |             dis_max              |
+| :------------: | :------------------------: | :------------------------------: |
+|  **查询类型**  |   multi_match的一种类型    |           独立查询类型           |
+| **语法简洁性** |   更简洁，自动处理多字段   |      需要显式写出所有子查询      |
+|  **字段权重**  | 支持字段级boost(如title^3) |    需要在每个子查询中单独设置    |
+|  **使用场景**  |    专门为多字段匹配优化    | **更通用，可用于任意子查询组合** |
+
+那我们如何选择这两种查询呢？
+
+- 当满足一下条件时，建议使用`best_fields`：
+  - 需要在多个字段上搜索相同内容
+  - 想要更简洁的语法
+  - 需要方便的字段级boost
+- 当满足一下条件时，使用`dis_max`：
+  - 需要组合不同类型的子查询(如match + phrase)
+  - 需要更精细的控制
+  - 查询结构比较复杂
+
+虽然`best_fields`查询本质上是通过`dis_max`实现的，但由于语法糖和特定优化，它们并不完全等价。**可以认为`best_fields`是`dis_max`在multi_match查询中的一种特化实现**，专为多字段文本搜索场景优化。
+
+
 
