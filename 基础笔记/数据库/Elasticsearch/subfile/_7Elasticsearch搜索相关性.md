@@ -1053,7 +1053,7 @@ POST /blogs/_search
 }
 ```
 
-#### 3.5.2 与 `dis_max` 查询的异同
+#### 3.5.2 与 `dis_max` 查询的区别
 
 |      特性      |        best_fields         |             dis_max              |
 | :------------: | :------------------------: | :------------------------------: |
@@ -1075,5 +1075,212 @@ POST /blogs/_search
 
 虽然`best_fields`查询本质上是通过`dis_max`实现的，但由于语法糖和特定优化，它们并不完全等价。**可以认为`best_fields`是`dis_max`在multi_match查询中的一种特化实现**，专为多字段文本搜索场景优化。
 
+### 3.6 most_fields 查询
+
+`most_fields` 是 `multi_match` 查询的另一种类型，专门为需要**综合多个字段匹配程度**的场景设计。其核心特征是：
+
+1. **评分累加机制**：将所有匹配字段的评分累计得到最终评分
+2. **权重放大作用**：适合通过多字段叠加相关性信号
+3. 典型应用场景：
+   - 主字段（包含词干扩展）+ 子字段（精确匹配）的组合
+   - 希望强化跨字段匹配的综合相关性
+
+most_fields策略获取全部匹配字段的累计得分（综合全部匹配字段的得分），等价于bool should查询方式。
+
+前面我们介绍了基于 `bool should` 多字段查询：
+```json
+POST /blogs/_search
+{
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "match": {
+            "title": "Brown fox"
+          }
+        },
+        {
+          "match": {
+            "body": "Brown fox"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+可以等价于 `most_fields` 查询：
+
+```json
+POST /blogs/_search
+{
+  "query": {
+    "multi_match": {
+      "type": "most_fields",
+      "fields": ["title","body"],
+      "query": "Brown fox"
+    }
+  }
+}
+```
+
+### 3.7 cross_fields 查询
+
+#### 3.7.1 核心概念
+
+`cross_fields` 是 `multi_match` 查询的一种类型，专为**跨字段联合匹配**场景设计。其核心特点是：
+
+- **字段融合**：将多个字段视为一个逻辑上的大字段
+- **统一统计**：合并所有字段的**词项统计信息**（如IDF）
+- **强制覆盖**：要求查询词中的**每个词项**必须出现在**至少一个字段**中
+
+#### 3.7.2 适用场景
+
+典型使用场景包括：
+
+|    场景类型    |          示例          |         字段示例         |
+| :------------: | :--------------------: | :----------------------: |
+|  **人名搜索**  |      "John Smith"      |  first_name, last_name   |
+|  **地址搜索**  | "123 Main St, Boston"  |   street, city, state    |
+|  **产品信息**  | "iPhone 13 Pro 256GB"  | name, specs, description |
+| **跨字段实体** | "ISBN 978-7-01-019..." |   isbn, title, author    |
+
+#### 3.7.3 查询语法详解
+
+```json
+POST /_search
+{
+  "query": {
+    "multi_match": {
+      "query": "search text",
+      "type": "cross_fields",
+      "fields": ["field1", "field2^3"], // 支持字段权重
+      "operator": "and",                // 默认为or
+      "minimum_should_match": "75%",    // 覆盖参数
+      "tie_breaker": 0.3                // 非主要参数
+    }
+  }
+}
+```
+
+关键参数解析：
+
+- operator：
+  - `or`（默认）：任意词项匹配即可
+  - `and`：要求所有词项必须匹配
+- minimum_should_match：
+  - 控制最少需要匹配的词项比例
+  - 示例：`"75%"` 表示在4个词项中至少匹配3个
+- analyzer：
+  - 可指定统一的分析器覆盖字段原有设置
+
+#### 3.7.5 案例
+
+```json
+DELETE /address
+PUT /address
+{
+  "settings": {
+    "index": {
+      "analysis.analyzer.default.type": "ik_max_word"
+    }
+  }
+}
 
 
+PUT /address/_bulk
+{"index": { "_id": "1"} }{"province": "湖南","city": "长沙"}{ "index": { "_id": "2"} }{"province": "湖南","city": "常德"}{ "index": { "_id": "3"} }{"province": "广东","city": "广州"}{ "index": { "_id": "4"} }{"province": "湖南","city": "邵阳"}
+
+
+#使用 most_fields 的方式结果不符合预期，会将湖南其它城市查询出来，不支持 operator
+GET /address/_search
+{
+  "query": {
+    "multi_match": {
+      "query": "湖南常德",
+      "type": "most_fields",
+      "fields": [
+        "province",
+        "city"
+      ]
+    }
+  }
+}
+
+
+#与 copy_to 相比，其中一个优势就是它可以在搜索时为单个字段提升权重。
+GET /address/_search
+{
+  "query": {
+    "multi_match": {
+      "query": "湖南常德",
+      "type": "cross_fields",
+      "operator": "and",
+      "fields": [
+        "province",
+        "city"
+      ]
+    }
+  }
+}
+```
+
+也可以使用copy_to完成类似效果：
+
+```json
+DELETE /address
+
+PUT /address
+{
+  "mappings": {
+    "properties": {
+      "province": {
+        "type": "keyword",
+        "copy_to": "full_address"
+      },
+      "city": {
+        "type": "text",
+        "copy_to": "full_address"
+      }
+    }
+  },
+  "settings": {
+    "index": {
+      "analysis.analyzer.default.type": "ik_max_word"
+    }
+  }
+}
+
+PUT /address/_bulk
+{"index": { "_id": "1"} }
+{"province": "湖南","city": "长沙"}
+{ "index": { "_id": "2"} }
+{"province": "湖南","city": "常德"}
+{ "index": { "_id": "3"} }
+{"province": "广东","city": "广州"}
+{ "index": { "_id": "4"} }
+{"province": "湖南","city": "邵阳"}
+
+GET /address/_search
+{
+  "query": {
+    "match": {
+      "full_address": {
+        "query": "湖南常德",
+        "operator": "and"
+      }
+    }
+  }
+}
+```
+
+### 3.8 三种查询类型的区别
+
+|    查询类型    |         评分策略         | 字段关系 |       典型用例       |
+| :------------: | :----------------------: | :------: | :------------------: |
+| `best_fields`  |      取最高字段得分      | 竞争关系 |   博客标题 vs 正文   |
+| `most_fields`  |     累加所有字段得分     | 互补关系 |  主字段+子字段组合   |
+| `cross_fields` | 合并字段统计计算综合得分 | 协同关系 | 姓名、地址等分散信息 |
+
+#### 
